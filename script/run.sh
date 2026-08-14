@@ -52,11 +52,13 @@ export UNIFI_MQTT_TOPIC="$(bashio::config 'mqtt_topic')"
 
 # --- Home Assistant discovery ---
 export UNIFI_HASS_ENABLE="$(bashio::config 'hass_enable')"
+export UNIFI_HASS_BASE_TOPIC="$(bashio::config 'hass_base_topic')"
 
 # --- Polling cadences (seconds) ---
 export UNIFI_REFRESH_DEVICES="$(bashio::config 'refresh_devices')"
 export UNIFI_REFRESH_CLIENTS="$(bashio::config 'refresh_clients')"
 export UNIFI_REFRESH_HEALTH="$(bashio::config 'refresh_health')"
+export UNIFI_REFRESH_STATIC="$(bashio::config 'refresh_static')"
 
 # --- Client publication + filtering ---
 # Off by default in the add-on schema: a busy network can otherwise create
@@ -70,10 +72,22 @@ export UNIFI_CLIENTS_VLANS="$(bashio::config 'clients_vlans | join(",")')"
 export UNIFI_CLIENTS_SSIDS="$(bashio::config 'clients_ssids | join(",")')"
 export UNIFI_CLIENTS_INCLUDE_MACS="$(bashio::config 'clients_include_macs | join(",")')"
 export UNIFI_CLIENTS_EXCLUDE_MACS="$(bashio::config 'clients_exclude_macs | join(",")')"
+export UNIFI_CLIENTS_EXCLUDE_GUESTS="$(bashio::config 'clients_exclude_guests')"
 export UNIFI_CLIENTS_MAX="$(bashio::config 'clients_max')"
+export UNIFI_CLIENTS_AWAY_TIMEOUT="$(bashio::config 'clients_away_timeout')"
+export UNIFI_CLIENTS_SIGNAL_SENSOR="$(bashio::config 'clients_signal_sensor')"
 
 # --- Controls (write-back from Home Assistant) ---
+# The master switch gates all of them; each one below then decides
+# individually. The last three need the classic layer, and the daemon
+# refuses to start if they are on without it.
 export UNIFI_CONTROLS_ENABLE="$(bashio::config 'controls_enable')"
+export UNIFI_CONTROLS_DEVICE_RESTART="$(bashio::config 'controls_device_restart')"
+export UNIFI_CONTROLS_PORT_POWER_CYCLE="$(bashio::config 'controls_port_power_cycle')"
+export UNIFI_CONTROLS_GUEST_AUTHORIZE="$(bashio::config 'controls_guest_authorize')"
+export UNIFI_CONTROLS_DEVICE_LOCATE="$(bashio::config 'controls_device_locate')"
+export UNIFI_CONTROLS_CLIENT_BLOCK="$(bashio::config 'controls_client_block')"
+export UNIFI_CONTROLS_WLAN_ENABLE="$(bashio::config 'controls_wlan_enable')"
 
 # --- Misc ---
 export UNIFI_LANGUAGE="$(bashio::config 'language')"

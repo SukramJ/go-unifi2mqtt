@@ -3,7 +3,7 @@
 # version MUST equal the published image tag (ghcr.io/sukramj/go-unifi2mqtt-addon-{arch})
 # and is bumped in the release commit that cuts the matching git tag.
 name: go-unifi2mqtt
-version: "0.1.0"
+version: "1.0.0"
 slug: go-unifi2mqtt
 description: >-
   Bridges a local UniFi Network console (UDM / UCG / UniFi OS Server /
@@ -86,6 +86,9 @@ options:
   refresh_devices: 60
   refresh_clients: 30
   refresh_health: 60
+  # Device details, network and WLAN catalogues. These change rarely, so
+  # they sit on their own slow loop (see DOCS.md).
+  refresh_static: 3600
 
   # --- Clients / presence ---
   # Off by default: a busy network would otherwise create hundreds of
@@ -100,12 +103,29 @@ options:
   clients_ssids: []
   clients_include_macs: []
   clients_exclude_macs: []
+  clients_exclude_guests: true
   clients_max: 100
+  # Seconds a client may be absent before presence flips to not_home.
+  # Below 2x refresh_clients this flaps while clients roam between APs.
+  clients_away_timeout: 300
+  # Signal-strength sensor per wireless client. Needs classic_enable.
+  clients_signal_sensor: false
 
   # --- Controls (write-back from Home Assistant) ---
-  # Off by default: turning this on lets HA restart devices, power-cycle PoE
-  # ports and block clients.
+  # The master switch is off by default. With it on, each control below
+  # decides individually what Home Assistant may do. The last three need
+  # classic_enable — the Integration API does not expose them.
   controls_enable: false
+  controls_device_restart: true
+  controls_port_power_cycle: true
+  controls_guest_authorize: true
+  controls_device_locate: false
+  controls_client_block: false
+  controls_wlan_enable: false
+
+  # --- Home Assistant discovery prefix ---
+  # Only change this if you changed it in the MQTT integration too.
+  hass_base_topic: homeassistant
 
   # --- Misc ---
   web_enable: true
@@ -130,6 +150,7 @@ schema:
   refresh_devices: int(5,3600)
   refresh_clients: int(5,3600)
   refresh_health: int(5,3600)
+  refresh_static: int(60,86400)
   clients_enable: bool
   clients_types:
     - "list(WIRED|WIRELESS|VPN|TELEPORT)"
@@ -143,8 +164,18 @@ schema:
     - str
   clients_exclude_macs:
     - str
+  clients_exclude_guests: bool
   clients_max: int(1,2000)
+  clients_away_timeout: int(30,3600)
+  clients_signal_sensor: bool
   controls_enable: bool
+  controls_device_restart: bool
+  controls_port_power_cycle: bool
+  controls_guest_authorize: bool
+  controls_device_locate: bool
+  controls_client_block: bool
+  controls_wlan_enable: bool
+  hass_base_topic: str
   web_enable: bool
   language: "list(en|de)"
   debug: bool

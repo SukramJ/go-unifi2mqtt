@@ -137,6 +137,12 @@ CLIENTS:
   # value below ~2x REFRESH_CLIENTS causes flapping.
   AWAY_TIMEOUT: 300
 
+  # Add a signal-strength sensor per wireless client. Needs
+  # CLASSIC_ENABLE — the Integration API does not report signal at all.
+  # Off by default: it is one more entity per client, and the value is
+  # meaningless for wired ones.
+  SIGNAL_SENSOR: false
+
 # ---------------------------------------------------------------------------
 # Controls (write-back from Home Assistant / MQTT)
 # ---------------------------------------------------------------------------

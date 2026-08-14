@@ -19,13 +19,12 @@ PoE port, block a client, …) are written back to the console.
 **Read [`CONCEPT.md`](./CONCEPT.md) before touching anything** — it is
 the implementation concept: API strategy, package layout, MQTT topic
 tree, HA entity model, client filtering, polling design and the phased
-roadmap. Phases 0–7 are done: the daemon polls the console, publishes
-devices, ports, radios, the WLAN catalogue, filtered clients with
-presence detection and — with the optional classic layer — site health,
-per-client SSID/signal and PoE wattage, announces all of it to Home
-Assistant, accepts write-back commands, and serves a diagnostic web UI.
-What remains is the documentation pass and the 1.0.0 release (phase 8),
-plus the optional WebSocket accelerator (phase 9).
+roadmap. **1.0.0 is released** (phases 0–8): the daemon polls the
+console, publishes devices, ports, radios, the WLAN catalogue, filtered
+clients with presence detection and — with the optional classic layer —
+site health, per-client SSID/signal and PoE wattage, announces all of it
+to Home Assistant, accepts write-back commands, and serves a diagnostic
+web UI. Only the optional WebSocket accelerator (phase 9) remains.
 
 ## Key Characteristics
 
@@ -142,8 +141,9 @@ etc. — no special test runner beyond `go test`.
 - **Commit style**: Conventional Commits with a scope, e.g.
   `feat(unifi): add integration API device client`, `fix(addon): ...`,
   `chore(deps): ...`.
-- **Release bookkeeping — three files move together.** A version bump
-  touches `internal/version/version.go` and `addon/config.yaml`, and
+- **Release bookkeeping — four files move together.** A version bump
+  touches `internal/version/version.go`, `addon/config.yaml` and the
+  `BUILD_VERSION` default in `addon/Dockerfile`, and
   every `changelog.md` entry must ALWAYS be mirrored into
   `addon/CHANGELOG.md` (the file Home Assistant renders in the add-on
   UI's Changelog tab) — keep the two changelog files identical.
@@ -215,6 +215,18 @@ etc. — no special test runner beyond `go test`.
   classic API by MongoDB `_id`, and both carry the MAC. The MAC is the
   stable cross-API identity and the basis of MQTT topics and HA
   `unique_id`s — see `CONCEPT.md` for the exact rule.
+
+## Before Cutting A Release
+
+`make release` cross-compiles, bundles and extracts the notes; run it
+locally first, since CI runs the identical command. Two checks that are
+easy to skip and expensive to get wrong:
+
+- `docker build .` — the Dockerfile is not exercised by `make check`,
+  so a broken one only surfaces when the release workflow runs.
+- The add-on option set, `schema:` and `script/run.sh` must agree. An
+  option missing from `run.sh` is silently ignored at runtime; one
+  missing from `schema:` makes the Supervisor reject the config.
 
 ## When in Doubt
 
