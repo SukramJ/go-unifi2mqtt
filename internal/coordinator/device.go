@@ -165,14 +165,27 @@ func (c *Coordinator) publishRadio(ctx context.Context, mac model.MAC, r *model.
 	return c.pub.publish(ctx, c.topics.radio(mac, r.FrequencyGHz, keyRadioChannel), itoa(r.Channel))
 }
 
-// publishWLANs publishes the SSID catalogue.
+// publishWLANs publishes the SSID catalogue and, when the toggle is
+// enabled, announces a switch per SSID.
 func (c *Coordinator) publishWLANs(ctx context.Context, wlans []model.WLAN) error {
+	announce := c.hass != nil && c.controlOptions().WLANEnable
+
 	for i := range wlans {
 		w := &wlans[i]
 		if err := c.pub.publish(ctx, c.topics.wlan(w.ID, keyWLANEnabled), boolPayload(w.Enabled)); err != nil {
 			return err
 		}
 		if err := c.pub.publish(ctx, c.topics.wlan(w.ID, keyWLANName), w.Name); err != nil {
+			return err
+		}
+		if !announce {
+			continue
+		}
+		entry, err := c.hass.WLANControl(w)
+		if err != nil {
+			return err
+		}
+		if err := c.pub.publishConfig(ctx, entry.ConfigTopic, entry.Payload); err != nil {
 			return err
 		}
 	}

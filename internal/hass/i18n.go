@@ -114,9 +114,27 @@ var names = map[string]map[string]string{
 		LangEN: "Signal strength",
 		LangDE: "Signalstärke",
 	},
+
+	// --- controls ---
+	"device_restart": {
+		LangEN: "Restart",
+		LangDE: "Neustart",
+	},
+	"device_locate": {
+		LangEN: "Locate",
+		LangDE: "Lokalisieren",
+	},
+	"port_power_cycle": {
+		LangEN: "Port %s power-cycle",
+		LangDE: "Port %s Strom aus/ein",
+	},
 	"client_blocked": {
 		LangEN: "Blocked",
 		LangDE: "Blockiert",
+	},
+	"client_authorize": {
+		LangEN: "Authorize guest",
+		LangDE: "Gast freischalten",
 	},
 
 	// --- site health ---

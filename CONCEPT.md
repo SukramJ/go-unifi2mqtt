@@ -4,7 +4,7 @@ Implementation concept for bridging a local UniFi Network installation to
 MQTT. This document is the project's design reference — code follows it, not
 the other way around.
 
-**Last updated:** 2026-08-14 · **Status:** phases 0–5 done, phase 6 next
+**Last updated:** 2026-08-14 · **Status:** phases 0–6 done, phase 7 next
 
 ---
 
@@ -928,7 +928,7 @@ in the PR.
 | **3** | **`internal/hass` — discovery for devices, ports; orphan cleanup, birth message, localisation table**              | ✅ done — 345 entities in HA        |
 | **4** | **Clients: filter engine, presence with `AWAY_TIMEOUT`, `device_tracker` discovery**                               | ✅ done — 7 of 121 clients on the reference site |
 | **5** | **`internal/unifi/classic` — login/CSRF, health, SSID/signal enrichment; SSID filter becomes available**           | ✅ done — site health + full filtering |
-| **6** | Actuators: command queue, buttons/switches, write-back with follow-up poll                                         | control from HA                   |
+| **6** | **Actuators: command queue, buttons/switches, write-back with follow-up poll**                                     | ✅ done — verified on real hardware |
 | **7** | `internal/web` — diagnostic SPA, Ingress panel                                                                     | web UI                            |
 | **8** | Documentation pass, release 1.0.0                                                                                  | Docker + add-on + binary released |
 | **9** | Optional: WebSocket event stream as a poll accelerator (§2.4)                                                      | sub-second client event latency   |

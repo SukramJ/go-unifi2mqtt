@@ -153,6 +153,11 @@ func (c *Coordinator) HealthTopic(key string) string {
 	return c.topics.health(key)
 }
 
+// WLANTopic returns a WLAN topic. Part of the hass.Topics contract.
+func (c *Coordinator) WLANTopic(id, key string) string {
+	return c.topics.wlan(id, key)
+}
+
 // client returns a client topic. Phase 4 fills this in; the builder
 // carries it now so the layout stays in one place.
 func (b topicBuilder) client(key, valueKey string) string {

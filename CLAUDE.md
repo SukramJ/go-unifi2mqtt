@@ -19,11 +19,12 @@ PoE port, block a client, …) are written back to the console.
 **Read [`CONCEPT.md`](./CONCEPT.md) before touching anything** — it is
 the implementation concept: API strategy, package layout, MQTT topic
 tree, HA entity model, client filtering, polling design and the phased
-roadmap. Phases 0–5 are done: the daemon polls the console, publishes
+roadmap. Phases 0–6 are done: the daemon polls the console, publishes
 devices, ports, radios, the WLAN catalogue, filtered clients with
 presence detection and — with the optional classic layer — site health,
-per-client SSID/signal and PoE wattage, announcing all of it to Home
-Assistant. Actuators (phase 6) are next.
+per-client SSID/signal and PoE wattage, announces all of it to Home
+Assistant, and accepts write-back commands. The diagnostic web UI
+(phase 7) is next.
 
 ## Key Characteristics
 
@@ -163,6 +164,18 @@ etc. — no special test runner beyond `go test`.
   lookup. Renaming one orphans the entity and its history in every
   existing installation. The same goes for `unique_id` and `object_id`
   in `internal/hass` — `TestIdentifiersAreStable` pins the exact strings.
+- **The MQTT command handler must never block.** It runs inline in the
+  client's read loop, the same goroutine that decodes acknowledgements
+  and feeds the keep-alive watchdog. It parses and enqueues, nothing
+  else — anything slower makes the watchdog declare a healthy
+  connection dead.
+- **Retained commands are replays, not requests.** The broker
+  re-delivers the last retained message per filter on every reconnect. A
+  stale `mosquitto_pub -r` would otherwise power-cycle a real port on
+  every daemon start.
+- **Never publish optimistic state.** After a command the affected
+  object is re-polled and the state comes from the console, so a failed
+  command snaps the Home Assistant entity back instead of lying.
 - **A classic-layer failure must degrade, never propagate.** The facade
   switches the affected capability off and the official path keeps
   running. `internal/unifi/facade_test.go` pins this; breaking it turns

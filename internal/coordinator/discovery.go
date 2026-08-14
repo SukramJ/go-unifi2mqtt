@@ -13,6 +13,7 @@ import (
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
+	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
 )
 
 // Home Assistant discovery.
@@ -37,6 +38,11 @@ func (c *Coordinator) publishDiscovery(ctx context.Context, dev *model.Device) e
 	if err != nil {
 		return err
 	}
+	controls, err := c.hass.DeviceControls(dev, c.controlOptions())
+	if err != nil {
+		return err
+	}
+	entries = append(entries, controls...)
 
 	topics := make([]string, 0, len(entries))
 	for _, e := range entries {
@@ -215,6 +221,29 @@ func (c *Coordinator) announceAll(ctx context.Context) error {
 	}
 	c.log.Info("coordinator.discovery_announced", slog.Int("devices", len(devices)))
 	return nil
+}
+
+// controlOptions reports which control entities to announce.
+//
+// Gated twice on purpose: on the operator having enabled the control,
+// and on the capability actually being available. A switch the daemon
+// cannot serve produces an entity that errors on click, which is worse
+// than not offering it (CONCEPT.md §3.3).
+func (c *Coordinator) controlOptions() hass.ControlOptions {
+	if !c.cfg.Controls.Enable {
+		return hass.ControlOptions{}
+	}
+	ctl := c.cfg.Controls
+	return hass.ControlOptions{
+		// Available on the official API, so config alone decides.
+		DeviceRestart:  ctl.DeviceRestart,
+		PortPowerCycle: ctl.PortPowerCycle,
+		GuestAuthorize: ctl.GuestAuthorize,
+		// Classic-only: the capability has to be live too.
+		DeviceLocate: ctl.DeviceLocate && c.caps.Has(unifi.CapDeviceLocate),
+		ClientBlock:  ctl.ClientBlock && c.caps.Has(unifi.CapClientBlock),
+		WLANEnable:   ctl.WLANEnable && c.caps.Has(unifi.CapWLANToggle),
+	}
 }
 
 // DiscoveryConfig builds the hass configuration for this coordinator's

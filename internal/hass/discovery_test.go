@@ -24,7 +24,10 @@ func (stubTopics) ClientTopic(key, valueKey string) string {
 	return "unifi/default/client/" + key + "/" + valueKey
 }
 func (stubTopics) HealthTopic(key string) string { return "unifi/default/health/" + key }
-func (stubTopics) AvailabilityTopic() string     { return "unifi/bridge/status" }
+func (stubTopics) WLANTopic(id, key string) string {
+	return "unifi/default/wlan/" + id + "/" + key
+}
+func (stubTopics) AvailabilityTopic() string { return "unifi/bridge/status" }
 
 func newTestDiscovery(lang string) *Discovery {
 	return New(Config{BaseTopic: "homeassistant", Topics: stubTopics{}, Site: "default", Language: lang})

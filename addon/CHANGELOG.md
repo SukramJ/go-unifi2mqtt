@@ -225,3 +225,41 @@ the split and its cost: device and network details belong on the hourly
   reports no latency at all for its WAN subsystem, and `0 ms` is a
   measurement rather than the absence of one. Optional health values are
   pointers now and publish empty, so Home Assistant shows "unknown".
+
+## Added in phase 6 — actuators
+
+Home Assistant can now write back: restart a device, power-cycle a PoE
+port, toggle the locate LED, block a client, authorize a guest and
+switch an SSID on or off. Every control is off by default and
+individually enabled under `CONTROLS`.
+
+Three rules shape the implementation, each because breaking it produces
+a specific failure:
+
+- **The MQTT handler never blocks.** It runs inline in the client's read
+  loop, the same goroutine that decodes acknowledgements and feeds the
+  keep-alive watchdog. It parses and enqueues; a bounded worker executes.
+  A handler waiting on an HTTP round-trip would make the watchdog
+  declare a healthy connection dead.
+- **Retained commands are dropped.** The broker re-delivers the last
+  retained message per filter on every reconnect, so a stale
+  `mosquitto_pub -r` from an old test would power-cycle a real port on
+  every daemon start.
+- **No optimistic state.** After a command the affected object is
+  re-polled out of band, and the published state comes from the console.
+  A failed command therefore snaps the entity back instead of lying
+  about what happened.
+
+Controls are gated twice: on the operator enabling them, and on the
+capability being available. A switch the daemon cannot serve is never
+announced, because an entity that errors on click is worse than no
+entity.
+
+### Fixed
+
+- **A rejected password was reported as the wrong problem.** UniFi OS
+  answers a bad login with HTTP 403, not 401. Treating 403 as "wrong
+  console layout" made the client try the standalone endpoint, get a 401
+  because it does not exist there, and report *that* — pointing at
+  `/api/login` while the real issue was the password. A failure that
+  exhausts both layouts now names what each one said.

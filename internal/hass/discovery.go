@@ -40,6 +40,8 @@ type Topics interface {
 	ClientTopic(key, valueKey string) string
 	// HealthTopic returns the state topic for one site-health value.
 	HealthTopic(key string) string
+	// WLANTopic returns the state topic for one WLAN value.
+	WLANTopic(id, key string) string
 	// AvailabilityTopic returns the bridge's retained online/offline
 	// topic.
 	AvailabilityTopic() string

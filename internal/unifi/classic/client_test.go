@@ -475,3 +475,59 @@ func indexOf(s, sub string) int {
 }
 
 var _ = context.Background
+
+// UniFi OS answers a bad password with 403 and
+// AUTHENTICATION_FAILED_INVALID_CREDENTIALS, not 401. Treating that as
+// "wrong layout" makes the client try the standalone endpoint, get a
+// 401 because it does not exist there, and report *that* — pointing the
+// operator at the wrong problem entirely.
+func TestForbiddenIsTreatedAsBadCredentials(t *testing.T) {
+	t.Parallel()
+
+	var attempts atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		if r.URL.Path == "/api/auth/login" {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w,
+				`{"message":"Invalid username or password","code":"AUTHENTICATION_FAILED_INVALID_CREDENTIALS"}`)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(ts.Close)
+
+	err := newClient(t, ts.URL).Login(t.Context())
+	if err == nil {
+		t.Fatal("Login succeeded with a rejected password")
+	}
+	if !errors.Is(err, unifi.ErrForbidden) {
+		t.Errorf("error = %v, want it to carry ErrForbidden", err)
+	}
+	if !containsAll(err.Error(), "CLASSIC_USERNAME", "SSO") {
+		t.Errorf("error = %v, want it to name the credential keys", err)
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Errorf("made %d attempts, want 1 — a rejected password must not retry the other layout", got)
+	}
+}
+
+// When both layouts genuinely fail, the error must name what each one
+// said. Reporting only the last points at the endpoint that was never
+// the right one.
+func TestBothLayoutsFailingNamesBoth(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(ts.Close)
+
+	err := newClient(t, ts.URL).Login(t.Context())
+	if err == nil {
+		t.Fatal("Login succeeded against a broken console")
+	}
+	if !containsAll(err.Error(), "/api/auth/login", "/api/login") {
+		t.Errorf("error = %v, want it to name both login paths", err)
+	}
+}

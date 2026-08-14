@@ -170,6 +170,13 @@ func (c *Coordinator) publishClient(ctx context.Context, cl *model.Client, home 
 		return err
 	}
 
+	if c.controlOptions().ClientBlock {
+		if err := c.pub.publish(ctx, c.topics.client(key, keyClientBlocked),
+			boolPayload(cl.Blocked)); err != nil {
+			return err
+		}
+	}
+
 	if c.clientSignalEnabled() && cl.Type == model.ClientWireless {
 		signal := ""
 		if home && cl.SignalDBm != 0 {
@@ -237,6 +244,11 @@ func (c *Coordinator) publishClientDiscovery(ctx context.Context, cl *model.Clie
 	if err != nil {
 		return err
 	}
+	controls, err := c.hass.ClientControls(cl, c.controlOptions())
+	if err != nil {
+		return err
+	}
+	entries = append(entries, controls...)
 	for _, e := range entries {
 		if err := c.pub.publishConfig(ctx, e.ConfigTopic, e.Payload); err != nil {
 			return err
