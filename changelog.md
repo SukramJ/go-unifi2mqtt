@@ -146,3 +146,36 @@ the split and its cost: device and network details belong on the hourly
   and `internal/hass` receives the topic layout through an interface
   rather than rebuilding it from config. Both were duplication that
   would have produced entities pointing at topics nobody publishes.
+
+## Added in phase 4 — clients and presence detection
+
+- **Client filter engine.** Clients are off by default and filtered by
+  connection type, network name, VLAN, SSID and MAC allow/deny lists.
+  On the reference site this turns 121 clients into 7. Without it a
+  first start would create several hundred Home Assistant entities.
+- **Presence with a grace period.** A client stays `home` until it has
+  been absent for `AWAY_TIMEOUT` (default 300 s). Wireless clients drop
+  out of the client list for a cycle while roaming between access
+  points, and power-saving phones disappear regularly — flipping on the
+  first missed poll makes every presence automation flap.
+- **`device_tracker` discovery.** Each published client becomes its own
+  Home Assistant device with `source_type: router`, and `via_device`
+  continues the topology: gateway → switch → AP → phone.
+- Clients resolve their uplink UUID to a MAC exactly like devices do,
+  and their VLAN from the network catalogue.
+
+### Notes
+
+- The evaluation order is fixed: `EXCLUDE_MACS` always wins,
+  `INCLUDE_MACS` is an either/or that bypasses the other dimensions,
+  then guests, then type/network/VLAN/SSID (AND across dimensions, OR
+  within one), then the `MAX` cap.
+- The client list is sorted before the cap is applied. Without that the
+  API's ordering would decide which clients get entities, and it changes
+  between polls — Home Assistant would see entities appear and disappear
+  continuously.
+- Reaching `MAX` logs a warning naming how many clients matched, rather
+  than truncating silently.
+- An away client keeps its `device_tracker` but drops its IP: a tracker
+  that disappears makes automations referencing it error out, while a
+  stale IP suggests the client is still reachable there.

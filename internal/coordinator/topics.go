@@ -70,6 +70,10 @@ const (
 
 	keyWLANEnabled = "enabled"
 	keyWLANName    = "name"
+
+	keyClientIP      = "ip"
+	keyClientSignal  = "signal"
+	keyClientBlocked = "blocked"
 )
 
 // topicBuilder assembles topics under one root and site.

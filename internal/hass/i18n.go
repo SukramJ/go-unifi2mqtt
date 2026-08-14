@@ -101,6 +101,24 @@ var names = map[string]map[string]string{
 		LangDE: "Funk %s Sendewiederholungen",
 	},
 
+	// --- client ---
+	"client_presence": {
+		LangEN: "Presence",
+		LangDE: "Anwesenheit",
+	},
+	"client_ip": {
+		LangEN: "IP address",
+		LangDE: "IP-Adresse",
+	},
+	"client_signal": {
+		LangEN: "Signal strength",
+		LangDE: "Signalstärke",
+	},
+	"client_blocked": {
+		LangEN: "Blocked",
+		LangDE: "Blockiert",
+	},
+
 	// --- WLAN ---
 	"wlan_enabled": {
 		LangEN: "Enabled",

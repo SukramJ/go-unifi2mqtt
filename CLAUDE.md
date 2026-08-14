@@ -19,9 +19,10 @@ PoE port, block a client, …) are written back to the console.
 **Read [`CONCEPT.md`](./CONCEPT.md) before touching anything** — it is
 the implementation concept: API strategy, package layout, MQTT topic
 tree, HA entity model, client filtering, polling design and the phased
-roadmap. Phases 0–3 are done: the daemon polls the console, publishes
-devices, ports, radios and the WLAN catalogue, and announces them to
-Home Assistant via MQTT discovery. Clients (phase 4) are next.
+roadmap. Phases 0–4 are done: the daemon polls the console, publishes
+devices, ports, radios, the WLAN catalogue and filtered clients with
+presence detection, and announces all of it to Home Assistant. The
+classic API layer (phase 5) and actuators (phase 6) are next.
 
 ## Key Characteristics
 
@@ -70,7 +71,7 @@ CONCEPT.md               implementation concept — the design source of truth
 ```
 
 `model`, `config`, `unifi`, `unifi/integration`, `coordinator` and
-`hass` exist as of phase 3; `state`, `web` and `unifi/classic` are
+`hass` exist as of phase 4; `state`, `web` and `unifi/classic` are
 created as the later phases in `CONCEPT.md` land. The layout above is
 the target shape, not a claim about what exists today.
 

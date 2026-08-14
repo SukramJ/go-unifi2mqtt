@@ -36,6 +36,8 @@ type Topics interface {
 	// DeviceTopic returns the state topic for one device value, e.g.
 	// key "state" or "port/3/poe".
 	DeviceTopic(mac model.MAC, key string) string
+	// ClientTopic returns the state topic for one client value.
+	ClientTopic(key, valueKey string) string
 	// AvailabilityTopic returns the bridge's retained online/offline
 	// topic.
 	AvailabilityTopic() string

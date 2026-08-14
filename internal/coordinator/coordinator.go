@@ -104,6 +104,14 @@ type Coordinator struct {
 	// which is what makes removing its entities possible when it
 	// disappears or loses a port.
 	announced map[model.MAC][]string
+	// announcedClients is the same for clients, keyed by client key.
+	announcedClients map[string][]string
+	// clients holds presence state between polls: a client is only
+	// declared away after AWAY_TIMEOUT, not on the first missed poll.
+	clients map[string]clientState
+	// deviceIDToMAC resolves the uplink UUIDs clients report, refreshed
+	// by the static loop alongside the device details.
+	deviceIDToMAC map[string]model.MAC
 
 	// hass builds discovery payloads; nil when HASS_ENABLE is false.
 	hass *hass.Discovery
@@ -126,19 +134,22 @@ func New(d Deps) *Coordinator {
 
 	topics := newTopicBuilder(d.Cfg.MQTTTopic, d.Site.Internal)
 	c := &Coordinator{
-		cfg:        d.Cfg,
-		site:       d.Site,
-		src:        d.Source,
-		info:       d.Info,
-		sub:        d.Subscriber,
-		log:        log,
-		now:        now,
-		topics:     topics,
-		pub:        newPublisher(d.MQTT, d.Cfg.ForceRepublishDuration(), now, log),
-		details:    make(map[model.MAC]model.Device),
-		seen:       make(map[model.MAC]bool),
-		announced:  make(map[model.MAC][]string),
-		rediscover: make(chan struct{}, 1),
+		cfg:              d.Cfg,
+		site:             d.Site,
+		src:              d.Source,
+		info:             d.Info,
+		sub:              d.Subscriber,
+		log:              log,
+		now:              now,
+		topics:           topics,
+		pub:              newPublisher(d.MQTT, d.Cfg.ForceRepublishDuration(), now, log),
+		details:          make(map[model.MAC]model.Device),
+		seen:             make(map[model.MAC]bool),
+		announced:        make(map[model.MAC][]string),
+		announcedClients: make(map[string][]string),
+		clients:          make(map[string]clientState),
+		deviceIDToMAC:    make(map[string]model.MAC),
+		rediscover:       make(chan struct{}, 1),
 	}
 	if d.Cfg.HASSEnable {
 		c.hass = hass.New(c.DiscoveryConfig(d.Cfg.HASSBaseTopic, d.Cfg.Language))
@@ -231,6 +242,11 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	g.Go(func() error {
 		return c.loop(gctx, "static", c.cfg.RefreshStaticDuration(), c.refreshStatic)
 	})
+	if c.cfg.Clients.Enable {
+		g.Go(func() error {
+			return c.loop(gctx, "clients", c.cfg.RefreshClientsDuration(), c.refreshClients)
+		})
+	}
 
 	err := g.Wait()
 	// A finished context is an orderly stop however it finished —
@@ -310,15 +326,21 @@ func (c *Coordinator) refreshStatic(ctx context.Context) error {
 	}
 
 	details := make(map[model.MAC]model.Device, len(devices))
+	byID := make(map[string]model.MAC, len(devices))
 	for i := range devices {
-		if !devices[i].MAC.IsZero() {
-			details[devices[i].MAC] = devices[i]
+		if devices[i].MAC.IsZero() {
+			continue
+		}
+		details[devices[i].MAC] = devices[i]
+		if devices[i].ID != "" {
+			byID[devices[i].ID] = devices[i].MAC
 		}
 	}
 
 	c.mu.Lock()
 	c.details = details
 	c.networks = networks
+	c.deviceIDToMAC = byID
 	c.mu.Unlock()
 
 	// Discovery is announced from here rather than the fast loop because
