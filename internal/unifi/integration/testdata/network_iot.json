@@ -1,0 +1,21 @@
+{
+  "management": "GATEWAY",
+  "id": "n2222222-2222-4222-8222-222222222222",
+  "name": "IoT",
+  "enabled": true,
+  "vlanId": 20,
+  "default": false,
+  "metadata": {
+    "type": "USER_DEFINED"
+  },
+  "ipv4Configuration": {
+    "autoScaleEnabled": false,
+    "hostIpAddress": "198.51.100.1",
+    "prefixLength": 24,
+    "additionalHostIpSubnets": [
+      "203.0.113.0/28"
+    ]
+  },
+  "isolationEnabled": false,
+  "internetAccessEnabled": true
+}

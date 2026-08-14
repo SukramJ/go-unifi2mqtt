@@ -97,6 +97,19 @@ func serveFixtures(t *testing.T, routes map[string]string) *integration.Client {
 
 func sitePath(suffix string) string { return osPrefix + "/v1/sites/" + siteID + suffix }
 
+// networkRoutes wires the network list plus the per-network detail
+// endpoints. The list carries no ipv4Configuration — that is only in
+// the detail response, which is exactly why Networks() fans out.
+func networkRoutes() map[string]string {
+	return map[string]string{
+		osPrefix + "/v1/info": "info.json",
+		sitePath("/networks"): "networks.json",
+		sitePath("/networks/n1111111-1111-4111-8111-111111111111"): "network_default.json",
+		sitePath("/networks/n2222222-2222-4222-8222-222222222222"): "network_iot.json",
+		sitePath("/networks/n3333333-3333-4333-8333-333333333333"): "network_legacy_vlan.json",
+	}
+}
+
 func TestProbeFindsUniFiOSPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -435,10 +448,7 @@ func TestClients(t *testing.T) {
 func TestNetworks(t *testing.T) {
 	t.Parallel()
 
-	c := serveFixtures(t, map[string]string{
-		osPrefix + "/v1/info": "info.json",
-		sitePath("/networks"): "networks.json",
-	})
+	c := serveFixtures(t, networkRoutes())
 
 	networks, err := c.Networks(t.Context(), siteID)
 	if err != nil {
@@ -480,11 +490,9 @@ func TestNetworks(t *testing.T) {
 func TestNetworksDriveClientVLANMapping(t *testing.T) {
 	t.Parallel()
 
-	c := serveFixtures(t, map[string]string{
-		osPrefix + "/v1/info": "info.json",
-		sitePath("/networks"): "networks.json",
-		sitePath("/clients"):  "clients.json",
-	})
+	routes := networkRoutes()
+	routes[sitePath("/clients")] = "clients.json"
+	c := serveFixtures(t, routes)
 
 	networks, err := c.Networks(t.Context(), siteID)
 	if err != nil {
@@ -835,4 +843,190 @@ func containsAll(s string, subs ...string) bool {
 		}
 	}
 	return true
+}
+
+// Regression: the network list endpoint carries no ipv4Configuration.
+// Reading only the list leaves every network without subnets, which
+// makes client→VLAN mapping silently resolve to nothing — the failure
+// mode this fan-out exists to prevent.
+func TestNetworksFetchesSubnetsFromDetailEndpoint(t *testing.T) {
+	t.Parallel()
+
+	var detailCalls atomic.Int32
+	routes := networkRoutes()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/networks/") {
+			detailCalls.Add(1)
+		}
+		name, ok := routes[r.URL.Path]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write(fixture(t, name))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newClient(t, srv.URL, 0)
+	if _, err := c.Probe(t.Context()); err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+
+	networks, err := c.Networks(t.Context(), siteID)
+	if err != nil {
+		t.Fatalf("Networks: %v", err)
+	}
+	if got, want := detailCalls.Load(), int32(3); got != want {
+		t.Errorf("made %d detail calls, want %d (one per network)", got, want)
+	}
+
+	var withSubnets int
+	for _, n := range networks {
+		if len(n.Subnets) > 0 {
+			withSubnets++
+		}
+	}
+	if withSubnets == 0 {
+		t.Fatal("no network came back with subnets — the detail call is not being made")
+	}
+}
+
+// A network whose detail call fails keeps its overview data and loses
+// only its subnets. Dropping the whole catalogue over one transient
+// failure would take every client's VLAN with it.
+func TestNetworkDetailFailureDegradesGracefully(t *testing.T) {
+	t.Parallel()
+
+	routes := networkRoutes()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Fail exactly one network's detail call.
+		if strings.HasSuffix(r.URL.Path, "n2222222-2222-4222-8222-222222222222") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		name, ok := routes[r.URL.Path]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write(fixture(t, name))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newClient(t, srv.URL, 0)
+	if _, err := c.Probe(t.Context()); err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+
+	networks, err := c.Networks(t.Context(), siteID)
+	if err != nil {
+		t.Fatalf("Networks: %v", err)
+	}
+	if len(networks) != 3 {
+		t.Fatalf("got %d networks, want all 3 despite one failing detail call", len(networks))
+	}
+
+	byName := map[string]model.Network{}
+	for _, n := range networks {
+		byName[n.Name] = n
+	}
+	// The failed one keeps its identity, just not its subnets.
+	iot := byName["IoT"]
+	if iot.VLAN != 20 {
+		t.Errorf("IoT VLAN = %d, want 20 from the overview", iot.VLAN)
+	}
+	if len(iot.Subnets) != 0 {
+		t.Errorf("IoT has subnets %v, want none after the failed detail call", iot.Subnets)
+	}
+	// Its neighbours are unaffected.
+	if len(byName["Default"].Subnets) == 0 {
+		t.Error("Default lost its subnets because a different network failed")
+	}
+}
+
+// Regression: the device list carries neither uplink nor interfaces.
+// Without the per-device follow-up every device reports no uplink and
+// Home Assistant's via_device topology collapses into a flat list.
+func TestDevicesWithDetailsResolvesUplinks(t *testing.T) {
+	t.Parallel()
+
+	c := serveFixtures(t, map[string]string{
+		osPrefix + "/v1/info": "info.json",
+		sitePath("/devices"):  "devices.json",
+		sitePath("/devices/11111111-1111-4111-8111-111111111111"): "device_gateway.json",
+		sitePath("/devices/22222222-2222-4222-8222-222222222222"): "device_switch.json",
+		sitePath("/devices/33333333-3333-4333-8333-333333333333"): "device_ap.json",
+	})
+
+	devices, err := c.DevicesWithDetails(t.Context(), siteID)
+	if err != nil {
+		t.Fatalf("DevicesWithDetails: %v", err)
+	}
+	if len(devices) != 3 {
+		t.Fatalf("got %d devices, want 3", len(devices))
+	}
+
+	byMAC := map[model.MAC]model.Device{}
+	for _, d := range devices {
+		byMAC[d.MAC] = d
+	}
+	gw := model.MustParseMAC("00:00:5E:00:53:01")
+	sw := model.MustParseMAC("00:00:5E:00:53:02")
+	ap := model.MustParseMAC("00:00:5E:00:53:03")
+
+	if got := byMAC[gw].UplinkMAC; !got.IsZero() {
+		t.Errorf("gateway UplinkMAC = %q, want zero", got)
+	}
+	if got := byMAC[sw].UplinkMAC; got != gw {
+		t.Errorf("switch UplinkMAC = %q, want the gateway %q", got, gw)
+	}
+	if got := byMAC[ap].UplinkMAC; got != sw {
+		t.Errorf("AP UplinkMAC = %q, want the switch %q", got, sw)
+	}
+
+	// The details also bring in the parts the list omits entirely.
+	if len(byMAC[sw].Ports) == 0 {
+		t.Error("switch has no ports — the detail response was not merged")
+	}
+	if len(byMAC[ap].Radios) == 0 {
+		t.Error("AP has no radios — the detail response was not merged")
+	}
+	// ...while overview-only facts survive the merge.
+	if !byMAC[sw].UpdateAvail {
+		t.Error("switch lost UpdateAvail, which only the overview reports")
+	}
+}
+
+// A device whose detail call fails keeps its overview data, so the
+// state, firmware and update sensors survive.
+func TestDeviceDetailFailureKeepsOverview(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == osPrefix+"/v1/info":
+			_, _ = w.Write(fixture(t, "info.json"))
+		case r.URL.Path == sitePath("/devices"):
+			_, _ = w.Write(fixture(t, "devices.json"))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newClient(t, srv.URL, 0)
+	if _, err := c.Probe(t.Context()); err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+
+	devices, err := c.DevicesWithDetails(t.Context(), siteID)
+	if err != nil {
+		t.Fatalf("DevicesWithDetails: %v", err)
+	}
+	if len(devices) != 3 {
+		t.Fatalf("got %d devices, want 3 despite every detail call failing", len(devices))
+	}
+	if !devices[1].UpdateAvail || devices[1].Firmware != "7.0.25" {
+		t.Error("overview data was lost when the detail call failed")
+	}
 }

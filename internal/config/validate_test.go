@@ -364,3 +364,39 @@ CONTROLS:
 		}
 	}
 }
+
+// A --once inventory run only talks to the console, so requiring a
+// broker would push operators towards a placeholder MQTT_SERVER that
+// later gets forgotten in a real config.
+func TestWithoutMQTTRelaxesBrokerRequirement(t *testing.T) {
+	t.Parallel()
+
+	const consoleOnly = "HOST: 192.168.1.1\nAPI_KEY: k\n"
+
+	if _, err := Load(strings.NewReader(consoleOnly), MapEnv{}); err == nil {
+		t.Error("Load without MQTT_SERVER succeeded, want the normal path to require it")
+	}
+
+	cfg, err := Load(strings.NewReader(consoleOnly), MapEnv{}, WithoutMQTT())
+	if err != nil {
+		t.Fatalf("Load with WithoutMQTT: %v", err)
+	}
+	if cfg.Host != "192.168.1.1" {
+		t.Errorf("Host = %q", cfg.Host)
+	}
+
+	// Everything that is not about the broker must still be enforced —
+	// the relaxation is narrow on purpose.
+	_, err = Load(strings.NewReader("API_KEY: k\n"), MapEnv{}, WithoutMQTT())
+	if err == nil {
+		t.Fatal("WithoutMQTT also skipped the HOST check")
+	}
+	if !strings.Contains(err.Error(), "HOST is required") {
+		t.Errorf("error = %v, want the HOST check to still fire", err)
+	}
+
+	_, err = Load(strings.NewReader(consoleOnly+"CLIENTS:\n  SSIDS: [\"x\"]\n"), MapEnv{}, WithoutMQTT())
+	if err == nil || !strings.Contains(err.Error(), "CLIENTS.SSIDS needs CLASSIC_ENABLE") {
+		t.Errorf("error = %v, want the capability coupling to still fire", err)
+	}
+}

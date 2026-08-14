@@ -180,8 +180,12 @@ type clientOverview struct {
 
 // networkOverview is one entry of `GET /v1/sites/{siteId}/networks`.
 //
-// `ipv4Configuration` only appears on GATEWAY-managed networks and is
-// what makes client→VLAN mapping possible without the classic API.
+// Deliberately carries no IP configuration: the list endpoint returns
+// only management, id, name, enabled, vlanId, metadata, zoneId and
+// default. The subnets live in [networkDetails] and need a per-network
+// call — verified against a live 10.5.67 console, since the OpenAPI
+// schema alone makes this easy to get wrong (the details schema
+// inherits from the overview one, so both look plausible).
 type networkOverview struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -189,6 +193,15 @@ type networkOverview struct {
 	VLANID     int    `json:"vlanId"`
 	Default    bool   `json:"default"`
 	Management string `json:"management"`
+}
+
+// networkDetails is `GET /v1/sites/{siteId}/networks/{networkId}`.
+//
+// `ipv4Configuration` only appears on GATEWAY-managed networks and is
+// what makes client→VLAN mapping possible without the classic API — so
+// this call is the price of that capability.
+type networkDetails struct {
+	networkOverview
 
 	IPv4Configuration *struct {
 		HostIPAddress string `json:"hostIpAddress"`

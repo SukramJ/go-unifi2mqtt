@@ -76,16 +76,43 @@ func homeVar() string {
 	return "HOME"
 }
 
+// Option adjusts how a config is loaded and validated.
+type Option func(*options)
+
+type options struct {
+	skipMQTT bool
+}
+
+// WithoutMQTT relaxes validation for callers that never open a broker
+// connection — currently the `--once` inventory dump, which only talks
+// to the console.
+//
+// Without this, a diagnostic run would demand MQTT_SERVER and push
+// operators towards putting a placeholder in their real config just to
+// get past the check. A placeholder that later gets forgotten is worse
+// than the missing validation.
+func WithoutMQTT() Option {
+	return func(o *options) { o.skipMQTT = true }
+}
+
+func newOptions(opts []Option) options {
+	var o options
+	for _, fn := range opts {
+		fn(&o)
+	}
+	return o
+}
+
 // LoadFile reads and parses the config file at path, then applies the
 // env overlay and validation.
-func LoadFile(path string, env Env) (*Config, error) {
+func LoadFile(path string, env Env, opts ...Option) (*Config, error) {
 	f, err := os.Open(path) //nolint:gosec // operator-supplied config path is the point
 	if err != nil {
 		return nil, fmt.Errorf("config: open %s: %w", path, err)
 	}
 	defer func() { _ = f.Close() }()
 
-	cfg, err := Load(f, env)
+	cfg, err := Load(f, env, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("config: %s: %w", path, err)
 	}
@@ -98,7 +125,7 @@ func LoadFile(path string, env Env) (*Config, error) {
 // An empty reader is valid and yields a config built from defaults and
 // env alone — that is the path the Home Assistant add-on and env-only
 // container deployments take.
-func Load(r io.Reader, env Env) (*Config, error) {
+func Load(r io.Reader, env Env, opts ...Option) (*Config, error) {
 	cfg := defaults()
 
 	raw, err := io.ReadAll(r)
@@ -124,7 +151,7 @@ func Load(r io.Reader, env Env) (*Config, error) {
 		cfg.MQTTPort = DefaultMQTTSSLPort
 	}
 
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.validate(newOptions(opts)); err != nil {
 		return nil, err
 	}
 	return &cfg, nil

@@ -30,6 +30,10 @@ var ErrInvalidConfig = errors.New("config: invalid")
 // by [Config.Warnings] instead, so the caller can log them without
 // refusing to start.
 func (c *Config) Validate() error {
+	return c.validate(options{})
+}
+
+func (c *Config) validate(o options) error {
 	var errs []string
 
 	// --- required ---
@@ -39,11 +43,13 @@ func (c *Config) Validate() error {
 	if !c.APIKey.IsSet() {
 		errs = append(errs, "API_KEY is required (Settings → Control Plane → Integrations)")
 	}
-	if strings.TrimSpace(c.MQTTServer) == "" {
-		errs = append(errs, "MQTT_SERVER is required")
-	}
-	if strings.TrimSpace(c.MQTTTopic) == "" {
-		errs = append(errs, "MQTT_TOPIC must not be empty")
+	if !o.skipMQTT {
+		if strings.TrimSpace(c.MQTTServer) == "" {
+			errs = append(errs, "MQTT_SERVER is required")
+		}
+		if strings.TrimSpace(c.MQTTTopic) == "" {
+			errs = append(errs, "MQTT_TOPIC must not be empty")
+		}
 	}
 	if strings.TrimSpace(c.Site) == "" {
 		errs = append(errs, "SITE must not be empty")
