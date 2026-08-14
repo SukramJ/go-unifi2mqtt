@@ -159,6 +159,15 @@ etc. — no special test runner beyond `go test`.
   subnets and `GET /devices` omits `uplink`/`interfaces`. Both fan out a
   per-object detail call. Collapsing that back would compile, pass a
   naive test, and silently lose VLAN mapping and the device topology.
+- **Publish `object_id` AND `default_entity_id`.** HA Core removed
+  `object_id` in 2026.4 and does not honour `default_entity_id`
+  consistently before that. With only one of them, some HA version
+  derives the entity_id from the localised `name` — which is how German
+  entity_ids appear in a de-configured install.
+- **The add-on has four files that must agree** about its options:
+  `config.yaml` options, `config.yaml` schema, `translations/{en,de}.yaml`
+  and `script/run.sh`. Each disagreement fails differently and quietly;
+  `internal/config/addon_test.go` checks all four.
 - **Topic suffixes are an API.** Every key in `internal/coordinator/topics.go`
   doubles as the Home Assistant entity key and the translation-table
   lookup. Renaming one orphans the entity and its history in every

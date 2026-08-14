@@ -44,7 +44,14 @@ add-on.
   along with its history.
 - **Language changes nothing but labels.** `LANGUAGE: de` renames what
   you see; `entity_id`, `unique_id` and every topic stay English, so
-  switching never re-creates an entity or loses history.
+  switching never re-creates an entity or loses history. Both
+  `object_id` and `default_entity_id` are published, because Home
+  Assistant removed the first in 2026.4 and does not honour the second
+  reliably before that — with only one, some release derives the
+  entity_id from the translated name.
+- **Entity ids read like the network.** The seed is
+  `<device>_<key>`, so an automation references
+  `sensor.unifi_sw_har_cpu_utilization` rather than a MAC address.
 - **Presence has a grace period.** A client stays `home` until absent
   for `AWAY_TIMEOUT` (default 300 s). Wireless clients vanish for a
   cycle while roaming between access points; flipping immediately makes
@@ -85,6 +92,7 @@ add-on.
 - [`README.md`](README.md) — quickstart, topic layout, security notes.
 - [`config-template.yaml`](config-template.yaml) — every setting,
   documented inline.
-- [`addon/DOCS.md`](addon/DOCS.md) — the Home Assistant add-on.
+- [`addon/DOCS.md`](addon/DOCS.md) — the Home Assistant add-on. Its
+  configuration page is fully labelled in English and German.
 - [`CONCEPT.md`](CONCEPT.md) — the design rationale, including why the
   API surface is split the way it is.

@@ -1,0 +1,202 @@
+# Deutsche Beschriftungen der Add-on-Optionen.
+#
+# Die Konfigurationsseite darf lokalisiert sein — im Gegensatz zu den
+# Entity-IDs, die immer englisch bleiben, weil eine Sprachumstellung
+# sonst Entitäten neu anlegen und ihre Historie verlieren würde.
+configuration:
+  unifi_host:
+    name: Adresse der Konsole
+    description: >-
+      IP-Adresse oder Hostname der UniFi-Konsole, z. B. 192.168.1.1.
+  unifi_port:
+    name: Port der Konsole
+    description: >-
+      443 bei einer UniFi-OS-Konsole, 8443 bei einem eigenständigen
+      Software-Controller, 11443 bei UniFi OS Server.
+  unifi_api_key:
+    name: API-Schlüssel
+    description: >-
+      Wird in UniFi Network unter Einstellungen -> Control Plane ->
+      Integrationen erzeugt. Er erbt die Rechte des Admins, der ihn
+      angelegt hat — ein Nur-Lese-Admin genügt, solange die Steuerung
+      unten aus bleibt.
+  unifi_site:
+    name: Site
+    description: Welche Site angebunden wird. Meist "default".
+  unifi_verify_tls:
+    name: Zertifikat der Konsole prüfen
+    description: >-
+      Standardmäßig aus, weil Konsolen auf ihrer LAN-Adresse ein
+      selbstsigniertes Zertifikat ausliefern. Einschalten, wenn du die
+      Konsole über einen Hostnamen mit gültigem Zertifikat erreichst.
+
+  classic_enable:
+    name: Klassische API aktivieren
+    description: >-
+      Ergänzt Site-Zustand, SSID und Signalstärke je Client, PoE-Leistung,
+      Client-Sperren und WLAN-Schalter. Nichts davon bietet die offizielle
+      API. Schlägt die Anmeldung fehl, fehlen nur diese Funktionen — das
+      Add-on läuft weiter.
+  classic_username:
+    name: Benutzername (klassische API)
+    description: >-
+      Ein LOKALER UniFi-Admin (Einstellungen -> Admins). Ein
+      Ubiquiti-SSO-Konto funktioniert hier nicht, und
+      Zwei-Faktor-Authentifizierung muss aus sein.
+  classic_password:
+    name: Passwort (klassische API)
+    description: Passwort dieses lokalen Admin-Kontos.
+
+  mqtt_server:
+    name: MQTT-Broker
+    description: >-
+      Leer lassen, um den Broker zu nutzen, den Home Assistant bereits
+      kennt.
+  mqtt_port:
+    name: MQTT-Port
+    description: Üblicherweise 1883.
+  mqtt_login:
+    name: MQTT-Benutzername
+    description: Leer lassen, wenn der Broker anonymen Zugriff erlaubt.
+  mqtt_password:
+    name: MQTT-Passwort
+    description: Leer lassen, wenn der Broker anonymen Zugriff erlaubt.
+  mqtt_topic:
+    name: Topic-Wurzel
+    description: >-
+      Wurzel des Topic-Baums, z. B. unifi/default/device/...
+
+  hass_enable:
+    name: Home-Assistant-Discovery
+    description: >-
+      Entitäten automatisch anlegen. Nur ausschalten, wenn du die
+      MQTT-Topics selbst auswerten willst.
+  hass_base_topic:
+    name: Discovery-Präfix
+    description: >-
+      Nur ändern, wenn du es auch in der MQTT-Integration geändert hast.
+
+  refresh_devices:
+    name: Geräte abfragen (Sekunden)
+    description: >-
+      Wie oft Gerätestatus, Firmware und Update-Hinweis gelesen werden.
+  refresh_clients:
+    name: Clients abfragen (Sekunden)
+    description: >-
+      Wie oft die Client-Liste gelesen wird. Bestimmt, wie schnell
+      Anwesenheitswechsel erkannt werden.
+  refresh_health:
+    name: Site-Zustand abfragen (Sekunden)
+    description: Benötigt die klassische API.
+  refresh_static:
+    name: Langsame Abfrage (Sekunden)
+    description: >-
+      Ports, Funkmodule, Uplinks sowie Netzwerk- und WLAN-Katalog. Das
+      ändert sich selten und kostet eine Anfrage je Objekt, läuft deshalb
+      in einer eigenen langsamen Schleife.
+
+  clients_enable:
+    name: Clients veröffentlichen
+    description: >-
+      Standardmäßig aus: ein belebtes Netz kann mehrere hundert Entitäten
+      erzeugen. Mit den Filtern unten nur die veröffentlichen, die du
+      wirklich brauchst.
+  clients_types:
+    name: Verbindungsarten
+    description: >-
+      Welche Clients veröffentlicht werden. Nur WLAN ist ein guter
+      Anfang — kabelgebundene Geräte bewegen sich selten, ihre
+      Anwesenheit sagt also nichts aus.
+  clients_networks:
+    name: Netzwerke
+    description: >-
+      Netzwerknamen, z. B. LAN oder IoT. Leer bedeutet keine
+      Einschränkung.
+  clients_vlans:
+    name: VLANs
+    description: VLAN-IDs, z. B. 20. Leer bedeutet keine Einschränkung.
+  clients_ssids:
+    name: SSIDs
+    description: >-
+      Benötigt die klassische API: die offizielle meldet nicht, in welchem
+      WLAN ein Client hängt.
+  clients_include_macs:
+    name: Nur diese MAC-Adressen
+    description: >-
+      Wenn gesetzt, werden NUR diese Clients veröffentlicht und alle
+      anderen Filter ignoriert. Ein Entweder-oder, keine Ergänzung.
+  clients_exclude_macs:
+    name: Diese MAC-Adressen nie
+    description: Gewinnt immer, auch gegen die Liste darüber.
+  clients_exclude_guests:
+    name: Gäste überspringen
+    description: Clients in einem Gastnetz nicht veröffentlichen.
+  clients_max:
+    name: Höchstzahl Clients
+    description: >-
+      Harte Obergrenze. Treffen mehr zu, werden die übrigen übersprungen
+      und eine Warnung nennt die Anzahl.
+  clients_away_timeout:
+    name: Abwesend nach (Sekunden)
+    description: >-
+      Wie lange ein Client fehlen darf, bevor er als abwesend gilt.
+      WLAN-Clients verschwinden beim Wechsel zwischen Access Points kurz,
+      daher flackert die Anwesenheit bei weniger als dem Doppelten des
+      Client-Intervalls.
+  clients_signal_sensor:
+    name: Sensor für Signalstärke
+    description: >-
+      Ergänzt je WLAN-Client einen Signalsensor. Benötigt die klassische
+      API und erzeugt eine weitere Entität pro Client.
+
+  controls_enable:
+    name: Steuerung aus Home Assistant erlauben
+    description: >-
+      Hauptschalter für alles Folgende. Solange er aus ist, liest das
+      Add-on nur, und ein Nur-Lese-Admin genügt. Beachte: wer auf deinen
+      MQTT-Broker schreiben darf, kann diese Aktionen dann auslösen.
+  controls_device_restart:
+    name: Geräte neu starten
+    description: Fügt jedem Gerät einen Neustart-Knopf hinzu.
+  controls_port_power_cycle:
+    name: PoE-Ports aus- und einschalten
+    description: >-
+      Fügt je PoE-Port einen Knopf hinzu, der den Strom kurz unterbricht —
+      der übliche Weg, eine Kamera oder einen Access Point neu zu starten.
+  controls_guest_authorize:
+    name: Gäste freischalten
+    description: >-
+      Fügt einen Knopf hinzu, der einem Gast-Client Zugang gewährt.
+  controls_device_locate:
+    name: Locate-LED
+    description: >-
+      Fügt einen Schalter hinzu, der die Locate-LED eines Geräts blinken
+      lässt. Benötigt die klassische API.
+  controls_client_block:
+    name: Clients sperren
+    description: >-
+      Fügt einen Schalter hinzu, der einen Client vom Netz trennt.
+      Benötigt die klassische API.
+  controls_wlan_enable:
+    name: WLANs ein- und ausschalten
+    description: >-
+      Fügt je SSID einen Schalter hinzu. Benötigt die klassische API. Ein
+      abgeschaltetes WLAN trennt alle Geräte, die es nutzen.
+
+  web_enable:
+    name: Diagnose-Oberfläche
+    description: >-
+      Ergänzt ein Seitenleisten-Panel, das zeigt, was die Brücke gerade
+      tut: Abfrageschleifen, Gerätestatistiken, veröffentlichte Clients
+      und aufgetretene Fehler.
+  language:
+    name: Sprache
+    description: >-
+      Anzeigesprache der Entitätsnamen. Die Entity-IDs bleiben in jedem
+      Fall englisch, ein Wechsel benennt also nichts um und legt nichts
+      neu an.
+  debug:
+    name: Ausführliche Protokollierung
+    description: >-
+      Protokolliert jede Abfrage und Veröffentlichung. Sehr gesprächig —
+      nur zur Fehlersuche.

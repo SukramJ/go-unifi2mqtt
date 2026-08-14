@@ -110,13 +110,15 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 	// (VPN, Teleport) cannot be blocked.
 	if opts.ClientBlock && !cl.MAC.IsZero() {
 		uid := idPrefix + "_client_" + key + "_blocked"
+		seed := entityIDSeed(info.Name, "blocked")
 		e := controlEntity{
 			entity: entity{
-				Name:       name("client_blocked", d.lang),
-				UniqueID:   uid,
-				ObjectID:   uid,
-				StateTopic: d.topics.ClientTopic(key, "blocked"),
-				Icon:       "mdi:cancel",
+				Name:            name("client_blocked", d.lang),
+				UniqueID:        uid,
+				ObjectID:        seed,
+				DefaultEntityID: string(PlatformSwitch) + "." + seed,
+				StateTopic:      d.topics.ClientTopic(key, "blocked"),
+				Icon:            "mdi:cancel",
 				Availability: []availabilityEntry{
 					{Topic: d.topics.AvailabilityTopic()},
 				},
@@ -139,11 +141,13 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 
 	if opts.GuestAuthorize && cl.IsGuest {
 		uid := idPrefix + "_client_" + key + "_authorize"
+		seed := entityIDSeed(info.Name, "authorize")
 		e := controlEntity{
 			entity: entity{
-				Name:     name("client_authorize", d.lang),
-				UniqueID: uid,
-				ObjectID: uid,
+				Name:            name("client_authorize", d.lang),
+				UniqueID:        uid,
+				ObjectID:        seed,
+				DefaultEntityID: string(PlatformButton) + "." + seed,
 				// A button has no state topic; Home Assistant only needs
 				// somewhere to publish.
 				StateTopic: "",
@@ -172,6 +176,7 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 // WLANControl returns the enable/disable switch for one SSID.
 func (d *Discovery) WLANControl(w *model.WLAN) (Entry, error) {
 	uid := idPrefix + "_wlan_" + w.ID + "_enabled"
+	seed := entityIDSeed("unifi_wlan", w.Name)
 	info := deviceInfo{
 		Identifiers:  []string{siteDeviceID(d.site)},
 		Name:         "UniFi Site " + d.site,
@@ -183,11 +188,12 @@ func (d *Discovery) WLANControl(w *model.WLAN) (Entry, error) {
 		entity: entity{
 			// The SSID is the useful label here; the generic "Enabled"
 			// would produce a page full of identical names.
-			Name:       w.Name,
-			UniqueID:   uid,
-			ObjectID:   uid,
-			StateTopic: d.topics.WLANTopic(w.ID, "enabled"),
-			Icon:       "mdi:wifi",
+			Name:            w.Name,
+			UniqueID:        uid,
+			ObjectID:        seed,
+			DefaultEntityID: string(PlatformSwitch) + "." + seed,
+			StateTopic:      d.topics.WLANTopic(w.ID, "enabled"),
+			Icon:            "mdi:wifi",
 			Availability: []availabilityEntry{
 				{Topic: d.topics.AvailabilityTopic()},
 			},
@@ -220,13 +226,15 @@ func (d *Discovery) button(
 	mac model.MAC, info deviceInfo, key, nameKey, commandTopic, icon, category string,
 ) (Entry, error) {
 	uid := idPrefix + "_" + mac.String() + "_" + key
+	seed := entityIDSeed(info.Name, key)
 	e := controlEntity{
 		entity: entity{
-			Name:           name(nameKey, d.lang),
-			UniqueID:       uid,
-			ObjectID:       uid,
-			Icon:           icon,
-			EntityCategory: category,
+			Name:            name(nameKey, d.lang),
+			UniqueID:        uid,
+			ObjectID:        seed,
+			DefaultEntityID: string(PlatformButton) + "." + seed,
+			Icon:            icon,
+			EntityCategory:  category,
 			Availability: []availabilityEntry{
 				{Topic: d.topics.AvailabilityTopic()},
 				{
@@ -255,14 +263,16 @@ func (d *Discovery) deviceSwitch(
 	mac model.MAC, info deviceInfo, key, nameKey, stateTopic, commandTopic, icon string,
 ) (Entry, error) {
 	uid := idPrefix + "_" + mac.String() + "_" + key
+	seed := entityIDSeed(info.Name, key)
 	e := controlEntity{
 		entity: entity{
-			Name:           name(nameKey, d.lang),
-			UniqueID:       uid,
-			ObjectID:       uid,
-			StateTopic:     stateTopic,
-			Icon:           icon,
-			EntityCategory: "config",
+			Name:            name(nameKey, d.lang),
+			UniqueID:        uid,
+			ObjectID:        seed,
+			DefaultEntityID: string(PlatformButton) + "." + seed,
+			StateTopic:      stateTopic,
+			Icon:            icon,
+			EntityCategory:  "config",
 			Availability: []availabilityEntry{
 				{Topic: d.topics.AvailabilityTopic()},
 				{

@@ -623,12 +623,26 @@ rates, not counters that stay monotonic across a reboot.
 This follows the same rule as the sibling projects, and it exists to protect
 entity history:
 
-| Artefact             | Source                                            | Localised? |
-| -------------------- | ------------------------------------------------- | ---------- |
-| `unique_id`          | `unifi_<mac>_<stable_english_key>`                | **never**  |
-| `entity_id` seed     | slugified **English** name                        | **never**  |
-| `name` (friendly)    | the display name for `LANGUAGE` (`en` / `de`)     | **yes**    |
-| MQTT topic segments  | stable English keys                               | **never**  |
+| Artefact                             | Source                                             | Localised? |
+| ------------------------------------ | -------------------------------------------------- | ---------- |
+| `unique_id`                          | `unifi_<mac>_<stable_english_key>`                 | **never**  |
+| `object_id` + `default_entity_id`    | `slug(device name)_slug(english key)`              | **never**  |
+| `name` (friendly)                    | the display name for `LANGUAGE` (`en` / `de`)      | **yes**    |
+| MQTT topic segments                  | stable English keys                                | **never**  |
+| Add-on configuration page            | `addon/translations/{en,de}.yaml`                  | **yes**    |
+
+**Both entity_id seeds are published, and that is not redundancy.**
+`object_id` was deprecated in Home Assistant Core 2025.10 and removed in
+2026.4; `default_entity_id` replaces it but is not honoured consistently
+on older releases (home-assistant/core#157241 — the bug where a
+localised name leaks into the entity_id instead). Publishing both means
+each release picks up the key it understands. Omitting `default_entity_id`
+on a current release is exactly how German entity_ids appear.
+
+Neither seed renames an existing entity: Home Assistant tracks entities
+by `unique_id`, so a seed only shapes the id an entity receives when it
+is first created. Renaming a device in UniFi therefore changes the seed
+for new entities and leaves established ones alone.
 
 Consequence: switching `LANGUAGE` renames what the user sees in the UI but
 never re-creates an entity, never changes an `entity_id`, and never orphans
