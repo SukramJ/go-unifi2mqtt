@@ -4,7 +4,7 @@ Implementation concept for bridging a local UniFi Network installation to
 MQTT. This document is the project's design reference — code follows it, not
 the other way around.
 
-**Last updated:** 2026-08-14 · **Status:** phases 0–7 done, phase 8 next
+**Last updated:** 2026-08-14 · **Status:** 1.0.0 released (phases 0–8); phase 9 optional
 
 ---
 
@@ -930,7 +930,7 @@ in the PR.
 | **5** | **`internal/unifi/classic` — login/CSRF, health, SSID/signal enrichment; SSID filter becomes available**           | ✅ done — site health + full filtering |
 | **6** | **Actuators: command queue, buttons/switches, write-back with follow-up poll**                                     | ✅ done — verified on real hardware |
 | **7** | **`internal/web` — diagnostic SPA, Ingress panel**                                                                 | ✅ done                            |
-| **8** | Documentation pass, release 1.0.0                                                                                  | Docker + add-on + binary released |
+| **8** | **Documentation pass, release 1.0.0**                                                                              | ✅ done                            |
 | **9** | Optional: WebSocket event stream as a poll accelerator (§2.4)                                                      | sub-second client event latency   |
 
 Phase 5 is the only one depending on an unofficial interface and is therefore

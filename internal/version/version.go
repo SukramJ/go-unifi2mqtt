@@ -15,7 +15,7 @@ package version
 // a sensible version. Bump this whenever a new tag is cut.
 var (
 	// Version is the human-readable release tag (e.g. "1.0.0").
-	Version = "0.1.0"
+	Version = "1.0.0"
 	// Commit is the short Git SHA the binary was built from.
 	Commit = "none"
 	// BuildDate is the UTC RFC3339 build timestamp.
