@@ -72,3 +72,39 @@ concurrent requests, and a failing detail call degrades to the overview
 data instead of dropping the object. `CONCEPT.md` §2.2 and §8.2 record
 the split and its cost: device and network details belong on the hourly
 `static` loop, not the 60-second device loop.
+
+## Added in phase 2 — MQTT publication
+
+- `internal/coordinator` — the poll loops and the publication path.
+  Devices, ports, radios and the WLAN catalogue are published as scalar
+  topics under `unifi/<site>/…`, with a retained `unifi/bridge/status`
+  wired to the MQTT will so Home Assistant sees the bridge go away.
+- **Change detection.** Only values that actually changed are published,
+  with a per-topic forced republish (`FORCE_REPUBLISH`, default 600 s)
+  so a subscriber that missed a message cannot stay stale. Measured
+  against the reference installation: 24 messages across three poll
+  cycles instead of 1089.
+- **Loop separation by change rate.** Device details (ports, radios,
+  uplinks) and the network/WLAN catalogues sit on the hourly `static`
+  loop; only the device list and per-device statistics run on the fast
+  cadence. That turns a 1+2N request budget per minute into 1+N_online.
+- `config.WithoutMQTT()` for `--once`, which never opens a broker
+  connection.
+
+### Fixed during live verification against a 10.5.67 console
+
+- **Gateways were classified as switches.** The API returns display
+  names with spaces (`UCG Fiber`), not the hyphenated product codes the
+  documentation uses, so prefix matching on `UCG-` never fired. Model
+  classification now matches the leading token regardless of separator.
+- **`FORCE_REPUBLISH` republished exactly one topic per interval.** The
+  deadline was global, so whichever publish ran first after it expired
+  consumed it and every other topic stayed suppressed. It is now tracked
+  per topic, which also staggers the forced traffic instead of bunching
+  it.
+- **A nil-pointer panic on the first broker connect.** The MQTT
+  lifecycle invokes its connect hook from inside `Start()`, so the hook
+  ran before the publisher was wired in. The wiring order is fixed and
+  the publisher now returns an error rather than dereferencing nil.
+- The bridge info topic no longer carries publish counters that always
+  read 1, because it is written before anything has been published.
