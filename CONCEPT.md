@@ -4,7 +4,7 @@ Implementation concept for bridging a local UniFi Network installation to
 MQTT. This document is the project's design reference — code follows it, not
 the other way around.
 
-**Last updated:** 2026-08-14 · **Status:** phases 0–2 done, phase 3 next
+**Last updated:** 2026-08-14 · **Status:** phases 0–3 done, phase 4 next
 
 ---
 
@@ -925,7 +925,7 @@ in the PR.
 | **0** | **Project setup** — Makefile, linters, CI, CodeQL, Dependabot, release workflows, Docker, HA add-on packaging, skeleton | ✅ done                        |
 | **1** | **Spec verification (§2.5), `internal/model`, `internal/config`, `internal/unifi` + integration client, fixtures**   | ✅ done — `unifi2mqtt --once` reports the full site inventory |
 | **2** | **`internal/coordinator` + MQTT publication, bridge LWT, change detection**                                        | ✅ done — 363 topics on the broker |
-| **3** | `internal/hass` — discovery for devices, ports, site; orphan cleanup, birth message, localisation table            | devices appear in HA              |
+| **3** | **`internal/hass` — discovery for devices, ports; orphan cleanup, birth message, localisation table**              | ✅ done — 345 entities in HA        |
 | **4** | Clients: filter engine, presence with `AWAY_TIMEOUT`, `device_tracker` discovery                                   | presence detection                |
 | **5** | `internal/unifi/classic` — login/CSRF, health, SSID/signal enrichment; SSID filter becomes available               | site health + full filtering      |
 | **6** | Actuators: command queue, buttons/switches, write-back with follow-up poll                                         | control from HA                   |

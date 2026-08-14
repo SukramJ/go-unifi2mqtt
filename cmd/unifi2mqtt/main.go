@@ -189,6 +189,9 @@ func bridge(
 ) error {
 	// The coordinator owns the topic layout, so it also decides where
 	// availability lives — main only needs the string to build the will.
+	// The MQTT client is built after the coordinator (it needs the will
+	// topic the coordinator owns), so the subscriber is handed over with
+	// SetSubscriber once it exists.
 	c := coordinator.New(coordinator.Deps{
 		Cfg:    cfg,
 		Site:   site,
@@ -237,6 +240,10 @@ func bridge(
 	// Must happen before Start: the lifecycle calls OnConnect from
 	// inside its first connect, and that hook publishes.
 	c.SetPublisher(breaker)
+	// Subscriptions go to the client directly rather than through the
+	// breaker: they are startup-path calls with their own SUBACK-bounded
+	// wait, and must not be rejected during a publish-side brownout.
+	c.SetSubscriber(mqttClient)
 
 	lifecycle := mqtt.NewLifecycle(mqtt.DefaultLifecycle(), mqttClient)
 	lifecycle.OnConnect(c.OnConnect)

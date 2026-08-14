@@ -108,3 +108,41 @@ the split and its cost: device and network details belong on the hourly
   the publisher now returns an error rather than dereferencing nil.
 - The bridge info topic no longer carries publish counters that always
   read 1, because it is written before anything has been published.
+
+## Added in phase 3 — Home Assistant discovery
+
+- `internal/hass` — discovery payload builder. Each device becomes one
+  Home Assistant device carrying its state, uptime, CPU, memory, uplink
+  rates, firmware and update flag, plus one set of entities per port
+  (link, speed, PoE) and per radio (channel, TX retries). Verified
+  against a live installation: 345 entities for a 12-device site.
+- **Network topology in Home Assistant.** `via_device` reproduces the
+  real hierarchy — client → AP → switch → gateway — instead of a flat
+  device list. This is what the uplink UUID resolution from phase 1
+  was for.
+- **Localisation (`LANGUAGE: en|de`).** Display names follow the
+  configured language while `unique_id`, `object_id`, config topics and
+  state topics stay English. Switching language renames what the user
+  sees and nothing else: no entity is re-created, no `entity_id`
+  changes, no history is lost. Verified on a live installation by
+  switching `de`→`en` and diffing all 345 payloads — every identifier
+  byte-identical.
+- **Two-stage availability.** Entities go unavailable when the bridge
+  stops *or* when their device goes offline, so a switch that lost power
+  does not sit there showing its last CPU reading as current. The
+  entities that report the offline condition itself — state, reachable,
+  firmware, update — deliberately opt out of the second stage.
+- **Orphan cleanup.** A device removed from the site, or a port that
+  disappears, has its entities cleared with an empty retained payload
+  instead of leaving permanently unavailable ones behind.
+- **Home Assistant birth message.** The daemon subscribes to
+  `homeassistant/status` and re-announces everything after
+  `HASS_BIRTH_GRACETIME`, because Home Assistant forgets
+  MQTT-discovered entities on restart.
+
+### Changed
+
+- `model.BandSegment` replaces the copy that existed in the coordinator,
+  and `internal/hass` receives the topic layout through an interface
+  rather than rebuilding it from config. Both were duplication that
+  would have produced entities pointing at topics nobody publishes.

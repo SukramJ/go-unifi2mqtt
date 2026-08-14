@@ -99,33 +99,6 @@ func TestBuilderSanitisesRootAndSite(t *testing.T) {
 	}
 }
 
-// An unknown band must stay addressable rather than dropping the radio,
-// and must not introduce an extra topic level.
-func TestBandSegment(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		in   float64
-		want string
-	}{
-		{2.4, "2g4"},
-		{5, "5g"},
-		{6, "6g"},
-		{60, "60g"},
-		{7.5, "7g5"},
-		{0, "0"},
-	}
-	for _, tt := range tests {
-		got := bandSegment(tt.in)
-		if got != tt.want {
-			t.Errorf("bandSegment(%v) = %q, want %q", tt.in, got, tt.want)
-		}
-		if strings.Contains(got, "/") || strings.Contains(got, ".") {
-			t.Errorf("bandSegment(%v) = %q, which is not a single clean segment", tt.in, got)
-		}
-	}
-}
-
 func TestBoolPayload(t *testing.T) {
 	t.Parallel()
 

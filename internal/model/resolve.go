@@ -5,6 +5,7 @@ package model
 
 import (
 	"net/netip"
+	"strconv"
 	"strings"
 )
 
@@ -130,4 +131,37 @@ func modelToken(m string) string {
 		return u[:i]
 	}
 	return u
+}
+
+// BandSegment turns a radio frequency into a topic and identifier
+// segment: 2.4 -> "2g4", 5 -> "5g", 6 -> "6g".
+//
+// It lives in the model rather than in the coordinator or the discovery
+// builder because both need it and both must agree: the discovery
+// config points at a topic the coordinator publishes, so two
+// independent copies drifting apart would produce an entity that stays
+// unavailable forever with nothing obviously wrong in either package.
+//
+// The 2.4 GHz band cannot keep its decimal point — a dot reads badly in
+// a topic and in an entity_id derived from it.
+func BandSegment(freqGHz float64) string {
+	switch freqGHz {
+	case 2.4:
+		return "2g4"
+	case 5:
+		return "5g"
+	case 6:
+		return "6g"
+	case 60:
+		return "60g"
+	default:
+		// Unknown band: keep it addressable rather than dropping the
+		// radio, replacing the separator so it stays one segment.
+		return strings.ReplaceAll(strconv.FormatFloat(freqGHz, 'f', -1, 64), ".", "g")
+	}
+}
+
+// BandLabel is the human-readable band for a display name.
+func BandLabel(freqGHz float64) string {
+	return strconv.FormatFloat(freqGHz, 'f', -1, 64) + " GHz"
 }
