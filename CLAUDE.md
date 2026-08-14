@@ -19,10 +19,11 @@ PoE port, block a client, …) are written back to the console.
 **Read [`CONCEPT.md`](./CONCEPT.md) before touching anything** — it is
 the implementation concept: API strategy, package layout, MQTT topic
 tree, HA entity model, client filtering, polling design and the phased
-roadmap. Phases 0–4 are done: the daemon polls the console, publishes
-devices, ports, radios, the WLAN catalogue and filtered clients with
-presence detection, and announces all of it to Home Assistant. The
-classic API layer (phase 5) and actuators (phase 6) are next.
+roadmap. Phases 0–5 are done: the daemon polls the console, publishes
+devices, ports, radios, the WLAN catalogue, filtered clients with
+presence detection and — with the optional classic layer — site health,
+per-client SSID/signal and PoE wattage, announcing all of it to Home
+Assistant. Actuators (phase 6) are next.
 
 ## Key Characteristics
 
@@ -70,10 +71,8 @@ CONCEPT.md               implementation concept — the design source of truth
 .github/workflows/       ci.yml, docker-build-push.yml, addon-image.yml, release-on-tag.yml, codeql.yml, dependabot-auto-merge.yml
 ```
 
-`model`, `config`, `unifi`, `unifi/integration`, `coordinator` and
-`hass` exist as of phase 4; `state`, `web` and `unifi/classic` are
-created as the later phases in `CONCEPT.md` land. The layout above is
-the target shape, not a claim about what exists today.
+Everything above exists as of phase 5 except `state` and `web`, which
+arrive with the diagnostic UI in phase 7.
 
 The MQTT transport is not part of this tree: it comes from the external
 `github.com/SukramJ/go-mqtt` module as a regular `go.mod` dependency,
@@ -164,6 +163,14 @@ etc. — no special test runner beyond `go test`.
   lookup. Renaming one orphans the entity and its history in every
   existing installation. The same goes for `unique_id` and `object_id`
   in `internal/hass` — `TestIdentifiersAreStable` pins the exact strings.
+- **A classic-layer failure must degrade, never propagate.** The facade
+  switches the affected capability off and the official path keeps
+  running. `internal/unifi/facade_test.go` pins this; breaking it turns
+  "site health is missing" into "the bridge is down".
+- **The classic API reports errors in the body, at HTTP 200.** An
+  expired session arrives as `meta.rc = "error"` with a 200 status. A
+  client checking only status codes decodes an empty data array and
+  treats a logged-out session as "the site has no clients" — forever.
 - **Never rebuild a topic in a second place.** `internal/hass` receives
   the topic layout through the `Topics` interface rather than
   reconstructing it from config. Two copies drifting apart produce

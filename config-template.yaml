@@ -44,6 +44,13 @@ HTTP_RETRIES: 3 # Retries on 5xx / network errors (429 always honours Retry-Afte
 # It is undocumented and may change between controller releases — everything
 # it powers is optional, and with CLASSIC_ENABLE: false the daemon runs
 # entirely on the officially supported surface.
+# What it adds, and nothing else:
+#   - site health: WAN status, WAN IP, latency, throughput, client counts
+#   - per-client SSID, signal strength, hostname and the blocked flag
+#   - PoE power draw in watts per port
+#   - blocking clients and the locate LED (see CONTROLS below)
+# A login failure here is not fatal: those capabilities stay unavailable
+# and the daemon keeps running on the official API alone.
 CLASSIC_ENABLE: false
 CLASSIC_USERNAME: "" # LOCAL UniFi admin (not a Ubiquiti SSO login); 2FA must be off
 CLASSIC_PASSWORD: "" # (override: env UNIFI_CLASSIC_PASSWORD)

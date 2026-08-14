@@ -214,6 +214,7 @@ func applyEnv(cfg *Config, env Env) error {
 		"CLIENTS_EXCLUDE_GUESTS": boolean(&cfg.Clients.ExcludeGuests),
 		"CLIENTS_MAX":            num(&cfg.Clients.Max),
 		"CLIENTS_AWAY_TIMEOUT":   num(&cfg.Clients.AwayTimeout),
+		"CLIENTS_SIGNAL_SENSOR":  boolean(&cfg.Clients.SignalSensor),
 
 		// Controls
 		"CONTROLS_ENABLE":           boolean(&cfg.Controls.Enable),

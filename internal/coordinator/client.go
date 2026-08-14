@@ -7,9 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strconv"
 	"time"
 
+	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
+	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
 )
 
 // Client presence.
@@ -167,6 +170,16 @@ func (c *Coordinator) publishClient(ctx context.Context, cl *model.Client, home 
 		return err
 	}
 
+	if c.clientSignalEnabled() && cl.Type == model.ClientWireless {
+		signal := ""
+		if home && cl.SignalDBm != 0 {
+			signal = strconv.Itoa(cl.SignalDBm)
+		}
+		if err := c.pub.publish(ctx, c.topics.client(key, keyClientSignal), signal); err != nil {
+			return err
+		}
+	}
+
 	payload, err := json.Marshal(clientAttributes(cl, home))
 	if err != nil {
 		return err
@@ -220,7 +233,7 @@ func (c *Coordinator) publishClientDiscovery(ctx context.Context, cl *model.Clie
 	if c.hass == nil {
 		return nil
 	}
-	entries, err := c.hass.Client(cl)
+	entries, err := c.hass.Client(cl, hass.ClientOptions{Signal: c.clientSignalEnabled()})
 	if err != nil {
 		return err
 	}
@@ -238,6 +251,13 @@ func (c *Coordinator) publishClientDiscovery(ctx context.Context, cl *model.Clie
 	c.announcedClients[cl.Key()] = topics
 	c.mu.Unlock()
 	return nil
+}
+
+// clientSignalEnabled reports whether the signal sensor should be
+// announced: the operator asked for it and the classic layer can
+// actually supply the values.
+func (c *Coordinator) clientSignalEnabled() bool {
+	return c.cfg.Clients.SignalSensor && c.caps.Has(unifi.CapClientDetails)
 }
 
 // ClientTopic returns the state topic for one client value. Part of the

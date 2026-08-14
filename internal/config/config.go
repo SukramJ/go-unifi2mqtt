@@ -211,6 +211,12 @@ type ClientsConfig struct {
 	// before presence flips to not_home, in seconds. Below
 	// 2×RefreshClients this causes flapping while clients roam.
 	AwayTimeout int `yaml:"AWAY_TIMEOUT"`
+
+	// SignalSensor adds a signal-strength sensor per wireless client.
+	// Requires CLASSIC_ENABLE — the Integration API does not report it.
+	// Off by default because it is one more entity per client, and the
+	// value only means anything for wireless ones.
+	SignalSensor bool `yaml:"SIGNAL_SENSOR"`
 }
 
 // ControlsConfig selects which write-back entities are exposed. With

@@ -29,6 +29,7 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -42,6 +43,20 @@ import (
 	"github.com/SukramJ/go-unifi2mqtt/internal/version"
 )
 
+// Capabilities reports which optional features the console client can
+// currently serve. The coordinator queries it before announcing an
+// entity, so it never offers one it cannot back with values
+// (CONCEPT.md §3.3).
+type Capabilities interface {
+	Has(c unifi.Capability) bool
+}
+
+// noCapabilities is the nil-safe default: without a classic layer there
+// is nothing extra to offer.
+type noCapabilities struct{}
+
+func (noCapabilities) Has(unifi.Capability) bool { return false }
+
 // Source is the console-side contract, narrowed to what the coordinator
 // reads. Defined here rather than imported so tests can stub it without
 // dragging in the HTTP machinery.
@@ -53,6 +68,10 @@ type Source interface {
 	Networks(ctx context.Context, siteID string) ([]model.Network, error)
 	WLANs(ctx context.Context, siteID string) ([]model.WLAN, error)
 	Clients(ctx context.Context, siteID string) ([]model.Client, error)
+	// Health returns the site aggregate, or unifi.ErrCapabilityUnavailable
+	// when the classic layer is off — which is a configuration choice,
+	// not a failure.
+	Health(ctx context.Context, siteID string) (model.Health, error)
 }
 
 // Deps bundles the wired-in collaborators. A struct rather than a long
@@ -68,6 +87,10 @@ type Deps struct {
 	// Subscriber receives the Home Assistant birth message. Nil disables
 	// re-announcing on Home Assistant restarts.
 	Subscriber Subscriber
+	// Capabilities reports which classic-layer features are available.
+	// Nil means none, which is the correct reading when the classic
+	// layer is off.
+	Capabilities Capabilities
 	// Logger receives diagnostics; nil uses slog.Default().
 	Logger *slog.Logger
 	// Now supplies wall-clock time. Tests inject a fixed or steerable
@@ -81,6 +104,7 @@ type Coordinator struct {
 	site   model.Site
 	src    Source
 	sub    Subscriber
+	caps   Capabilities
 	info   model.ControllerInfo
 	log    *slog.Logger
 	now    func() time.Time
@@ -119,6 +143,9 @@ type Coordinator struct {
 	// read loop to the goroutine that re-announces discovery. Buffered
 	// with room for one: several births in a row need one re-announce.
 	rediscover chan struct{}
+	// healthAnnounced guards the one-shot site-health discovery, which
+	// waits until the classic layer has actually answered.
+	healthAnnounced atomic.Bool
 }
 
 // New builds a Coordinator from deps.
@@ -132,11 +159,17 @@ func New(d Deps) *Coordinator {
 		now = time.Now
 	}
 
+	caps := d.Capabilities
+	if caps == nil {
+		caps = noCapabilities{}
+	}
+
 	topics := newTopicBuilder(d.Cfg.MQTTTopic, d.Site.Internal)
 	c := &Coordinator{
 		cfg:              d.Cfg,
 		site:             d.Site,
 		src:              d.Source,
+		caps:             caps,
 		info:             d.Info,
 		sub:              d.Subscriber,
 		log:              log,
@@ -245,6 +278,11 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	if c.cfg.Clients.Enable {
 		g.Go(func() error {
 			return c.loop(gctx, "clients", c.cfg.RefreshClientsDuration(), c.refreshClients)
+		})
+	}
+	if c.cfg.ClassicEnable {
+		g.Go(func() error {
+			return c.loop(gctx, "health", c.cfg.RefreshHealthDuration(), c.refreshHealth)
 		})
 	}
 

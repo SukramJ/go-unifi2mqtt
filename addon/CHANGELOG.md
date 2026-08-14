@@ -179,3 +179,49 @@ the split and its cost: device and network details belong on the hourly
 - An away client keeps its `device_tracker` but drops its IP: a tracker
   that disappears makes automations referencing it error out, while a
   stale IP suggests the client is still reachable there.
+
+## Added in phase 5 — the optional classic API layer
+
+- `internal/unifi/classic` — cookie-session client for the legacy
+  controller API, with layout probing (UniFi OS vs standalone
+  controller), CSRF handling and automatic re-login on session expiry.
+- `internal/unifi.Facade` — combines both API flavours behind one
+  contract with a capability query, so the coordinator never announces
+  an entity it cannot back with values.
+- **Site health**: WAN status, WAN IP, latency, throughput and client
+  counts, published under `unifi/<site>/health/…` and announced as a
+  synthetic Home Assistant site device. This is the one area with no
+  official equivalent — the Integration API's `/wans` endpoint carries
+  an id and a name and nothing else.
+- **Client enrichment**: SSID, signal strength, hostname and the blocked
+  flag, which the Integration API does not report at all. The
+  `CLIENTS.SSIDS` filter therefore becomes usable.
+- **PoE power draw** in watts per port, likewise absent from the
+  official API.
+- `CLIENTS.SIGNAL_SENSOR` adds a signal-strength sensor per wireless
+  client. Off by default: one more entity per client, and the value only
+  means anything for wireless ones.
+
+### Notes
+
+- **A classic-layer failure degrades, it does not propagate.** A failed
+  login or a broken endpoint switches the affected capabilities off and
+  logs once; the official path keeps running. That is the difference
+  between "site health is missing" and "the bridge is down", and it is
+  why the split exists at all.
+- A degraded capability stops being called, so a broken classic layer
+  produces one warning rather than one per poll.
+- The Integration API decides which clients exist; the classic layer
+  only adds fields. A client missing from the classic response keeps its
+  entity.
+
+### Fixed during live verification
+
+- **PoE wattage was enriched but never published.** The facade filled in
+  `PoE.PowerW` and the coordinator dropped it on the floor, so the topic
+  from the concept never existed. Ports drawing no power still publish
+  nothing, rather than a flat 0 W that looks like a reading.
+- **A missing WAN latency was published as `0`.** The reference console
+  reports no latency at all for its WAN subsystem, and `0 ms` is a
+  measurement rather than the absence of one. Optional health values are
+  pointers now and publish empty, so Home Assistant shows "unknown".

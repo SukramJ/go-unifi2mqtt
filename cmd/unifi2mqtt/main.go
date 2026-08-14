@@ -42,6 +42,7 @@ import (
 	"github.com/SukramJ/go-unifi2mqtt/internal/coordinator"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
+	"github.com/SukramJ/go-unifi2mqtt/internal/unifi/classic"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi/integration"
 	"github.com/SukramJ/go-unifi2mqtt/internal/version"
 )
@@ -124,10 +125,17 @@ func run(configPath string, once bool, logger *slog.Logger) error {
 		return err
 	}
 
+	// The facade combines the official client with the optional classic
+	// one, so nothing below needs to know which surface answers a call.
+	facade, err := buildFacade(ctx, cfg, client, site, logger)
+	if err != nil {
+		return err
+	}
+
 	if once {
 		return inventory(ctx, client, cfg, site, logger)
 	}
-	return bridge(ctx, cfg, client, site, info, logger)
+	return bridge(ctx, cfg, facade, facade, site, info, logger)
 }
 
 // connect builds the console client, probes the API and resolves the
@@ -182,7 +190,8 @@ func connect(
 func bridge(
 	ctx context.Context,
 	cfg *config.Config,
-	client *integration.Client,
+	source coordinator.Source,
+	caps coordinator.Capabilities,
 	site model.Site,
 	info model.ControllerInfo,
 	logger *slog.Logger,
@@ -193,11 +202,12 @@ func bridge(
 	// topic the coordinator owns), so the subscriber is handed over with
 	// SetSubscriber once it exists.
 	c := coordinator.New(coordinator.Deps{
-		Cfg:    cfg,
-		Site:   site,
-		Source: client,
-		Info:   info,
-		Logger: logger,
+		Cfg:          cfg,
+		Site:         site,
+		Source:       source,
+		Capabilities: caps,
+		Info:         info,
+		Logger:       logger,
 	})
 	lwtTopic := c.AvailabilityTopic()
 
@@ -279,6 +289,60 @@ func disconnect(c *coordinator.Coordinator, lc *mqtt.Lifecycle, logger *slog.Log
 	if err := lc.Stop(ctx); err != nil {
 		logger.Debug("unifi2mqtt.mqtt_stop", slog.String("err", err.Error()))
 	}
+}
+
+// buildFacade assembles the console client. The classic layer is opt-in
+// and, when it fails to log in, degrades to "those capabilities are
+// unavailable" rather than stopping the daemon — that isolation is the
+// reason the split exists at all (CONCEPT.md §2.3).
+func buildFacade(
+	ctx context.Context,
+	cfg *config.Config,
+	client *integration.Client,
+	site model.Site,
+	logger *slog.Logger,
+) (*unifi.Facade, error) {
+	var classicClient *classic.Client
+	if cfg.ClassicEnable {
+		tr, err := unifi.NewTransport(unifi.TransportConfig{
+			BaseURL:   cfg.BaseURL(),
+			Timeout:   cfg.HTTPTimeoutDuration(),
+			Retries:   cfg.HTTPRetries,
+			VerifyTLS: cfg.VerifyTLS,
+			CAFile:    cfg.CAFile,
+			Logger:    logger,
+		})
+		if err != nil {
+			return nil, err
+		}
+		classicClient, err = classic.New(classic.Config{
+			Transport: tr,
+			BaseURL:   cfg.BaseURL(),
+			Username:  cfg.ClassicUsername,
+			Password:  cfg.ClassicPassword.Reveal(),
+			Logger:    logger,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	facadeCfg := unifi.FacadeConfig{
+		Integration: client,
+		// The classic API addresses sites by the controller's own
+		// reference ("default"), not the Integration API's UUID.
+		SiteRef: site.Internal,
+		Logger:  logger,
+	}
+	if classicClient != nil {
+		facadeCfg.Classic = classicClient
+	}
+
+	facade := unifi.NewFacade(facadeCfg)
+	if cfg.ClassicEnable {
+		facade.StartClassic(ctx)
+	}
+	return facade, nil
 }
 
 // mqttStarter is the subset of *mqtt.Lifecycle that startMQTT drives,

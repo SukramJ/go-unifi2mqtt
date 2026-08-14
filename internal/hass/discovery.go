@@ -38,6 +38,8 @@ type Topics interface {
 	DeviceTopic(mac model.MAC, key string) string
 	// ClientTopic returns the state topic for one client value.
 	ClientTopic(key, valueKey string) string
+	// HealthTopic returns the state topic for one site-health value.
+	HealthTopic(key string) string
 	// AvailabilityTopic returns the bridge's retained online/offline
 	// topic.
 	AvailabilityTopic() string
@@ -77,8 +79,10 @@ type Discovery struct {
 	// baseTopic is Home Assistant's discovery prefix, e.g.
 	// "homeassistant".
 	baseTopic string
-	lang      string
-	topics    Topics
+	// site scopes the synthetic site device's identifiers.
+	site   string
+	lang   string
+	topics Topics
 }
 
 // Config configures a [Discovery].
@@ -87,6 +91,8 @@ type Config struct {
 	BaseTopic string
 	// Topics supplies the state-topic layout. Required.
 	Topics Topics
+	// Site scopes the site-health entities' identifiers.
+	Site string
 	// Language selects the display language; anything unsupported falls
 	// back to English.
 	Language string
@@ -96,6 +102,7 @@ type Config struct {
 func New(cfg Config) *Discovery {
 	return &Discovery{
 		baseTopic: cfg.BaseTopic,
+		site:      cfg.Site,
 		lang:      normaliseLang(cfg.Language),
 		topics:    cfg.Topics,
 	}

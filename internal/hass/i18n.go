@@ -119,6 +119,36 @@ var names = map[string]map[string]string{
 		LangDE: "Blockiert",
 	},
 
+	// --- site health ---
+	"wan_connectivity": {
+		LangEN: "WAN connection",
+		LangDE: "WAN-Verbindung",
+	},
+	"wan_ip": {
+		LangEN: "WAN IP address",
+		LangDE: "WAN-IP-Adresse",
+	},
+	"wan_latency": {
+		LangEN: "WAN latency",
+		LangDE: "WAN-Latenz",
+	},
+	"wan_rx_bps": {
+		LangEN: "WAN download",
+		LangDE: "WAN Empfangsrate",
+	},
+	"wan_tx_bps": {
+		LangEN: "WAN upload",
+		LangDE: "WAN Senderate",
+	},
+	"clients_total": {
+		LangEN: "Clients",
+		LangDE: "Clients",
+	},
+	"clients_guest": {
+		LangEN: "Guest clients",
+		LangDE: "Gast-Clients",
+	},
+
 	// --- WLAN ---
 	"wlan_enabled": {
 		LangEN: "Enabled",
