@@ -248,29 +248,157 @@ func TestIdentifiersAreStable(t *testing.T) {
 	}
 	byTopic := decode(t, entries)
 
-	want := map[string]struct{ uniqueID, objectID string }{
-		"homeassistant/sensor/unifi_00005e005302/cpu_utilization/config": {
-			"unifi_00005e005302_cpu_utilization", "unifi_00005e005302_cpu_utilization",
-		},
-		"homeassistant/binary_sensor/unifi_00005e005302/port_1_poe/config": {
-			"unifi_00005e005302_port_1_poe", "unifi_00005e005302_port_1_poe",
-		},
-		"homeassistant/sensor/unifi_00005e005302/radio_5g_tx_retries/config": {
-			"unifi_00005e005302_radio_5g_tx_retries", "unifi_00005e005302_radio_5g_tx_retries",
-		},
+	// unique_id is the identity Home Assistant tracks an entity by:
+	// changing one orphans the entity and drops its history. These
+	// strings are an interface with a year of recorded data behind them.
+	wantUnique := map[string]string{
+		"homeassistant/sensor/unifi_00005e005302/cpu_utilization/config":     "unifi_00005e005302_cpu_utilization",
+		"homeassistant/binary_sensor/unifi_00005e005302/port_1_poe/config":   "unifi_00005e005302_port_1_poe",
+		"homeassistant/sensor/unifi_00005e005302/radio_5g_tx_retries/config": "unifi_00005e005302_radio_5g_tx_retries",
 	}
-	for topic, ids := range want {
+	for topic, uid := range wantUnique {
 		e, ok := byTopic[topic]
 		if !ok {
 			t.Errorf("missing %s", topic)
 			continue
 		}
-		if got := e["unique_id"]; got != ids.uniqueID {
-			t.Errorf("%s unique_id = %v, want %v", topic, got, ids.uniqueID)
+		if got := e["unique_id"]; got != uid {
+			t.Errorf("%s unique_id = %v, want %v", topic, got, uid)
 		}
-		if got := e["object_id"]; got != ids.objectID {
-			t.Errorf("%s object_id = %v, want %v", topic, got, ids.objectID)
+	}
+
+	// The entity_id seed is derived from the device name so automations
+	// read sensibly. It is MAC-independent on purpose — renaming a
+	// device changes the seed but never an existing entity.
+	wantSeed := map[string]string{
+		"homeassistant/sensor/unifi_00005e005302/cpu_utilization/config":   "basement_switch_cpu_utilization",
+		"homeassistant/binary_sensor/unifi_00005e005302/port_1_poe/config": "basement_switch_port_1_poe",
+	}
+	for topic, seed := range wantSeed {
+		e := byTopic[topic]
+		if got := e["object_id"]; got != seed {
+			t.Errorf("%s object_id = %v, want %v", topic, got, seed)
 		}
+	}
+}
+
+// Both seeds are published because which one works depends on the Home
+// Assistant version: object_id was removed in HA Core 2026.4, and
+// default_entity_id is not honoured consistently on older releases —
+// the release where a localised name leaks into the entity_id instead.
+func TestBothEntityIDSeedsArePublished(t *testing.T) {
+	t.Parallel()
+
+	entries, err := newTestDiscovery(LangDE).Device(testDevice())
+	if err != nil {
+		t.Fatalf("Device: %v", err)
+	}
+
+	for topic, payload := range decode(t, entries) {
+		obj, hasObj := payload["object_id"].(string)
+		def, hasDef := payload["default_entity_id"].(string)
+		if !hasObj || obj == "" {
+			t.Errorf("%s has no object_id", topic)
+			continue
+		}
+		if !hasDef || def == "" {
+			t.Errorf("%s has no default_entity_id — on HA 2026.4+ the localised name would seed the entity_id", topic)
+			continue
+		}
+		// default_entity_id is "<platform>.<seed>" and must agree with
+		// object_id, or the two HA versions would disagree about the id.
+		platform := strings.Split(topic, "/")[1]
+		if want := platform + "." + obj; def != want {
+			t.Errorf("%s default_entity_id = %q, want %q", topic, def, want)
+		}
+	}
+}
+
+// The seed must survive a language switch: that is the whole reason for
+// setting it. A German display name may not reach the entity_id.
+func TestEntityIDSeedIsLanguageIndependent(t *testing.T) {
+	t.Parallel()
+
+	en, err := newTestDiscovery(LangEN).Device(testDevice())
+	if err != nil {
+		t.Fatalf("Device(en): %v", err)
+	}
+	de, err := newTestDiscovery(LangDE).Device(testDevice())
+	if err != nil {
+		t.Fatalf("Device(de): %v", err)
+	}
+
+	enByTopic, deByTopic := decode(t, en), decode(t, de)
+	for topic, e := range enByTopic {
+		d := deByTopic[topic]
+		for _, field := range []string{"object_id", "default_entity_id"} {
+			if e[field] != d[field] {
+				t.Errorf("%s: %s differs by language (%v vs %v)", topic, field, e[field], d[field])
+			}
+		}
+		// And nothing German may appear in the seed at all.
+		seed, _ := d["object_id"].(string)
+		for _, german := range []string{"auslastung", "betriebszeit", "erreichbar", "verfuegbar"} {
+			if strings.Contains(seed, german) {
+				t.Errorf("%s object_id = %q contains a localised word", topic, seed)
+			}
+		}
+	}
+}
+
+func TestSlugify(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ in, want string }{
+		{"UniFi-SW-HAR", "unifi_sw_har"},
+		{"Basement Switch", "basement_switch"},
+		{"USW Pro Max 16 PoE", "usw_pro_max_16_poe"},
+		// Umlauts lose the diaeresis rather than expanding it, because
+		// that is what Home Assistant's own slugify does: it unidecodes
+		// before slugging, so "Süd" is "sud" there and must be here too.
+		{"Küche", "kuche"},
+		{"Süd", "sud"},
+		{"Größe", "grosse"},
+		{"Kläranlage", "klaranlage"},
+		{"Groß & Klein", "gross_klein"},
+		{"  padded  ", "padded"},
+		{"a///b", "a_b"},
+		{"", ""},
+		{"---", ""},
+	}
+	for _, tt := range tests {
+		if got := slugify(tt.in); got != tt.want {
+			t.Errorf("slugify(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// A device whose name already ends in the word the key starts with must
+// not stutter it back.
+func TestEntityIDSeedCollapsesRepeatedTokens(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		device, key, want string
+	}{
+		{"Switch Garage", "state", "switch_garage_state"},
+		{"Garage Switch", "switch_state", "garage_switch_state"},
+		{"UniFi-SW-HAR", "cpu_utilization", "unifi_sw_har_cpu_utilization"},
+	}
+	for _, tt := range tests {
+		if got := entityIDSeed(tt.device, tt.key); got != tt.want {
+			t.Errorf("entityIDSeed(%q, %q) = %q, want %q", tt.device, tt.key, got, tt.want)
+		}
+	}
+}
+
+// A device with no name still needs a usable seed rather than one
+// starting with an underscore.
+func TestEntityIDSeedWithoutDeviceName(t *testing.T) {
+	t.Parallel()
+
+	if got := entityIDSeed("", "cpu_utilization"); got != "cpu_utilization" {
+		t.Errorf("= %q, want the bare key", got)
 	}
 }
 

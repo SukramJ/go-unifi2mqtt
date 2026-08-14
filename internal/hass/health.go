@@ -69,10 +69,12 @@ func (d *Discovery) Health(siteName string) ([]Entry, error) {
 	for i := range specs {
 		s := &specs[i]
 		uid := idPrefix + "_site_" + d.site + "_" + s.key
+		seed := entityIDSeed(info.Name, s.key)
 		e := entity{
 			Name:                name(s.nameKey, d.lang),
 			UniqueID:            uid,
-			ObjectID:            uid,
+			ObjectID:            seed,
+			DefaultEntityID:     string(s.platform) + "." + seed,
 			StateTopic:          d.topics.HealthTopic(s.stateSuffix),
 			UnitOfMeasurement:   s.unit,
 			DeviceClass:         s.deviceClass,

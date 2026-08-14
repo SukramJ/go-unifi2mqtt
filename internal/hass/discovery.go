@@ -138,11 +138,28 @@ type availabilityEntry struct {
 type entity struct {
 	Name     string `json:"name"`
 	UniqueID string `json:"unique_id"`
-	// ObjectID seeds the entity_id. Setting it explicitly is what keeps
-	// entity_ids language-independent: without it Home Assistant would
-	// derive them from the localised name, and switching LANGUAGE would
-	// create a second set of entities (CONCEPT.md §6.2).
+	// ObjectID and DefaultEntityID both seed the entity_id, and both are
+	// published on purpose.
+	//
+	// Setting a seed at all is what keeps entity_ids
+	// language-independent: without one Home Assistant derives them from
+	// the localised name, so switching LANGUAGE creates a second set of
+	// entities and leaves the first holding all the history
+	// (CONCEPT.md §6.2).
+	//
+	// Which key does the job depends on the Home Assistant version.
+	// object_id was deprecated in HA Core 2025.10 and removed in 2026.4;
+	// default_entity_id replaces it but is not honoured consistently on
+	// older releases (home-assistant/core#157241 — exactly the bug where
+	// a localised name leaks into the entity_id). Publishing both means
+	// current and future releases each pick up the one they understand.
+	//
+	// Neither renames an existing entity: Home Assistant tracks entities
+	// by unique_id, so a seed only shapes the id an entity gets when it
+	// is first created.
 	ObjectID string `json:"object_id"`
+	// DefaultEntityID is "<platform>.<seed>".
+	DefaultEntityID string `json:"default_entity_id,omitempty"`
 
 	StateTopic          string `json:"state_topic"`
 	UnitOfMeasurement   string `json:"unit_of_measurement,omitempty"`
@@ -341,13 +358,12 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 	}
 
 	uid := idPrefix + "_" + mac.String() + "_" + s.key
+	seed := entityIDSeed(info.Name, s.key)
 	e := entity{
-		Name:     label,
-		UniqueID: uid,
-		// object_id is the unique_id: both are English and stable, and
-		// using the same string makes the relationship obvious when
-		// debugging a mis-created entity.
-		ObjectID:            uid,
+		Name:                label,
+		UniqueID:            uid,
+		ObjectID:            seed,
+		DefaultEntityID:     string(s.platform) + "." + seed,
 		StateTopic:          d.stateTopic(mac, s.stateSuffix),
 		UnitOfMeasurement:   s.unit,
 		DeviceClass:         s.deviceClass,
@@ -413,6 +429,70 @@ func (d *Discovery) deviceInfo(dev *model.Device) deviceInfo {
 		info.Name = "UniFi " + dev.MAC.Colon()
 	}
 	return info
+}
+
+// entityIDSeed builds the language-independent entity_id seed:
+// "<device>_<key>", both slugified.
+//
+// It deliberately uses the device's name rather than its MAC: an
+// automation referencing sensor.unifi_sw_har_cpu_utilization is
+// readable, while sensor.unifi_00005e005302_cpu_utilization is not.
+// Renaming a device in UniFi changes the seed, but not any entity that
+// already exists — Home Assistant tracks those by unique_id, which is
+// MAC-based and never moves.
+func entityIDSeed(deviceName, key string) string {
+	base := slugify(deviceName)
+	if base == "" {
+		return slugify(key)
+	}
+	return collapseTokens(base + "_" + slugify(key))
+}
+
+// umlautReplacer transliterates German umlauts the way Home Assistant's
+// own slugify does.
+//
+// Note "u", not "ue": HA runs the text through unidecode, which strips
+// the diaeresis rather than expanding it, so "Süd" becomes "sud". The
+// German-typographic expansion would be defensible in isolation, but it
+// would disagree with the id HA derives for the same name — and with
+// the sibling bridges, which all match HA here.
+var umlautReplacer = strings.NewReplacer("ä", "a", "ö", "o", "ü", "u", "ß", "ss")
+
+// slugify reduces a string to the lowercase alphanumerics and
+// underscores Home Assistant accepts in an entity_id.
+func slugify(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	lastUnderscore := true // suppress a leading underscore
+	for _, r := range umlautReplacer.Replace(strings.ToLower(s)) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteRune('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.TrimSuffix(b.String(), "_")
+}
+
+// collapseTokens drops a token that merely repeats the one before it.
+//
+// Device names carry their role often enough that joining them to a key
+// stutters: a switch named "Switch Garage" with the "switch_state" key
+// would seed "switch_garage_switch_state".
+func collapseTokens(s string) string {
+	parts := strings.Split(s, "_")
+	out := parts[:0]
+	for _, p := range parts {
+		if p == "" || (len(out) > 0 && out[len(out)-1] == p) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return strings.Join(out, "_")
 }
 
 // deviceID is the Home Assistant device registry identifier. Keyed on

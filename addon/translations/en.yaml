@@ -1,0 +1,191 @@
+# Home Assistant add-on option labels.
+#
+# Without this file the configuration page shows the raw option keys —
+# "clients_signal_sensor" rather than "Signal strength sensor". The
+# Supervisor reads it automatically; the keys here must match
+# config.yaml's `options` exactly.
+configuration:
+  unifi_host:
+    name: Console address
+    description: >-
+      IP address or hostname of the UniFi console, e.g. 192.168.1.1.
+  unifi_port:
+    name: Console port
+    description: >-
+      443 for a UniFi OS console, 8443 for a standalone software
+      controller, 11443 for UniFi OS Server.
+  unifi_api_key:
+    name: API key
+    description: >-
+      Created in UniFi Network under Settings -> Control Plane ->
+      Integrations. It inherits the permissions of the admin that
+      created it, so a read-only admin is enough unless you enable
+      controls below.
+  unifi_site:
+    name: Site
+    description: Which site to bridge. "default" on most installations.
+  unifi_verify_tls:
+    name: Verify the console certificate
+    description: >-
+      Off by default because consoles present a self-signed certificate
+      on their LAN address. Turn it on if you reach the console through
+      a hostname with a trusted certificate.
+
+  classic_enable:
+    name: Enable the classic API
+    description: >-
+      Adds site health, per-client SSID and signal strength, PoE wattage,
+      client blocking and WLAN toggles. The official API exposes none of
+      these. If the login fails, those features stay unavailable and the
+      add-on keeps running.
+  classic_username:
+    name: Classic API username
+    description: >-
+      A LOCAL UniFi admin (Settings -> Admins). A Ubiquiti SSO account
+      does not work here, and two-factor authentication must be off.
+  classic_password:
+    name: Classic API password
+    description: Password for that local admin account.
+
+  mqtt_server:
+    name: MQTT broker
+    description: >-
+      Leave empty to use the broker Home Assistant already knows about.
+  mqtt_port:
+    name: MQTT port
+    description: Usually 1883.
+  mqtt_login:
+    name: MQTT username
+    description: Leave empty when the broker allows anonymous access.
+  mqtt_password:
+    name: MQTT password
+    description: Leave empty when the broker allows anonymous access.
+  mqtt_topic:
+    name: Topic root
+    description: >-
+      Root of the published topic tree, e.g. unifi/default/device/...
+
+  hass_enable:
+    name: Home Assistant discovery
+    description: >-
+      Create entities automatically. Turn this off only if you want to
+      consume the MQTT topics yourself.
+  hass_base_topic:
+    name: Discovery prefix
+    description: >-
+      Only change this if you also changed it in the MQTT integration.
+
+  refresh_devices:
+    name: Device refresh (seconds)
+    description: How often to read device state, firmware and update status.
+  refresh_clients:
+    name: Client refresh (seconds)
+    description: >-
+      How often to read the client list. This sets how quickly presence
+      changes are noticed.
+  refresh_health:
+    name: Site health refresh (seconds)
+    description: Requires the classic API.
+  refresh_static:
+    name: Slow refresh (seconds)
+    description: >-
+      Ports, radios, uplinks and the network and WLAN catalogues. These
+      change rarely and cost one request per object, so they run on their
+      own slow loop.
+
+  clients_enable:
+    name: Publish clients
+    description: >-
+      Off by default: a busy network can create several hundred entities.
+      Use the filters below to publish only the clients you care about.
+  clients_types:
+    name: Connection types
+    description: >-
+      Which kinds of client to publish. Wireless only is a good starting
+      point — wired devices rarely move, so presence tells you nothing.
+  clients_networks:
+    name: Networks
+    description: >-
+      Network names, e.g. LAN or IoT. Empty means no restriction.
+  clients_vlans:
+    name: VLANs
+    description: VLAN IDs, e.g. 20. Empty means no restriction.
+  clients_ssids:
+    name: SSIDs
+    description: >-
+      Requires the classic API: the official one does not report which
+      SSID a client is on.
+  clients_include_macs:
+    name: Only these MAC addresses
+    description: >-
+      When set, ONLY these clients are published and every other filter
+      is ignored. This is an either/or, not an addition.
+  clients_exclude_macs:
+    name: Never these MAC addresses
+    description: Always wins, including over the list above.
+  clients_exclude_guests:
+    name: Skip guests
+    description: Do not publish clients on a guest network.
+  clients_max:
+    name: Maximum clients
+    description: >-
+      Hard cap. If more clients match, the rest are skipped and a warning
+      names how many.
+  clients_away_timeout:
+    name: Away after (seconds)
+    description: >-
+      How long a client may be missing before it counts as away. Wireless
+      clients briefly disappear while roaming between access points, so a
+      value below twice the client refresh makes presence flap.
+  clients_signal_sensor:
+    name: Signal strength sensor
+    description: >-
+      Adds a signal sensor per wireless client. Requires the classic API,
+      and adds one more entity per client.
+
+  controls_enable:
+    name: Allow control from Home Assistant
+    description: >-
+      Master switch for everything below. While off, the add-on only
+      reads and a read-only UniFi admin is sufficient. Note that anyone
+      able to publish to your MQTT broker can then trigger these actions.
+  controls_device_restart:
+    name: Restart devices
+    description: Adds a restart button to every device.
+  controls_port_power_cycle:
+    name: Power-cycle PoE ports
+    description: >-
+      Adds a button per PoE port that briefly cuts power — the usual way
+      to reboot a camera or access point.
+  controls_guest_authorize:
+    name: Authorize guests
+    description: Adds a button to grant a guest client network access.
+  controls_device_locate:
+    name: Locate LED
+    description: >-
+      Adds a switch that flashes a device's locate LED. Requires the
+      classic API.
+  controls_client_block:
+    name: Block clients
+    description: >-
+      Adds a switch that blocks a client from the network. Requires the
+      classic API.
+  controls_wlan_enable:
+    name: Switch WLANs on and off
+    description: >-
+      Adds a switch per SSID. Requires the classic API. Disabling an SSID
+      disconnects everything using it.
+
+  web_enable:
+    name: Diagnostic panel
+    description: >-
+      Adds a sidebar panel showing what the bridge is doing: poll loops,
+      device statistics, published clients and any errors.
+  language:
+    name: Language
+    description: >-
+      Display language for entity names. Entity IDs stay English either
+      way, so switching never renames or re-creates an entity.
+  debug:
+    name: Verbose logging
+    description: Log every poll and publish. Noisy — for troubleshooting only.

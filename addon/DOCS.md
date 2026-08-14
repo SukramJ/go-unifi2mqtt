@@ -154,7 +154,7 @@ error rather than a silently dead entity.
 | Option | Default | Description |
 | --- | --- | --- |
 | `web_enable` | `true` | Serve the diagnostic UI as an Ingress panel. |
-| `language` | `en` | `en` or `de`. Affects display names only — entity ids never change, so switching language never re-creates entities or loses history. |
+| `language` | `en` | `en` or `de`. Affects display names only — entity ids never change, so switching language never re-creates entities or loses history. The configuration page you are reading options on is translated too. |
 | `debug` | `false` | Verbose logging. |
 
 ## The diagnostic panel
@@ -187,6 +187,13 @@ IP; it presents a self-signed certificate.
 integration is configured, and the log shows a successful broker
 connect. After a Home Assistant restart the add-on re-announces
 everything automatically.
+
+**Entity ids came out in German** — entities created before version
+1.0.1 could pick up their id from the translated name. Home Assistant
+keys entities by `unique_id`, so an update cannot rename them: delete
+the affected entities (or the whole device) under Settings → Devices &
+Services → MQTT, then restart the add-on. They come back with English
+ids and translated display names.
 
 **Site health is missing** — it needs `classic_enable`. The Integration
 API's WAN endpoint returns only an id and a name.

@@ -84,11 +84,13 @@ type ClientOptions struct {
 
 func (d *Discovery) renderTracker(key string, info deviceInfo) (Entry, error) {
 	uid := idPrefix + "_client_" + key + "_presence"
+	seed := entityIDSeed(info.Name, "presence")
 	e := clientEntity{
 		entity: entity{
-			Name:     name("client_presence", d.lang),
-			UniqueID: uid,
-			ObjectID: uid,
+			Name:            name("client_presence", d.lang),
+			UniqueID:        uid,
+			ObjectID:        seed,
+			DefaultEntityID: string(PlatformDeviceTracker) + "." + seed,
 			// The tracker is the entity that reports being away, so its
 			// availability must not depend on the client being present —
 			// only on the bridge running.
@@ -120,10 +122,12 @@ func (d *Discovery) renderTracker(key string, info deviceInfo) (Entry, error) {
 
 func (d *Discovery) renderClientSensor(key, suffix string, info deviceInfo, s spec) (Entry, error) {
 	uid := idPrefix + "_client_" + key + "_" + s.key
+	seed := entityIDSeed(info.Name, s.key)
 	e := entity{
 		Name:                name(s.nameKey, d.lang),
 		UniqueID:            uid,
-		ObjectID:            uid,
+		ObjectID:            seed,
+		DefaultEntityID:     string(s.platform) + "." + seed,
 		StateTopic:          d.topics.ClientTopic(key, s.stateSuffix),
 		UnitOfMeasurement:   s.unit,
 		DeviceClass:         s.deviceClass,
