@@ -19,6 +19,10 @@ type stubTopics struct{}
 func (stubTopics) DeviceTopic(mac model.MAC, key string) string {
 	return "unifi/default/device/" + mac.String() + "/" + key
 }
+
+func (stubTopics) ClientTopic(key, valueKey string) string {
+	return "unifi/default/client/" + key + "/" + valueKey
+}
 func (stubTopics) AvailabilityTopic() string { return "unifi/bridge/status" }
 
 func newTestDiscovery(lang string) *Discovery {
