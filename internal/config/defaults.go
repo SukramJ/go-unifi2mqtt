@@ -23,6 +23,11 @@ const (
 
 	DefaultHASSBaseTopic      = "homeassistant"
 	DefaultHASSBirthGracetime = 15
+	// DefaultHASSCleanup enables the orphan reconcile. On, because the
+	// failure it prevents is silent: a config left behind by an older
+	// version recreates an entity that can never receive a value, and
+	// nothing in Home Assistant says where it came from.
+	DefaultHASSCleanup = true
 
 	DefaultRefreshDevices = 60
 	DefaultRefreshClients = 30
@@ -55,6 +60,7 @@ func defaults() Config {
 
 		HASSBaseTopic:      DefaultHASSBaseTopic,
 		HASSBirthGracetime: DefaultHASSBirthGracetime,
+		HASSCleanup:        DefaultHASSCleanup,
 
 		RefreshDevices: DefaultRefreshDevices,
 		RefreshClients: DefaultRefreshClients,

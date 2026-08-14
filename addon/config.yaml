@@ -3,7 +3,7 @@
 # version MUST equal the published image tag (ghcr.io/sukramj/go-unifi2mqtt-addon-{arch})
 # and is bumped in the release commit that cuts the matching git tag.
 name: go-unifi2mqtt
-version: "1.0.0"
+version: "1.0.1"
 slug: go-unifi2mqtt
 description: >-
   Bridges a local UniFi Network console (UDM / UCG / UniFi OS Server /
@@ -126,6 +126,8 @@ options:
   # --- Home Assistant discovery prefix ---
   # Only change this if you changed it in the MQTT integration too.
   hass_base_topic: homeassistant
+  # Remove discovery configs this add-on owns but no longer publishes.
+  hass_cleanup: true
 
   # --- Misc ---
   web_enable: true
@@ -176,6 +178,7 @@ schema:
   controls_client_block: bool
   controls_wlan_enable: bool
   hass_base_topic: str
+  hass_cleanup: bool
   web_enable: bool
   language: "list(en|de)"
   debug: bool

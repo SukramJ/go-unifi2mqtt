@@ -1,3 +1,68 @@
+# Version 1.0.1 (2026-08-14)
+
+A fix release for two things a German Home Assistant install surfaced,
+plus the cleanup that makes stale entities disappear on their own.
+
+## Entity ids stay English
+
+Discovery seeded the entity_id with `object_id` alone. Home Assistant
+Core deprecated that key in 2025.10 and removed it in 2026.4, so on a
+current release nothing seeded the id and HA derived it from the
+display name — which is translated. A `de` install ended up with
+`sensor.cpu_auslastung`.
+
+Both `object_id` and `default_entity_id` are published now, because
+neither works everywhere on its own: the first is gone in current
+releases, the second is not honoured reliably in older ones. The seed
+is also readable rather than a MAC —
+`sensor.unifi_sw_har_cpu_utilization`, not
+`sensor.unifi_f492bf8394ba_cpu_utilization` — and slugs the way Home
+Assistant itself does, so an umlaut loses its diaeresis (`Süd` → `sud`)
+instead of expanding to `sued` and disagreeing with the id HA would
+derive for the same name.
+
+`unique_id` is unchanged, so the update orphans nothing. It also means
+entities that already exist keep the ids they were given: Home
+Assistant keys them by `unique_id`, so no update can rename them.
+Delete the affected entities under Settings → Devices & Services →
+MQTT and restart to have them recreated with English ids.
+
+## Orphaned entities are removed
+
+Until now the daemon could only clear entities it had seen appear and
+disappear within one run. A discovery config left behind by an earlier
+version, by a device removed while the daemon was stopped, or by a
+filter that no longer matches, stayed retained on the broker — so Home
+Assistant recreated the entity on every start and it sat there
+unavailable forever, with nothing to say where it came from.
+
+On start the daemon now reads the retained configs under the discovery
+prefix and clears the ones it owns but no longer publishes. Ownership
+requires two independent signals to agree: the `unique_id` has to be in
+this project's namespace **and** the payload has to name this bridge's
+availability topic. A second instance bridging another console to the
+same broker under its own `MQTT_TOPIC` is therefore correctly seen as
+somebody else's, and another integration's entities are never touched.
+
+The sweep waits for each source to report before it will remove
+anything of that kind. An empty announced set means "not polled yet"
+until the device, client, WLAN or health poll says otherwise —
+publishing nothing because a poll failed must never read as "these
+entities are gone". A source that is switched off is the exception, and
+deliberately so: turning `CLIENTS.ENABLE` off is a decision that those
+entities should disappear.
+
+`HASS_CLEANUP: false` (add-on: **Remove orphaned entities**) turns it
+off.
+
+## Add-on options are labelled
+
+The add-on configuration page rendered every option as its raw
+identifier — `controls_port_power_cycle` with no hint of what it does —
+because `config.yaml` carries no labels and no translation files
+existed. All 40 options now have a name and a description in English
+and German.
+
 # Version 1.0.0 (2026-08-14)
 
 First release. A pure-Go daemon bridging a local UniFi Network

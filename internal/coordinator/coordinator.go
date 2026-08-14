@@ -164,6 +164,18 @@ type Coordinator struct {
 	// waits until the classic layer has actually answered.
 	healthAnnounced atomic.Bool
 
+	// readyDevices, readyStatic and readyClients record that a loop has
+	// completed one cycle that actually produced data. The orphan
+	// reconcile gates on them: an empty announced set means "not polled
+	// yet" until the corresponding source says otherwise, and sweeping
+	// before that would delete every entity the daemon owns.
+	readyDevices atomic.Bool
+	readyStatic  atomic.Bool
+	readyClients atomic.Bool
+	// reconcileTimeout and reconcileWindow are the sweep's two waits.
+	reconcileTimeout time.Duration
+	reconcileWindow  time.Duration
+
 	// commands carries parsed inbound commands from the MQTT read loop
 	// to the goroutine that executes them, so the handler never blocks.
 	commands chan command
@@ -213,6 +225,8 @@ func New(d Deps) *Coordinator {
 		commands:         make(chan command, commandQueueSize),
 		nudgeDevices:     make(chan struct{}, 1),
 		nudgeClients:     make(chan struct{}, 1),
+		reconcileTimeout: defaultReconcileTimeout,
+		reconcileWindow:  defaultReconcileWindow,
 	}
 	if d.Cfg.HASSEnable {
 		c.hass = hass.New(c.DiscoveryConfig(d.Cfg.HASSBaseTopic, d.Cfg.Language))
@@ -301,6 +315,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error { return c.rediscoverLoop(gctx) })
+	g.Go(func() error { return c.reconcileOrphans(gctx) })
 	if c.cfg.Controls.Enable {
 		if err := c.subscribeCommands(ctx); err != nil {
 			c.log.Warn("coordinator.command_subscribe_failed", slog.String("err", err.Error()))
@@ -484,7 +499,13 @@ func (c *Coordinator) refreshStatic(ctx context.Context) error {
 	if c.store != nil {
 		c.store.SetWLANs(wlans)
 	}
-	return c.publishWLANs(ctx, wlans)
+	if err := c.publishWLANs(ctx, wlans); err != nil {
+		return err
+	}
+	// The WLAN catalogue is authoritative once this returns, so the
+	// reconcile may sweep SSID switches from here on.
+	c.readyStatic.Store(true)
+	return nil
 }
 
 // refreshDevices polls the device list and publishes the values it
@@ -531,6 +552,14 @@ func (c *Coordinator) refreshDevices(ctx context.Context) error {
 	c.sweepDevices(ctx, present)
 	if c.store != nil {
 		c.store.SetDevices(devices)
+	}
+	// Only a cycle that saw devices counts as ready. A site really can
+	// be empty, but a console answering with an empty list is far more
+	// often a permission or filter problem — and treating that as "we
+	// announce nothing" would let the reconcile clear every device
+	// entity on the broker.
+	if len(present) > 0 {
+		c.readyDevices.Store(true)
 	}
 	return nil
 }

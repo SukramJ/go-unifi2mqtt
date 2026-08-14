@@ -138,6 +138,16 @@ type Config struct {
 	// HASSBirthGracetime is the delay in seconds between Home Assistant
 	// announcing "online" and the daemon republishing discovery.
 	HASSBirthGracetime int `yaml:"HASS_BIRTH_GRACETIME"`
+	// HASSCleanup enables the orphan reconcile: on start the daemon
+	// reads the retained discovery configs under HASS_BASE_TOPIC and
+	// clears the ones it owns but no longer announces.
+	//
+	// It exists as a switch because the sweep deletes Home Assistant
+	// entities, and while it only ever touches configs carrying this
+	// project's unique_id prefix *and* this bridge's availability topic,
+	// an operator who wants nothing removed automatically should be able
+	// to say so.
+	HASSCleanup bool `yaml:"HASS_CLEANUP"`
 
 	// --- Polling cadences (seconds) ---
 
