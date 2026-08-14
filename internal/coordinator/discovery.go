@@ -224,6 +224,30 @@ func (c *Coordinator) DiscoveryConfig(baseTopic, language string) hass.Config {
 	return hass.Config{
 		BaseTopic: baseTopic,
 		Topics:    c,
+		Site:      c.site.Internal,
 		Language:  language,
 	}
+}
+
+// publishHealthDiscovery announces the site health entities.
+//
+// Called only once the classic layer has actually answered: announcing
+// them without it would create entities whose topics never receive a
+// value, leaving them unavailable forever (CONCEPT.md §3.3).
+func (c *Coordinator) publishHealthDiscovery(ctx context.Context) error {
+	if c.hass == nil || c.healthAnnounced.Load() {
+		return nil
+	}
+	entries, err := c.hass.Health(c.site.Name)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := c.pub.publishConfig(ctx, e.ConfigTopic, e.Payload); err != nil {
+			return err
+		}
+	}
+	c.healthAnnounced.Store(true)
+	c.log.Info("coordinator.health_discovery_announced", slog.Int("entities", len(entries)))
+	return nil
 }

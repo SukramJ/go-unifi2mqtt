@@ -23,10 +23,11 @@ func (stubTopics) DeviceTopic(mac model.MAC, key string) string {
 func (stubTopics) ClientTopic(key, valueKey string) string {
 	return "unifi/default/client/" + key + "/" + valueKey
 }
-func (stubTopics) AvailabilityTopic() string { return "unifi/bridge/status" }
+func (stubTopics) HealthTopic(key string) string { return "unifi/default/health/" + key }
+func (stubTopics) AvailabilityTopic() string     { return "unifi/bridge/status" }
 
 func newTestDiscovery(lang string) *Discovery {
-	return New(Config{BaseTopic: "homeassistant", Topics: stubTopics{}, Language: lang})
+	return New(Config{BaseTopic: "homeassistant", Topics: stubTopics{}, Site: "default", Language: lang})
 }
 
 func testDevice() *model.Device {

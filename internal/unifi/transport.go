@@ -159,21 +159,47 @@ type Request struct {
 	Out any
 }
 
+// BaseURL returns the console origin this transport talks to.
+func (t *Transport) BaseURL() string { return t.base }
+
 // Do performs req, retrying transient failures with exponential backoff
 // and honouring Retry-After on a 429.
 //
 // The context governs the whole call including waits between attempts,
 // so a shutdown signal aborts a backoff sleep instead of running it out.
 func (t *Transport) Do(ctx context.Context, req Request) error {
+	_, err := t.DoWithResponse(ctx, req)
+	return err
+}
+
+// ResponseMeta is what remains of a response once its body has been
+// read and closed.
+//
+// The classic API client needs it: that flavour keeps its session in
+// cookies and a CSRF header, which are response metadata rather than
+// payload. Returning this instead of an *http.Response makes the
+// contract honest — there is no body left to read, so the type does not
+// pretend otherwise.
+type ResponseMeta struct {
+	StatusCode int
+	Header     http.Header
+	Cookies    []*http.Cookie
+	// URL is the final request URL, needed to scope cookies correctly
+	// after a redirect.
+	URL *url.URL
+}
+
+// DoWithResponse is Do, additionally returning the response metadata.
+func (t *Transport) DoWithResponse(ctx context.Context, req Request) (*ResponseMeta, error) {
 	backoff := time.Second
 
 	for attempt := 0; ; attempt++ {
-		err := t.attempt(ctx, req)
+		resp, err := t.attempt(ctx, req)
 		if err == nil {
-			return nil
+			return resp, nil
 		}
 		if attempt >= t.retries || !retryable(err) {
-			return err
+			return nil, err
 		}
 
 		wait := backoffFor(err, backoff)
@@ -186,7 +212,7 @@ func (t *Transport) Do(ctx context.Context, req Request) error {
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		case <-time.After(wait):
 		}
 		backoff = min(2*backoff, time.Minute)
@@ -231,17 +257,17 @@ type retryAfterError struct {
 
 func (e *retryAfterError) Unwrap() error { return e.APIError }
 
-func (t *Transport) attempt(ctx context.Context, req Request) error {
+func (t *Transport) attempt(ctx context.Context, req Request) (*ResponseMeta, error) {
 	httpReq, err := t.build(ctx, req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resp, err := t.client.Do(httpReq)
 	if err != nil {
 		// A *url.Error stringifies the full URL including any query, so
 		// strip it down to the underlying cause before it reaches a log.
-		return fmt.Errorf("unifi: %s %s: %w", req.Method, req.Path, unwrapURLError(err))
+		return nil, fmt.Errorf("unifi: %s %s: %w", req.Method, req.Path, unwrapURLError(err))
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
@@ -249,15 +275,19 @@ func (t *Transport) attempt(ctx context.Context, req Request) error {
 	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return t.responseError(req, resp)
+		return nil, t.responseError(req, resp)
 	}
-	if req.Out == nil {
-		return nil
+	if req.Out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(req.Out); err != nil {
+			return nil, fmt.Errorf("unifi: %s %s: decode response: %w", req.Method, req.Path, err)
+		}
 	}
-	if err := json.NewDecoder(resp.Body).Decode(req.Out); err != nil {
-		return fmt.Errorf("unifi: %s %s: decode response: %w", req.Method, req.Path, err)
-	}
-	return nil
+	return &ResponseMeta{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header,
+		Cookies:    resp.Cookies(),
+		URL:        resp.Request.URL,
+	}, nil
 }
 
 func (t *Transport) build(ctx context.Context, req Request) (*http.Request, error) {

@@ -295,9 +295,13 @@ type Health struct {
 	WLAN SubsystemHealth
 	VPN  SubsystemHealth
 
-	WANIP     netip.Addr
-	LatencyMs int
-	UptimeSec int64
+	WANIP netip.Addr
+	// LatencyMs and UptimeSec are pointers because controllers omit
+	// them entirely depending on version and WAN configuration. A
+	// missing latency published as 0 reads as "0 ms", which is a
+	// measurement rather than the absence of one.
+	LatencyMs *int
+	UptimeSec *int64
 	RxBps     uint64
 	TxBps     uint64
 

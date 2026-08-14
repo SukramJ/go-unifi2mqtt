@@ -27,7 +27,7 @@ func testClient() *model.Client {
 func TestClientEntities(t *testing.T) {
 	t.Parallel()
 
-	entries, err := newTestDiscovery(LangEN).Client(testClient())
+	entries, err := newTestDiscovery(LangEN).Client(testClient(), ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client: %v", err)
 	}
@@ -56,11 +56,46 @@ func TestClientEntities(t *testing.T) {
 	}
 
 	// Signal strength and the blocked switch need the classic layer;
-	// announcing them here would create entities that stay unavailable.
+	// announcing them without it would create entities that stay
+	// unavailable forever.
 	for topic := range byTopic {
 		if strings.Contains(topic, "signal") || strings.Contains(topic, "blocked") {
 			t.Errorf("announced a classic-only entity: %s", topic)
 		}
+	}
+}
+
+// With the classic layer the signal sensor appears — but only for
+// wireless clients, where the value means something.
+func TestSignalSensorOnlyForWirelessWithClassic(t *testing.T) {
+	t.Parallel()
+
+	signalTopic := "homeassistant/sensor/unifi_client_00005e005310/signal/config"
+
+	entries, err := newTestDiscovery(LangEN).Client(testClient(), ClientOptions{Signal: true})
+	if err != nil {
+		t.Fatalf("Client: %v", err)
+	}
+	e, ok := decode(t, entries)[signalTopic]
+	if !ok {
+		t.Fatal("no signal sensor for a wireless client with the capability on")
+	}
+	if got := e["device_class"]; got != "signal_strength" {
+		t.Errorf("device_class = %v, want signal_strength", got)
+	}
+	if got := e["unit_of_measurement"]; got != "dBm" {
+		t.Errorf("unit = %v, want dBm", got)
+	}
+
+	// A wired client has no meaningful signal strength.
+	wired := testClient()
+	wired.Type = model.ClientWired
+	entries, err = newTestDiscovery(LangEN).Client(wired, ClientOptions{Signal: true})
+	if err != nil {
+		t.Fatalf("Client: %v", err)
+	}
+	if _, ok := decode(t, entries)[signalTopic]; ok {
+		t.Error("a wired client got a signal sensor")
 	}
 }
 
@@ -69,7 +104,7 @@ func TestClientEntities(t *testing.T) {
 func TestClientViaDevicePointsAtItsUplink(t *testing.T) {
 	t.Parallel()
 
-	entries, err := newTestDiscovery(LangEN).Client(testClient())
+	entries, err := newTestDiscovery(LangEN).Client(testClient(), ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client: %v", err)
 	}
@@ -92,7 +127,7 @@ func TestClientWithoutMACOrUplink(t *testing.T) {
 	t.Parallel()
 
 	cl := &model.Client{ID: "vpn-uuid", Name: "Remote Worker", Type: model.ClientVPN}
-	entries, err := newTestDiscovery(LangEN).Client(cl)
+	entries, err := newTestDiscovery(LangEN).Client(cl, ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client: %v", err)
 	}
@@ -114,7 +149,7 @@ func TestClientWithoutMACOrUplink(t *testing.T) {
 func TestClientWithoutKeyProducesNothing(t *testing.T) {
 	t.Parallel()
 
-	entries, err := newTestDiscovery(LangEN).Client(&model.Client{Name: "Nameless"})
+	entries, err := newTestDiscovery(LangEN).Client(&model.Client{Name: "Nameless"}, ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client: %v", err)
 	}
@@ -129,7 +164,7 @@ func TestClientWithoutKeyProducesNothing(t *testing.T) {
 func TestTrackerStaysAvailableWhenTheClientIsAway(t *testing.T) {
 	t.Parallel()
 
-	entries, err := newTestDiscovery(LangEN).Client(testClient())
+	entries, err := newTestDiscovery(LangEN).Client(testClient(), ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client: %v", err)
 	}
@@ -151,11 +186,11 @@ func TestTrackerStaysAvailableWhenTheClientIsAway(t *testing.T) {
 func TestClientLanguageChangesOnlyTheDisplayName(t *testing.T) {
 	t.Parallel()
 
-	en, err := newTestDiscovery(LangEN).Client(testClient())
+	en, err := newTestDiscovery(LangEN).Client(testClient(), ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client(en): %v", err)
 	}
-	de, err := newTestDiscovery(LangDE).Client(testClient())
+	de, err := newTestDiscovery(LangDE).Client(testClient(), ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client(de): %v", err)
 	}
@@ -185,7 +220,7 @@ func TestClientLanguageChangesOnlyTheDisplayName(t *testing.T) {
 func TestClientIdentifiersAreStable(t *testing.T) {
 	t.Parallel()
 
-	entries, err := newTestDiscovery(LangDE).Client(testClient())
+	entries, err := newTestDiscovery(LangDE).Client(testClient(), ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client: %v", err)
 	}
@@ -213,7 +248,7 @@ func TestUnnamedClientGetsAFallbackName(t *testing.T) {
 	cl := testClient()
 	cl.Name = ""
 
-	entries, err := newTestDiscovery(LangEN).Client(cl)
+	entries, err := newTestDiscovery(LangEN).Client(cl, ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client: %v", err)
 	}

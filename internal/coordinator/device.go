@@ -145,7 +145,19 @@ func (c *Coordinator) publishPort(ctx context.Context, mac model.MAC, p *model.P
 	if p.PoE == nil {
 		return nil
 	}
-	return c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortPoE), boolPayload(p.PoE.Enabled))
+	if err := c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortPoE), boolPayload(p.PoE.Enabled)); err != nil {
+		return err
+	}
+
+	// Wattage exists only with the classic layer, and only for ports
+	// actually delivering power. Publishing 0 W for the rest would fill
+	// Home Assistant with flat-zero sensors that look like real
+	// readings (CONCEPT.md §2.2).
+	if p.PoE.PowerW <= 0 {
+		return nil
+	}
+	return c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortPoEPower),
+		strconv.FormatFloat(p.PoE.PowerW, 'f', 1, 64))
 }
 
 // publishRadio publishes one radio's channel.

@@ -32,7 +32,7 @@ type clientEntity struct {
 // created. Signal strength and the blocked switch need the classic
 // layer; announcing them regardless would produce entities that stay
 // unavailable forever (CONCEPT.md §2.2).
-func (d *Discovery) Client(cl *model.Client) ([]Entry, error) {
+func (d *Discovery) Client(cl *model.Client, opts ClientOptions) ([]Entry, error) {
 	key := cl.Key()
 	if key == "" {
 		return nil, nil
@@ -43,7 +43,7 @@ func (d *Discovery) Client(cl *model.Client) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]Entry, 0, 2)
+	entries := make([]Entry, 0, 3)
 	entries = append(entries, tracker)
 
 	// The IP sensor is diagnostic: useful on the device page, noise in
@@ -57,7 +57,29 @@ func (d *Discovery) Client(cl *model.Client) ([]Entry, error) {
 	}
 	entries = append(entries, ip)
 
+	// Signal strength needs the classic layer and only means anything
+	// for a wireless client. Announcing it otherwise would create an
+	// entity whose topic never receives a value.
+	if opts.Signal && cl.Type == model.ClientWireless {
+		signal, err := d.renderClientSensor(key, "signal", info, spec{
+			platform: PlatformSensor, key: "client_signal", nameKey: "client_signal",
+			stateSuffix: "signal", unit: "dBm", deviceClass: "signal_strength",
+			stateClass: "measurement", category: "diagnostic",
+		})
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, signal)
+	}
+
 	return entries, nil
+}
+
+// ClientOptions selects the optional per-client entities, which depend
+// on capabilities the classic layer provides.
+type ClientOptions struct {
+	// Signal adds a signal-strength sensor for wireless clients.
+	Signal bool
 }
 
 func (d *Discovery) renderTracker(key string, info deviceInfo) (Entry, error) {

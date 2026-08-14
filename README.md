@@ -11,13 +11,14 @@ It talks to the console over the **official UniFi Network Integration API**
 classic controller API for the handful of things the official surface does
 not expose.
 
-> **Status: early development (phase 4 of 9).** The daemon publishes
+> **Status: early development (phase 5 of 9).** The daemon publishes
 > devices, ports, radios, the WLAN catalogue and — filtered — network
-> clients with presence detection, and announces all of it to Home
-> Assistant, wired into the real network topology. Site health and the
-> control entities need the classic API layer (phases 5–6). The roadmap
-> and the design rationale live in [`CONCEPT.md`](CONCEPT.md), the
-> design source of truth.
+> clients with presence detection, plus site health, per-client
+> SSID/signal and PoE wattage when the optional classic API layer is
+> enabled. All of it is announced to Home Assistant, wired into the real
+> network topology. Control entities are phase 6. The roadmap and the
+> design rationale live in [`CONCEPT.md`](CONCEPT.md), the design source
+> of truth.
 
 ## What it publishes
 

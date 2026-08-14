@@ -61,9 +61,10 @@ const (
 	keyUpdateAvailable   = "update_available"
 	keyAttributes        = "attributes"
 
-	keyPortState = "state"
-	keyPortSpeed = "speed"
-	keyPortPoE   = "poe"
+	keyPortState    = "state"
+	keyPortSpeed    = "speed"
+	keyPortPoE      = "poe"
+	keyPortPoEPower = "poe/power_w"
 
 	keyRadioChannel   = "channel"
 	keyRadioTxRetries = "tx_retries"
@@ -138,6 +139,18 @@ func (b topicBuilder) radio(mac model.MAC, freqGHz float64, key string) string {
 // renamed, and a renamed SSID must not orphan its entity.
 func (b topicBuilder) wlan(id, key string) string {
 	return b.root + "/" + b.site + "/wlan/" + sanitiseSegment(id) + "/" + key
+}
+
+// health returns a site-health topic, e.g.
+// "unifi/default/health/wan/state".
+func (b topicBuilder) health(key string) string {
+	return b.root + "/" + b.site + "/health/" + key
+}
+
+// HealthTopic returns a site-health topic. Part of the hass.Topics
+// contract.
+func (c *Coordinator) HealthTopic(key string) string {
+	return c.topics.health(key)
 }
 
 // client returns a client topic. Phase 4 fills this in; the builder

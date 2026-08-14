@@ -104,6 +104,10 @@ func (c *Config) validate(o options) error {
 				"CLIENTS.SSIDS needs CLASSIC_ENABLE: the Integration API does not report a client's SSID, "+
 					"so the filter would match nothing and publish every client instead")
 		}
+		if c.Clients.Enable && c.Clients.SignalSensor {
+			errs = append(errs,
+				"CLIENTS.SIGNAL_SENSOR needs CLASSIC_ENABLE: signal strength is not in the Integration API")
+		}
 		for _, ctl := range []struct {
 			key string
 			on  bool

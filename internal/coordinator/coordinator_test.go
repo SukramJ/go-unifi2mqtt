@@ -111,6 +111,9 @@ type fakeSource struct {
 	clients  []model.Client
 	stats    map[string]model.DeviceStats
 
+	health    model.Health
+	healthErr error
+
 	devicesErr error
 	detailsErr error
 	statsErr   error
@@ -185,6 +188,16 @@ func (s *fakeSource) WLANs(context.Context, string) ([]model.WLAN, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]model.WLAN(nil), s.wlans...), nil
+}
+
+func (s *fakeSource) Health(context.Context, string) (model.Health, error) {
+	s.note("Health")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.healthErr != nil {
+		return model.Health{}, s.healthErr
+	}
+	return s.health, nil
 }
 
 func (s *fakeSource) Clients(context.Context, string) ([]model.Client, error) {
