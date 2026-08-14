@@ -37,6 +37,12 @@ const (
 	CapClientBlock Capability = "client_block"
 	// CapDeviceLocate is the locate LED.
 	CapDeviceLocate Capability = "device_locate"
+	// CapWLANToggle is enabling and disabling an SSID.
+	//
+	//nolint:gosec // G101 flags this const group; these are capability
+	// names, not credentials. The finding lands on the last line of the
+	// group rather than on any particular entry.
+	CapWLANToggle Capability = "wlan_toggle"
 )
 
 // integrationClient is the official API surface the facade delegates to.
@@ -61,6 +67,7 @@ type classicClient interface {
 	PortPower(ctx context.Context, siteRef string) (map[model.MAC]map[int]float64, error)
 	SetClientBlocked(ctx context.Context, siteRef string, mac model.MAC, blocked bool) error
 	SetLocate(ctx context.Context, siteRef string, mac model.MAC, on bool) error
+	SetWLANEnabled(ctx context.Context, siteRef, wlanID string, enabled bool) error
 }
 
 // Facade is the combined client.
@@ -311,6 +318,14 @@ func (f *Facade) SetLocate(ctx context.Context, _ string, mac model.MAC, on bool
 	return f.classic.SetLocate(ctx, f.siteRef, mac, on)
 }
 
+// SetWLANEnabled enables or disables an SSID.
+func (f *Facade) SetWLANEnabled(ctx context.Context, _, wlanID string, enabled bool) error {
+	if !f.Has(CapWLANToggle) {
+		return ErrCapabilityUnavailable
+	}
+	return f.classic.SetWLANEnabled(ctx, f.siteRef, wlanID, enabled)
+}
+
 // StartClassic logs the classic client in and reports whether the layer
 // came up.
 //
@@ -326,7 +341,8 @@ func (f *Facade) StartClassic(ctx context.Context) bool {
 			slog.String("err", err.Error()),
 			slog.String("note", "site health, per-client SSID/signal and PoE wattage stay unavailable"))
 		for _, c := range []Capability{
-			CapHealth, CapClientDetails, CapPortPower, CapClientBlock, CapDeviceLocate,
+			CapHealth, CapClientDetails, CapPortPower,
+			CapClientBlock, CapDeviceLocate, CapWLANToggle,
 		} {
 			f.degrade(c, err)
 		}

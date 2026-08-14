@@ -114,9 +114,15 @@ type fakeSource struct {
 	health    model.Health
 	healthErr error
 
-	devicesErr error
-	detailsErr error
-	statsErr   error
+	devicesErr  error
+	detailsErr  error
+	statsErr    error
+	actuatorErr error
+
+	actuators []actuatorCall
+	// actuatorCh, when set, receives each call so a test can wait for
+	// the asynchronous command loop without sleeping.
+	actuatorCh chan actuatorCall
 
 	// calls counts requests per method for cadence assertions.
 	calls map[string]int
@@ -188,6 +194,63 @@ func (s *fakeSource) WLANs(context.Context, string) ([]model.WLAN, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]model.WLAN(nil), s.wlans...), nil
+}
+
+// actuatorCall records one write-back so tests can assert on what
+// actually reached the console.
+type actuatorCall struct {
+	kind    string
+	id      string
+	mac     model.MAC
+	portIdx int
+	on      bool
+	minutes int
+}
+
+func (s *fakeSource) RestartDevice(_ context.Context, _, deviceID string) error {
+	s.note("RestartDevice")
+	return s.recordActuator(actuatorCall{kind: "restart", id: deviceID})
+}
+
+func (s *fakeSource) PowerCyclePort(_ context.Context, _, deviceID string, portIdx int) error {
+	s.note("PowerCyclePort")
+	return s.recordActuator(actuatorCall{kind: "power_cycle", id: deviceID, portIdx: portIdx})
+}
+
+func (s *fakeSource) AuthorizeGuest(_ context.Context, _, clientID string, minutes int) error {
+	s.note("AuthorizeGuest")
+	return s.recordActuator(actuatorCall{kind: "authorize", id: clientID, minutes: minutes})
+}
+
+func (s *fakeSource) SetLocate(_ context.Context, _ string, mac model.MAC, on bool) error {
+	s.note("SetLocate")
+	return s.recordActuator(actuatorCall{kind: "locate", mac: mac, on: on})
+}
+
+func (s *fakeSource) SetClientBlocked(_ context.Context, _ string, mac model.MAC, blocked bool) error {
+	s.note("SetClientBlocked")
+	return s.recordActuator(actuatorCall{kind: "block", mac: mac, on: blocked})
+}
+
+func (s *fakeSource) SetWLANEnabled(_ context.Context, _, wlanID string, enabled bool) error {
+	s.note("SetWLANEnabled")
+	return s.recordActuator(actuatorCall{kind: "wlan", id: wlanID, on: enabled})
+}
+
+func (s *fakeSource) recordActuator(c actuatorCall) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.actuatorErr != nil {
+		return s.actuatorErr
+	}
+	s.actuators = append(s.actuators, c)
+	if s.actuatorCh != nil {
+		select {
+		case s.actuatorCh <- c:
+		default:
+		}
+	}
+	return nil
 }
 
 func (s *fakeSource) Health(context.Context, string) (model.Health, error) {
@@ -306,6 +369,11 @@ func (c *fakeClock) advance(d time.Duration) {
 
 func newHarness(t *testing.T, cfg *config.Config) *harness {
 	t.Helper()
+	return newHarnessWith(t, cfg, nil)
+}
+
+func newHarnessWith(t *testing.T, cfg *config.Config, caps Capabilities) *harness {
+	t.Helper()
 	if cfg == nil {
 		cfg = testConfig()
 	}
@@ -336,13 +404,14 @@ func newHarness(t *testing.T, cfg *config.Config) *harness {
 	clock := newFakeClock()
 
 	c := New(Deps{
-		Cfg:    cfg,
-		Site:   testSite(),
-		Source: src,
-		MQTT:   broker,
-		Info:   model.ControllerInfo{ApplicationVersion: "10.5.67"},
-		Logger: slog.New(slog.DiscardHandler),
-		Now:    clock.now,
+		Cfg:          cfg,
+		Site:         testSite(),
+		Source:       src,
+		MQTT:         broker,
+		Capabilities: caps,
+		Info:         model.ControllerInfo{ApplicationVersion: "10.5.67"},
+		Logger:       slog.New(slog.DiscardHandler),
+		Now:          clock.now,
 	})
 	return &harness{c: c, broker: broker, src: src, clock: clock}
 }

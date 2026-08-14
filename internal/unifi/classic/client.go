@@ -139,7 +139,11 @@ func (c *Client) Login(ctx context.Context) error {
 }
 
 func (c *Client) loginLocked(ctx context.Context) error {
-	var lastErr error
+	// Errors from every layout, so a failure names what each one said
+	// rather than only the last. Reporting the last is actively
+	// misleading: the standalone endpoint answers 401 on a UniFi OS
+	// console simply because it does not exist there.
+	errs := make([]error, 0, len(layouts))
 
 	for _, l := range layouts {
 		err := c.attemptLogin(ctx, l)
@@ -156,18 +160,23 @@ func (c *Client) loginLocked(ctx context.Context) error {
 			// Trying the other layout would produce the same answer and
 			// bury the real cause.
 			return err
-		case errors.Is(err, unifi.ErrUnauthorized):
-			// Wrong credentials, not the wrong layout: a 401 means the
-			// endpoint exists and rejected us.
+		case errors.Is(err, unifi.ErrUnauthorized), errors.Is(err, unifi.ErrForbidden):
+			// Wrong credentials, not the wrong layout: the endpoint
+			// exists and rejected us. UniFi OS answers 403 with
+			// AUTHENTICATION_FAILED_INVALID_CREDENTIALS while a
+			// standalone controller answers 401, so both count —
+			// treating 403 as "try the other layout" produces a second
+			// failure against an endpoint that was never the problem and
+			// reports *that* error instead.
 			return fmt.Errorf("classic: login rejected — check CLASSIC_USERNAME/CLASSIC_PASSWORD "+
 				"(a local admin, not a Ubiquiti SSO account): %w", err)
 		default:
-			lastErr = err
+			errs = append(errs, fmt.Errorf("%s: %w", l.loginPath, err))
 		}
 	}
 
 	c.loggedIn = false
-	return fmt.Errorf("classic: no login endpoint responded: %w", lastErr)
+	return fmt.Errorf("classic: no login endpoint accepted the credentials: %w", errors.Join(errs...))
 }
 
 func (c *Client) attemptLogin(ctx context.Context, l layout) error {
@@ -229,6 +238,12 @@ func (c *Client) get(ctx context.Context, siteRef, path string, out any) error {
 // post performs an authenticated POST against a site path.
 func (c *Client) post(ctx context.Context, siteRef, path string, body, out any) error {
 	return c.do(ctx, http.MethodPost, c.sitePath(siteRef, path), body, out)
+}
+
+// Do exposes the authenticated request path for callers that need a
+// method other than the GET/POST helpers.
+func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
+	return c.do(ctx, method, path, body, out)
 }
 
 // do issues a request, logging in first when needed and retrying once

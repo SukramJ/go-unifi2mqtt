@@ -5,6 +5,7 @@ package classic
 
 import (
 	"context"
+	"net/http"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -166,6 +167,18 @@ func (c *Client) SetClientBlocked(ctx context.Context, siteRef string, mac model
 type devmgrCommand struct {
 	Cmd string `json:"cmd"`
 	MAC string `json:"mac"`
+}
+
+// SetWLANEnabled enables or disables an SSID.
+//
+// The classic endpoint accepts a partial update, which is why this is
+// on the classic layer at all: the official PUT /wifi/broadcasts/{id}
+// wants the complete configuration object, and a read-modify-write over
+// a large schema risks silently resetting settings when the schema
+// grows (CONCEPT.md §13.2).
+func (c *Client) SetWLANEnabled(ctx context.Context, siteRef, wlanID string, enabled bool) error {
+	body := map[string]bool{"enabled": enabled}
+	return c.do(ctx, http.MethodPut, c.sitePath(siteRef, "/rest/wlanconf/"+wlanID), body, nil)
 }
 
 // SetLocate turns a device's locate LED on or off.

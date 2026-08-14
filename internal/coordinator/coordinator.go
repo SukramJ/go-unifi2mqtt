@@ -72,6 +72,17 @@ type Source interface {
 	// when the classic layer is off — which is a configuration choice,
 	// not a failure.
 	Health(ctx context.Context, siteID string) (model.Health, error)
+
+	// Actuators. The classic-only ones return
+	// unifi.ErrCapabilityUnavailable when that layer is off; the
+	// coordinator asks Capabilities.Has before offering the entity, so
+	// that should not happen in practice.
+	RestartDevice(ctx context.Context, siteID, deviceID string) error
+	PowerCyclePort(ctx context.Context, siteID, deviceID string, portIdx int) error
+	AuthorizeGuest(ctx context.Context, siteID, clientID string, minutes int) error
+	SetLocate(ctx context.Context, siteID string, mac model.MAC, on bool) error
+	SetClientBlocked(ctx context.Context, siteID string, mac model.MAC, blocked bool) error
+	SetWLANEnabled(ctx context.Context, siteID, wlanID string, enabled bool) error
 }
 
 // Deps bundles the wired-in collaborators. A struct rather than a long
@@ -146,6 +157,15 @@ type Coordinator struct {
 	// healthAnnounced guards the one-shot site-health discovery, which
 	// waits until the classic layer has actually answered.
 	healthAnnounced atomic.Bool
+
+	// commands carries parsed inbound commands from the MQTT read loop
+	// to the goroutine that executes them, so the handler never blocks.
+	commands chan command
+	// nudgeDevices and nudgeClients let a completed command pull the
+	// affected object's state forward, instead of waiting out the poll
+	// interval.
+	nudgeDevices chan struct{}
+	nudgeClients chan struct{}
 }
 
 // New builds a Coordinator from deps.
@@ -183,6 +203,9 @@ func New(d Deps) *Coordinator {
 		clients:          make(map[string]clientState),
 		deviceIDToMAC:    make(map[string]model.MAC),
 		rediscover:       make(chan struct{}, 1),
+		commands:         make(chan command, commandQueueSize),
+		nudgeDevices:     make(chan struct{}, 1),
+		nudgeClients:     make(chan struct{}, 1),
 	}
 	if d.Cfg.HASSEnable {
 		c.hass = hass.New(c.DiscoveryConfig(d.Cfg.HASSBaseTopic, d.Cfg.Language))
@@ -266,8 +289,15 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error { return c.rediscoverLoop(gctx) })
+	if c.cfg.Controls.Enable {
+		if err := c.subscribeCommands(ctx); err != nil {
+			c.log.Warn("coordinator.command_subscribe_failed", slog.String("err", err.Error()))
+		}
+		g.Go(func() error { return c.commandLoop(gctx) })
+	}
 	g.Go(func() error {
-		return c.loop(gctx, "devices", c.cfg.RefreshDevicesDuration(), c.refreshDevices)
+		return c.loopWithNudge(gctx, "devices", c.cfg.RefreshDevicesDuration(),
+			c.nudgeDevices, c.refreshDevices)
 	})
 	g.Go(func() error {
 		return c.loop(gctx, "device_stats", c.cfg.RefreshDeviceStatsDuration(), c.refreshDeviceStats)
@@ -277,7 +307,8 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	})
 	if c.cfg.Clients.Enable {
 		g.Go(func() error {
-			return c.loop(gctx, "clients", c.cfg.RefreshClientsDuration(), c.refreshClients)
+			return c.loopWithNudge(gctx, "clients", c.cfg.RefreshClientsDuration(),
+				c.nudgeClients, c.refreshClients)
 		})
 	}
 	if c.cfg.ClassicEnable {
@@ -302,6 +333,22 @@ func (c *Coordinator) Run(ctx context.Context) error {
 // A non-fatal error is logged and the loop continues — a console
 // rebooting after a firmware update must not take the daemon with it.
 func (c *Coordinator) loop(ctx context.Context, name string, every time.Duration, fn func(context.Context) error) error {
+	return c.loopWithNudge(ctx, name, every, nil, fn)
+}
+
+// loopWithNudge is loop plus an out-of-band trigger.
+//
+// The nudge is what makes a command's effect visible immediately
+// instead of up to a poll interval later: after restarting a device or
+// blocking a client, waiting 60 seconds for the state to catch up makes
+// the Home Assistant entity look broken (CONCEPT.md §9).
+func (c *Coordinator) loopWithNudge(
+	ctx context.Context,
+	name string,
+	every time.Duration,
+	nudge <-chan struct{},
+	fn func(context.Context) error,
+) error {
 	run := func() error {
 		err := fn(ctx)
 		switch {
@@ -332,6 +379,12 @@ func (c *Coordinator) loop(ctx context.Context, name string, every time.Duration
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			if err := run(); err != nil {
+				return err
+			}
+		case <-nudge:
+			// A command just changed something; re-read it now rather
+			// than at the next tick.
 			if err := run(); err != nil {
 				return err
 			}

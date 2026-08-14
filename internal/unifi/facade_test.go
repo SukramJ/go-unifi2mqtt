@@ -91,6 +91,8 @@ func (s *stubClassic) PortPower(context.Context, string) (map[model.MAC]map[int]
 
 func (s *stubClassic) SetClientBlocked(context.Context, string, model.MAC, bool) error { return nil }
 
+func (s *stubClassic) SetWLANEnabled(context.Context, string, string, bool) error { return nil }
+
 func (s *stubClassic) SetLocate(context.Context, string, model.MAC, bool) error { return nil }
 
 var (
