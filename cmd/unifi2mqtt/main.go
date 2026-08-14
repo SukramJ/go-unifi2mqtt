@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"os"
 	"os/signal"
 	"sort"
@@ -79,7 +80,14 @@ func fatalErr(err error) bool {
 // run is the testable entry point: a non-nil error on any startup or
 // runtime failure, nil on clean shutdown.
 func run(configPath string, once bool, logger *slog.Logger) error {
-	cfg, err := loadConfig(configPath, logger)
+	// A --once run never opens a broker connection, so demanding
+	// MQTT_SERVER would only push operators towards a placeholder that
+	// later gets forgotten in a real config.
+	var opts []config.Option
+	if once {
+		opts = append(opts, config.WithoutMQTT())
+	}
+	cfg, err := loadConfig(configPath, logger, opts...)
 	if err != nil {
 		return err
 	}
@@ -162,11 +170,13 @@ func inventory(
 	site model.Site,
 	logger *slog.Logger,
 ) error {
-	devices, err := client.Devices(ctx, site.ID)
+	// The detail-aware call: the device list alone carries no uplink,
+	// ports or radios, so a plain Devices() here would report every
+	// device as having no uplink.
+	devices, err := client.DevicesWithDetails(ctx, site.ID)
 	if err != nil {
 		return err
 	}
-	model.ResolveUplinks(devices)
 
 	networks, err := client.Networks(ctx, site.ID)
 	if err != nil {
@@ -259,7 +269,7 @@ func printClients(clients []model.Client, networks []model.Network, cfg *config.
 			guest = " guest"
 		}
 		fmt.Printf("  %-18s %-20s %-9s %-15s vlan %-5s %s%s\n",
-			id, truncate(c.Name, 20), c.Type, c.IP, vlan, netName, guest)
+			id, truncate(c.Name, 20), c.Type, addr(c.IP), vlan, netName, guest)
 	}
 
 	fmt.Printf("\nCLIENTS BY NETWORK\n")
@@ -318,7 +328,7 @@ func parseMajorMinor(v string) (major, minor int, ok bool) {
 // A missing file is not fatal: the Home Assistant add-on and env-only
 // `docker run` deployments drive every setting through UNIFI_* and ship
 // no file at all. Validation still enforces the required values.
-func loadConfig(explicit string, logger *slog.Logger) (*config.Config, error) {
+func loadConfig(explicit string, logger *slog.Logger, opts ...config.Option) (*config.Config, error) {
 	env := config.OSEnv{}
 	path := explicit
 	if path == "" {
@@ -327,7 +337,7 @@ func loadConfig(explicit string, logger *slog.Logger) (*config.Config, error) {
 		}
 	}
 	if path == "" {
-		cfg, err := config.Load(strings.NewReader(""), env)
+		cfg, err := config.Load(strings.NewReader(""), env, opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -335,7 +345,17 @@ func loadConfig(explicit string, logger *slog.Logger) (*config.Config, error) {
 		return cfg, nil
 	}
 	logger.Info("unifi2mqtt.config_loaded", slog.String("path", path))
-	return config.LoadFile(path, env)
+	return config.LoadFile(path, env, opts...)
+}
+
+// addr renders an address for the inventory table. netip prints an
+// unset address as "invalid IP", which reads like a malformed value
+// rather than "the console reported none".
+func addr(a netip.Addr) string {
+	if !a.IsValid() {
+		return "—"
+	}
+	return a.String()
 }
 
 func truncate(s string, n int) string {

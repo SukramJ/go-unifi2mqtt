@@ -54,3 +54,21 @@ and reports the site inventory; MQTT publication is phase 2.
   that verification: the network/VLAN and WLAN catalogues *are*
   officially available, VLAN filtering therefore needs no classic API,
   and the device uplink is reported as a UUID rather than a MAC.
+
+## Fixed during live verification
+
+Running phase 1 against a real UniFi Network 10.5.67 console caught two
+bugs that would have silently produced empty data rather than failing:
+
+- **Networks came back without subnets**, making client→VLAN mapping
+  resolve to nothing for every client. `GET /networks` does not return
+  `ipv4Configuration`; only `GET /networks/{id}` does.
+- **Devices came back without an uplink**, which would have collapsed
+  Home Assistant's `via_device` topology into a flat list. `GET /devices`
+  carries neither `uplink` nor `interfaces`.
+
+Both list endpoints now fan out one detail call per object, bounded to 4
+concurrent requests, and a failing detail call degrades to the overview
+data instead of dropping the object. `CONCEPT.md` §2.2 and §8.2 record
+the split and its cost: device and network details belong on the hourly
+`static` loop, not the 60-second device loop.

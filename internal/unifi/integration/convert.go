@@ -201,8 +201,8 @@ func toClientType(s string) model.ClientType {
 	}
 }
 
-func toNetwork(n *networkOverview, log *slog.Logger) model.Network {
-	out := model.Network{
+func toNetworkOverview(n *networkOverview) model.Network {
+	return model.Network{
 		ID:         n.ID,
 		Name:       n.Name,
 		VLAN:       n.VLANID,
@@ -210,6 +210,10 @@ func toNetwork(n *networkOverview, log *slog.Logger) model.Network {
 		Default:    n.Default,
 		Management: toManagement(n.Management),
 	}
+}
+
+func toNetwork(n *networkDetails, log *slog.Logger) model.Network {
+	out := toNetworkOverview(&n.networkOverview)
 	if n.IPv4Configuration == nil {
 		return out
 	}

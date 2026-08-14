@@ -52,3 +52,12 @@ config.yaml
 
 # Captured OpenAPI documents (reference only, not fixtures)
 internal/unifi/integration/testdata/openapi-*.json
+
+# Local credentials for script/capture-fixtures.sh and manual runs.
+# Never commit these — the UniFi API key inherits its creator's
+# permissions, and the broker login grants write access to every topic.
+# Both suffix spellings are covered: .mqtt_cred ends in _cred, not .cred.
+*_cred
+*.cred
+*_cred.*
+.env.local

@@ -1,0 +1,11 @@
+{
+  "management": "UNMANAGED",
+  "id": "n3333333-3333-4333-8333-333333333333",
+  "name": "Legacy VLAN",
+  "enabled": true,
+  "vlanId": 99,
+  "default": false,
+  "metadata": {
+    "type": "USER_DEFINED"
+  }
+}

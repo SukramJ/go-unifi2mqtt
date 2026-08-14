@@ -74,7 +74,8 @@ updates.
 default. It supplies exactly what the official API lacks.
 
 The table below is verified against the **OpenAPI specification of Network
-application 10.6.90** (see §2.5), not against secondary sources.
+applications 10.5.67 and 10.6.90** and, for the fields that matter, against
+a live console (see §2.5) — not against secondary sources.
 
 | Capability                   | Integration API                                        | Classic API                    |
 | ---------------------------- | ------------------------------------------------------ | ------------------------------ |
@@ -83,7 +84,7 @@ application 10.6.90** (see §2.5), not against secondary sources.
 | Restart device               | ✅ `POST /devices/{id}/actions`                        | ✅ `/cmd/devmgr`               |
 | PoE port power-cycle         | ✅ `POST /devices/{id}/interfaces/ports/{idx}/actions` | ✅ `/cmd/devmgr`               |
 | Authorize guest              | ✅ `POST /clients/{id}/actions`                        | ✅ `/cmd/stamgr`               |
-| **Network / VLAN catalogue** | ✅ `/networks` (incl. `vlanId`, subnet)                | ✅ `/rest/networkconf`         |
+| **Network / VLAN catalogue** | ✅ `/networks` + one detail call per network ⁵          | ✅ `/rest/networkconf`         |
 | **WLAN catalogue (SSIDs)**   | ✅ `/wifi/broadcasts`                                  | ✅ `/rest/wlanconf`            |
 | **Site / WAN health**        | ❌ ¹                                                   | ✅ `/stat/health`              |
 | **Client → SSID / signal**   | ❌ ²                                                   | ✅ `/stat/sta`                 |
@@ -103,6 +104,8 @@ no power field.
 ⁴ `PUT /wifi/broadcasts/{id}` exists but expects the complete configuration
 object. Safely toggling just `enabled` would be a read-modify-write over a
 large schema — too risky for phase 6, so classic for now.
+⁵ The list carries `vlanId` but **not** the subnets; those need
+`GET /networks/{id}`. See the paragraph below.
 
 **Consequence for client filtering** (§6.2), corrected against the first
 draft:
@@ -117,9 +120,30 @@ draft:
 
 The IP-subnet detour for VLAN/network is why `/networks` is loaded in the
 `static` loop (§8.1). It is exact as long as the networks have disjoint
-subnets — the normal case. Where subnets overlap, the longest prefix wins;
-a client that cannot be mapped to any network is **dropped** when a VLAN
-filter is set, and reported once per cycle at debug level.
+subnets — the normal case. Where subnets overlap, the longest prefix wins.
+
+**Two list endpoints do not carry what their detail counterparts do.**
+Verified against a live 10.5.67 console, because the OpenAPI schema makes
+this easy to misread (the detail schemas inherit from the overview ones,
+so both look plausible):
+
+| Endpoint    | The list omits                      | Consequence                                    |
+| ----------- | ----------------------------------- | ---------------------------------------------- |
+| `/networks` | `ipv4Configuration` (the subnets)   | no VLAN mapping at all without a per-network call |
+| `/devices`  | `uplink`, `interfaces` (ports/radios) | every device reports no uplink, so `via_device` collapses |
+
+Both therefore fan out one detail call per object, bounded to 4 concurrent
+requests. This is the single biggest cost driver in the polling design and
+is what §8.2 is built around. A failing detail call degrades to the
+overview data rather than dropping the object.
+
+**Not every client has an IP.** On the reference installation 17 of 121
+clients (14%) come back with no `ipAddress` — mostly wired devices the
+console has not seen an address for. They cannot be mapped to a VLAN by
+definition, so a client that maps to no network is **dropped** when a
+VLAN or network filter is set, and reported once per cycle at debug
+level. Operators who need those clients anyway have to name them in
+`INCLUDE_MACS`, which bypasses the network filters entirely.
 
 A filter on an unavailable dimension is **validated hard at startup**
 ("SSID filter set but CLASSIC_ENABLE=false") instead of silently letting
@@ -742,38 +766,55 @@ empty — the opposite of what the user asked for.
 
 ### 8.1 Cadences
 
-| Loop      | Default | Content                                                      |
-| --------- | ------- | ------------------------------------------------------------ |
-| `clients` | 30 s    | client list → presence. Sets presence latency.               |
-| `devices` | 60 s    | device list + per-device statistics                          |
-| `health`  | 60 s    | site health (classic layer only)                             |
-| `static`  | 3600 s  | controller info, network and WLAN catalogue, site list       |
+| Loop      | Default | Content                                                                    |
+| --------- | ------- | -------------------------------------------------------------------------- |
+| `clients` | 30 s    | client list → presence. Sets presence latency.                             |
+| `devices` | 60 s    | device list (state, firmware, update available) + per-device statistics    |
+| `health`  | 60 s    | site health (classic layer only)                                           |
+| `static`  | 3600 s  | controller info, site list, network catalogue **with subnets**, WLAN catalogue, **device details** (ports, radios, uplink) |
 
 Each loop is its own goroutine under an `errgroup`, as in `go-mtec2mqtt`. An
 error in one loop does **not** stop the others; only an unrecoverable startup
 failure aborts.
 
-### 8.2 The N+1 problem of device statistics
+### 8.2 The N+1 problem, twice over
 
-`GET /devices` returns the list, but statistics come one at a time from
-`GET /devices/{id}/statistics/latest`. With 20 devices that is 21 requests
-per cycle. Mitigations:
+Three list endpoints need per-object follow-ups (§2.2), which dominates
+the request budget:
 
-- **Bounded worker pool** (default 4 concurrent) instead of sequential or
-  unbounded fan-out.
+| Data              | Requests            | Changes            | Belongs in    |
+| ----------------- | ------------------- | ------------------ | ------------- |
+| Device list       | 1                   | constantly (state) | `devices`     |
+| Device details    | 1 per device        | rarely (cabling)   | `static`      |
+| Device statistics | 1 per online device | constantly         | `device_stats`|
+| Network list      | 1                   | rarely             | `static`      |
+| Network details   | 1 per network       | rarely             | `static`      |
+
+Naively polling everything on the device cadence would cost `1 + 2N`
+requests per cycle — 25 per minute on the 12-device reference
+installation, before clients. The split above brings the per-minute cost
+down to `1 + N_online`, with the expensive-but-static parts on the hourly
+loop.
+
+Further mitigations:
+
+- **Bounded worker pool** (4 concurrent) for every fan-out, instead of
+  sequential or unbounded. A console also routes the household's traffic;
+  opening 25 connections at once is impolite.
 - **Skip offline devices** for the statistics call — they return nothing
   useful anyway.
 - **Optional decoupling:** `REFRESH_DEVICE_STATS` may be set larger than
   `REFRESH_DEVICES` when the console is under load. The device list (cheap)
   stays fast, the statistics (expensive) go slower.
 - **Classic optimisation:** with the classic layer active, a single
-  `GET /stat/device` returns list *and* statistics. The facade takes that
-  route automatically when available — one request instead of N+1. The
-  Integration API remains the fallback.
+  `GET /stat/device` returns list, details *and* statistics. The facade
+  takes that route automatically when available — one request instead of
+  `1 + 2N`. The Integration API remains the fallback.
 
-Note that `firmwareVersion` and `firmwareUpdatable` are already in the device
-**overview**, so the per-device detail call is only needed for ports, radios
-and uplink — not for the update sensor.
+`firmwareVersion` and `firmwareUpdatable` are already in the device
+**overview**, so the update sensor needs no detail call — which is why
+device details can sit on the slow loop without making the most
+interesting sensor stale.
 
 ### 8.3 Change detection
 
@@ -905,6 +946,9 @@ deliberately late.
   (§2.5). Every type in §4 is bound to it.
 - ~~PoE power draw per port~~ — settled: absent from the Integration API,
   classic layer only (§2.2 footnote 3).
+- ~~Whether the list endpoints suffice~~ — settled by running against a
+  live console: `/networks` and `/devices` both omit fields their detail
+  counterparts carry, so both fan out (§2.2, §8.2).
 - ~~Localisation scope~~ — settled: English entity_id seeds and `unique_id`s,
   localised friendly names (§6.2), matching the sibling projects.
 - ~~Minimum Network version~~ — settled at **10.5**: the specs of 10.5.67 and

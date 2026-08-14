@@ -23,6 +23,8 @@ import (
 	"net/url"
 	"strconv"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
 )
@@ -50,6 +52,12 @@ const pageLimit = 200
 // maxPages bounds pagination so a console that keeps reporting a
 // totalCount it never delivers cannot spin forever.
 const maxPages = 100
+
+// detailConcurrency bounds the per-object follow-up calls that several
+// endpoints need (network subnets, device ports and uplinks). A site
+// with 12 devices and 10 networks would otherwise open 22 connections
+// at once against a box that also routes the household's traffic.
+const detailConcurrency = 4
 
 // Client talks to one console's Integration API.
 type Client struct {
@@ -186,6 +194,52 @@ func (c *Client) Devices(ctx context.Context, siteID string) ([]model.Device, er
 	return out, nil
 }
 
+// DevicesWithDetails lists the devices and fills in each one's ports,
+// radios and uplink.
+//
+// Like [Client.Networks] this pays one call per device, because the
+// list endpoint carries neither `uplink` nor `interfaces`. Without the
+// follow-up every device would report an empty uplink, and Home
+// Assistant's via_device topology (CONCEPT.md §6.1) would collapse into
+// a flat list.
+//
+// A device whose detail call fails keeps its overview data — state,
+// firmware and the update flag all come from the list, so the useful
+// sensors survive a transient failure on one device.
+func (c *Client) DevicesWithDetails(ctx context.Context, siteID string) ([]model.Device, error) {
+	devices, err := c.Devices(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(detailConcurrency)
+
+	for i := range devices {
+		g.Go(func() error {
+			d, err := c.Device(gctx, siteID, devices[i].ID)
+			if err != nil {
+				c.log.Warn("integration.device_detail_failed",
+					slog.String("device", devices[i].Name),
+					slog.String("err", err.Error()))
+				return nil
+			}
+			// Keep the overview's ClassicID (the detail response has no
+			// such field) while taking everything else from the richer
+			// payload.
+			d.ClassicID = devices[i].ClassicID
+			devices[i] = d
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	model.ResolveUplinks(devices)
+	return devices, nil
+}
+
 // Device fetches one device including its ports, radios and uplink.
 func (c *Client) Device(ctx context.Context, siteID, deviceID string) (model.Device, error) {
 	var d deviceDetails
@@ -222,18 +276,57 @@ func (c *Client) Clients(ctx context.Context, siteID string) ([]model.Client, er
 	return out, nil
 }
 
-// Networks lists the site's network/VLAN catalogue. Their subnets are
-// what map a client's IP onto a VLAN (CONCEPT.md §2.2).
+// Networks lists the site's network/VLAN catalogue including each
+// network's subnets, which are what map a client's IP onto a VLAN
+// (CONCEPT.md §2.2).
+//
+// This costs one call per network on top of the list, because the list
+// endpoint omits `ipv4Configuration` entirely — without the follow-up
+// every network would come back with no subnets and client→VLAN
+// mapping would silently resolve to nothing. Networks live in the
+// hourly `static` poll, so the extra requests are cheap.
+//
+// A network whose detail call fails keeps its overview data and loses
+// only its subnets: a transient failure on one VLAN must not take down
+// the whole catalogue.
 func (c *Client) Networks(ctx context.Context, siteID string) ([]model.Network, error) {
 	raw, err := paginate[networkOverview](ctx, c, c.path("/v1/sites/"+siteID+"/networks"))
 	if err != nil {
 		return nil, err
 	}
-	out := make([]model.Network, 0, len(raw))
+
+	out := make([]model.Network, len(raw))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(detailConcurrency)
+
 	for i := range raw {
-		out = append(out, toNetwork(&raw[i], c.log))
+		out[i] = toNetworkOverview(&raw[i])
+
+		g.Go(func() error {
+			d, err := c.network(gctx, siteID, raw[i].ID)
+			if err != nil {
+				c.log.Warn("integration.network_detail_failed",
+					slog.String("network", raw[i].Name),
+					slog.String("err", err.Error()))
+				return nil
+			}
+			out[i] = d
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 	return out, nil
+}
+
+// network fetches one network including its IPv4 configuration.
+func (c *Client) network(ctx context.Context, siteID, networkID string) (model.Network, error) {
+	var n networkDetails
+	if err := c.do(ctx, http.MethodGet, c.path("/v1/sites/"+siteID+"/networks/"+networkID), nil, nil, &n); err != nil {
+		return model.Network{}, err
+	}
+	return toNetwork(&n, c.log), nil
 }
 
 // WLANs lists the site's SSID catalogue.
