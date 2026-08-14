@@ -1,0 +1,118 @@
+/* SPDX-License-Identifier: MIT */
+
+/* Follows the viewer's theme rather than imposing one: this panel sits
+   inside Home Assistant, and a page that ignores dark mode is jarring
+   next to everything around it. */
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --border: #dfe3e8;
+  --text: #1c1f23;
+  --muted: #6b7480;
+  --ok: #2e7d32;
+  --warn: #b26a00;
+  --bad: #c62828;
+  --accent: #1565c0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c;
+    --panel: #1e2126;
+    --border: #313640;
+    --text: #e6e8eb;
+    --muted: #9aa3ae;
+    --ok: #66bb6a;
+    --warn: #ffa726;
+    --bad: #ef5350;
+    --accent: #64b5f6;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 0 2rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+h2 { margin: 0 0 0.6rem; font-size: 0.95rem; font-weight: 600; }
+
+.badges { display: flex; gap: 0.4rem; margin-left: auto; flex-wrap: wrap; }
+
+.badge {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  background: var(--ok);
+  color: #fff;
+}
+.badge.bad { background: var(--bad); }
+.badge.muted { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+
+main { padding: 1.25rem; display: flex; flex-direction: column; gap: 1.5rem; }
+
+section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+
+.count { color: var(--muted); font-weight: 400; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.chip .k { color: var(--muted); }
+.chip.bad { border-color: var(--bad); color: var(--bad); }
+.chip.stale { border-color: var(--warn); color: var(--warn); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+.grid .cell { border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem; }
+.grid .cell .k { color: var(--muted); font-size: 0.78rem; display: block; }
+.grid .cell .v { font-size: 1.05rem; font-weight: 600; }
+
+/* Wide tables scroll inside their own container so the page body never
+   scrolls sideways on a phone. */
+.table-scroll { overflow-x: auto; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.87rem; }
+th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
+tbody tr:last-child td { border-bottom: none; }
+
+.state-online { color: var(--ok); font-weight: 600; }
+.state-offline { color: var(--bad); font-weight: 600; }
+.state-other { color: var(--warn); font-weight: 600; }
+
+.dim { color: var(--muted); }
+.empty { color: var(--muted); margin: 0.4rem 0 0; }
+
+#alerts { border-color: var(--bad); }
+#alert-list { margin: 0; padding-left: 1.1rem; }
+#alert-list li { color: var(--bad); }
+
+footer { padding: 0 1.25rem; color: var(--muted); font-size: 0.8rem; }

@@ -51,6 +51,9 @@ func (c *Coordinator) refreshHealth(ctx context.Context) error {
 	if err := c.publishHealthDiscovery(ctx); err != nil {
 		return err
 	}
+	if c.store != nil {
+		c.store.SetHealth(health)
+	}
 	return c.publishHealth(ctx, &health)
 }
 

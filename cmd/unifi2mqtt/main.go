@@ -36,15 +36,19 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/coordinator"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
+	"github.com/SukramJ/go-unifi2mqtt/internal/state"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi/classic"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi/integration"
 	"github.com/SukramJ/go-unifi2mqtt/internal/version"
+	"github.com/SukramJ/go-unifi2mqtt/internal/web"
 )
 
 // minAppVersion is the UniFi Network version this project is verified
@@ -198,6 +202,13 @@ func bridge(
 ) error {
 	// The coordinator owns the topic layout, so it also decides where
 	// availability lives — main only needs the string to build the will.
+	// The store is only allocated with the web UI: without it the daemon
+	// stays a pure MQTT bridge and keeps no second copy of every device.
+	var store *state.Store
+	if cfg.WebEnable {
+		store = state.New(time.Now())
+	}
+
 	// The MQTT client is built after the coordinator (it needs the will
 	// topic the coordinator owns), so the subscriber is handed over with
 	// SetSubscriber once it exists.
@@ -206,6 +217,7 @@ func bridge(
 		Site:         site,
 		Source:       source,
 		Capabilities: caps,
+		Store:        store,
 		Info:         info,
 		Logger:       logger,
 	})
@@ -270,7 +282,32 @@ func bridge(
 	// the run context is already cancelled when this defer fires.
 	defer disconnect(c, lifecycle, logger)
 
-	return c.Run(ctx)
+	if !cfg.WebEnable {
+		return c.Run(ctx)
+	}
+
+	// Run the bridge and the web server together: either returning — a
+	// fatal coordinator error or a failed bind — cancels the other
+	// through the shared context.
+	srv, err := web.New(web.Config{
+		Bind:     cfg.WebBind,
+		User:     cfg.WebUser,
+		Password: cfg.WebPassword.Reveal(),
+		Language: cfg.Language,
+		Logger:   logger,
+	}, store)
+	if err != nil {
+		return err
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return c.Run(gctx) })
+	g.Go(func() error { return srv.Run(gctx) })
+
+	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+		return err
+	}
+	return nil
 }
 
 // disconnect announces the bridge offline and closes the broker session.
@@ -453,11 +490,11 @@ func printNetworks(networks []model.Network, wlans []model.WLAN) {
 
 	fmt.Printf("\nWLANS (%d)\n", len(wlans))
 	for _, w := range wlans {
-		state := "disabled"
+		enabled := "disabled"
 		if w.Enabled {
-			state = "enabled"
+			enabled = "enabled"
 		}
-		fmt.Printf("  %-24s %s\n", truncate(w.Name, 24), state)
+		fmt.Printf("  %-24s %s\n", truncate(w.Name, 24), enabled)
 	}
 }
 

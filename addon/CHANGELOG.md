@@ -263,3 +263,41 @@ entity.
   because it does not exist there, and report *that* — pointing at
   `/api/login` while the real issue was the password. A failure that
   exhausts both layouts now names what each one said.
+
+## Added in phase 7 — the diagnostic web UI
+
+- `internal/state` — a thread-safe snapshot of what the daemon last
+  read. Only allocated when `WEB_ENABLE` is on: without the UI a pure
+  MQTT bridge should not carry a second copy of every device.
+- `internal/web` — an embedded single-page UI answering one question:
+  is the bridge doing what it should? It shows the broker link, the site
+  and controller version, every poll loop with its age, the classic-layer
+  capabilities, site health, all devices with live statistics and PoE
+  draw, the filtered clients with presence, and the SSID catalogue.
+  Read-only — the write path is MQTT, and a second one would be a second
+  thing to secure.
+- Optional HTTP basic auth, compared in constant time. The static assets
+  sit behind the same gate as the API: an unauthenticated page that then
+  fails to load data is a confusing half-open door.
+- `GET /api/health` as a process-level liveness probe. It deliberately
+  stays green when the console is unreachable — a restart cannot fix the
+  console, so failing there would only produce a crash loop.
+
+### Notes
+
+- All asset and API references are relative, which is what lets the same
+  page work unchanged behind the Home Assistant Ingress path prefix.
+- The UI builds text nodes and never uses `innerHTML`: a device named
+  with markup is a legal UniFi name.
+- Statistics survive a device refresh. The two arrive from different
+  loops on different cadences, so wiping them would make the table blink
+  empty every minute. A device with no statistics at all is marked as
+  such, so it is distinguishable from one genuinely idle at 0%.
+
+### Fixed
+
+- **The store was accepted and never assigned.** `Deps.Store` reached
+  the constructor and was dropped on the floor, so the UI rendered an
+  empty page while everything compiled and every unit test passed. Found
+  by running it against the real console; a test now follows the data
+  from the poll loops into the store.

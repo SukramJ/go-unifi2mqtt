@@ -39,6 +39,7 @@ import (
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
+	"github.com/SukramJ/go-unifi2mqtt/internal/state"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
 	"github.com/SukramJ/go-unifi2mqtt/internal/version"
 )
@@ -102,6 +103,10 @@ type Deps struct {
 	// Nil means none, which is the correct reading when the classic
 	// layer is off.
 	Capabilities Capabilities
+	// Store, when non-nil, receives a copy of everything polled so the
+	// diagnostic web UI can render it. Nil keeps the daemon a pure MQTT
+	// bridge with no second copy of the data.
+	Store *state.Store
 	// Logger receives diagnostics; nil uses slog.Default().
 	Logger *slog.Logger
 	// Now supplies wall-clock time. Tests inject a fixed or steerable
@@ -121,6 +126,7 @@ type Coordinator struct {
 	now    func() time.Time
 	topics topicBuilder
 	pub    *publisher
+	store  *state.Store
 
 	// mu guards the cross-loop caches below. The static loop writes them
 	// and the fast loops read them, so a plain map would race.
@@ -190,6 +196,7 @@ func New(d Deps) *Coordinator {
 		site:             d.Site,
 		src:              d.Source,
 		caps:             caps,
+		store:            d.Store,
 		info:             d.Info,
 		sub:              d.Subscriber,
 		log:              log,
@@ -243,6 +250,9 @@ func (c *Coordinator) AvailabilityTopic() string { return c.topics.bridge(status
 // empty.
 func (c *Coordinator) OnConnect(ctx context.Context) {
 	c.pub.clear()
+	if c.store != nil {
+		c.store.SetMQTTConnected(true)
+	}
 	if err := c.pub.publishRaw(ctx, c.AvailabilityTopic(), payloadOnline, mqtt.QoS1); err != nil {
 		c.log.Warn("coordinator.availability_publish_failed", slog.String("err", err.Error()))
 	}
@@ -270,6 +280,8 @@ func (c *Coordinator) AnnounceOffline(ctx context.Context) {
 // — aborts, because retrying that forever would just hammer the console
 // while publishing nothing.
 func (c *Coordinator) Run(ctx context.Context) error {
+	c.primeStore()
+
 	// Prime the caches before the fast loops start, so the first device
 	// publish already carries ports, radios and uplinks rather than
 	// briefly announcing a flat topology.
@@ -328,6 +340,22 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	return err
 }
 
+// primeStore fills in the metadata the UI shows before the first poll
+// completes, so an operator opening the page during startup sees the
+// site and capabilities rather than an empty shell.
+func (c *Coordinator) primeStore() {
+	if c.store == nil {
+		return
+	}
+	c.store.SetSite(c.site, c.info)
+	for _, cap := range []unifi.Capability{
+		unifi.CapHealth, unifi.CapClientDetails, unifi.CapPortPower,
+		unifi.CapClientBlock, unifi.CapDeviceLocate, unifi.CapWLANToggle,
+	} {
+		c.store.SetCapability(string(cap), c.caps.Has(cap))
+	}
+}
+
 // loop runs fn immediately and then on every tick.
 //
 // A non-fatal error is logged and the loop continues — a console
@@ -353,6 +381,9 @@ func (c *Coordinator) loopWithNudge(
 		err := fn(ctx)
 		switch {
 		case err == nil:
+			if c.store != nil {
+				c.store.PollSucceeded(name, c.now())
+			}
 			return nil
 		case ctx.Err() != nil:
 			return ctx.Err()
@@ -363,6 +394,9 @@ func (c *Coordinator) loopWithNudge(
 		default:
 			c.log.Warn("coordinator.loop_error",
 				slog.String("loop", name), slog.String("err", err.Error()))
+			if c.store != nil {
+				c.store.PollFailed(name, err, c.now())
+			}
 			c.publishError(ctx, name, err)
 			return nil
 		}
@@ -447,6 +481,9 @@ func (c *Coordinator) refreshStatic(ctx context.Context) error {
 		}
 	}
 
+	if c.store != nil {
+		c.store.SetWLANs(wlans)
+	}
 	return c.publishWLANs(ctx, wlans)
 }
 
@@ -492,6 +529,9 @@ func (c *Coordinator) refreshDevices(ctx context.Context) error {
 	}
 
 	c.sweepDevices(ctx, present)
+	if c.store != nil {
+		c.store.SetDevices(devices)
+	}
 	return nil
 }
 
@@ -561,6 +601,9 @@ func (c *Coordinator) refreshDeviceStats(ctx context.Context) error {
 				c.log.Warn("coordinator.device_stats_failed",
 					slog.String("device", d.Name), slog.String("err", err.Error()))
 				return nil
+			}
+			if c.store != nil {
+				c.store.SetDeviceStats(d.MAC, stats, c.now())
 			}
 			if err := c.publishDeviceStats(gctx, d.MAC, &stats); err != nil {
 				c.log.Warn("coordinator.device_stats_publish_failed",
