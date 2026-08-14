@@ -1,0 +1,47 @@
+{
+  "offset": 0,
+  "limit": 200,
+  "count": 3,
+  "totalCount": 3,
+  "data": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "macAddress": "00:00:5E:00:53:01",
+      "ipAddress": "192.0.2.1",
+      "name": "Gateway",
+      "model": "UCG-Ultra",
+      "state": "ONLINE",
+      "supported": true,
+      "firmwareVersion": "4.3.6",
+      "firmwareUpdatable": false,
+      "features": ["switching"],
+      "interfaces": ["ports"]
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "macAddress": "00:00:5E:00:53:02",
+      "ipAddress": "192.0.2.2",
+      "name": "Basement Switch",
+      "model": "USW-Pro-24-PoE",
+      "state": "ONLINE",
+      "supported": true,
+      "firmwareVersion": "7.0.25",
+      "firmwareUpdatable": true,
+      "features": ["switching"],
+      "interfaces": ["ports"]
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "macAddress": "00:00:5E:00:53:03",
+      "ipAddress": "192.0.2.3",
+      "name": "Living Room AP",
+      "model": "U6-Pro",
+      "state": "OFFLINE",
+      "supported": true,
+      "firmwareVersion": "6.6.55",
+      "firmwareUpdatable": false,
+      "features": ["accessPoint"],
+      "interfaces": ["ports", "radios"]
+    }
+  ]
+}
