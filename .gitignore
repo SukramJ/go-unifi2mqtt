@@ -27,6 +27,28 @@ go.work.sum
 # env file
 .env
 
+# Compiled output from `make build`
+/bin/
+
 # Editor/IDE
 # .idea/
 # .vscode/
+/.idea
+
+# The operator's runtime config (developed from config-template.yaml) is
+# ignored, but NOT the Home Assistant add-on manifest of the same name.
+config.yaml
+!/addon/config.yaml
+
+# Release artefacts from `make release`
+/dist/
+
+# macOS
+.DS_Store
+
+# Per-developer Claude Code settings (the shared .claude/settings.json
+# stays tracked)
+.claude/settings.local.json
+
+# Captured OpenAPI documents (reference only, not fixtures)
+internal/unifi/integration/testdata/openapi-*.json

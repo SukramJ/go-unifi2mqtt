@@ -1,0 +1,150 @@
+# Home Assistant add-on manifest for go-unifi2mqtt.
+#
+# version MUST equal the published image tag (ghcr.io/sukramj/go-unifi2mqtt-addon-{arch})
+# and is bumped in the release commit that cuts the matching git tag.
+name: go-unifi2mqtt
+version: "0.1.0"
+slug: go-unifi2mqtt
+description: >-
+  Bridges a local UniFi Network console (UDM / UCG / UniFi OS Server /
+  software controller) to MQTT, with Home Assistant MQTT discovery and a
+  diagnostic web UI.
+url: https://github.com/SukramJ/go-unifi2mqtt
+arch:
+  - amd64
+  - aarch64
+  - armv7
+
+# Per-arch add-on image (HA base + bashio + run.sh) published by
+# .github/workflows/addon-image.yml. The Supervisor substitutes {arch}
+# (amd64/aarch64/armv7) and pulls <image>:<version>. This is distinct from the
+# distroless daemon image (ghcr.io/sukramj/go-unifi2mqtt), which runs the binary
+# directly and is NOT a valid add-on image (no run.sh to apply options).
+# Remove this key to build addon/Dockerfile locally instead.
+image: "ghcr.io/sukramj/go-unifi2mqtt-addon-{arch}"
+
+# The HA base image ships s6-overlay as its init; don't let the Supervisor
+# inject its own init on top.
+init: false
+
+# Diagnostic web UI surfaced as an HA panel via Ingress — no port needs to be
+# exposed.
+ingress: true
+ingress_port: 8080
+panel_icon: mdi:router-network
+panel_title: go-unifi2mqtt
+
+# Optional host-port exposure (disabled by default — `null` publishes no port,
+# Ingress stays the primary path). Assign a host port in the add-on's Network
+# tab only when you need to reach :8080 directly.
+ports:
+  8080/tcp: null
+ports_description:
+  8080/tcp: "Diagnostic web UI (normally reached via Ingress)"
+
+# Soft dependency: use the Supervisor's MQTT broker (core-mosquitto) when present.
+services:
+  - mqtt:want
+
+options:
+  # --- UniFi console ---
+  # unifi_api_key is created in UniFi Network under
+  # Settings -> Control Plane -> Integrations. It inherits the creating
+  # admin's permissions, so a read-only admin is enough when controls_enable
+  # is off.
+  unifi_host: ""
+  unifi_port: 443
+  unifi_api_key: ""
+  unifi_site: default
+  # UniFi consoles ship a self-signed certificate on their LAN address, so
+  # verification is off by default. Turn it on (and supply a trusted cert)
+  # when you reach the console through a properly certified hostname.
+  unifi_verify_tls: false
+
+  # --- Classic API fallback ---
+  # The official Integration API exposes no site health, no client blocking
+  # and no WLAN toggles. Enabling this adds a cookie-session client against
+  # the classic controller API to fill those gaps. Requires a local UniFi
+  # admin account (not a Ubiquiti SSO account, and 2FA must be off).
+  classic_enable: false
+  classic_username: ""
+  classic_password: ""
+
+  # --- MQTT ---
+  # Leave mqtt_server empty to use the broker the Supervisor already knows
+  # about (the MQTT integration / core-mosquitto add-on).
+  mqtt_server: ""
+  mqtt_port: 1883
+  mqtt_login: ""
+  mqtt_password: ""
+  mqtt_topic: unifi
+
+  # --- Home Assistant discovery ---
+  hass_enable: true
+
+  # --- Polling cadences (seconds) ---
+  refresh_devices: 60
+  refresh_clients: 30
+  refresh_health: 60
+
+  # --- Clients / presence ---
+  # Off by default: a busy network would otherwise create hundreds of
+  # entities on first start. Empty filter lists mean "no restriction on
+  # this dimension"; a client must match every non-empty list to be
+  # published.
+  clients_enable: false
+  clients_types:
+    - WIRELESS
+  clients_networks: []
+  clients_vlans: []
+  clients_ssids: []
+  clients_include_macs: []
+  clients_exclude_macs: []
+  clients_max: 100
+
+  # --- Controls (write-back from Home Assistant) ---
+  # Off by default: turning this on lets HA restart devices, power-cycle PoE
+  # ports and block clients.
+  controls_enable: false
+
+  # --- Misc ---
+  web_enable: true
+  language: en
+  debug: false
+
+schema:
+  unifi_host: str
+  unifi_port: int(1,65535)
+  unifi_api_key: password
+  unifi_site: str
+  unifi_verify_tls: bool
+  classic_enable: bool
+  classic_username: "str?"
+  classic_password: "password?"
+  mqtt_server: "str?"
+  mqtt_port: int(1,65535)
+  mqtt_login: "str?"
+  mqtt_password: "password?"
+  mqtt_topic: str
+  hass_enable: bool
+  refresh_devices: int(5,3600)
+  refresh_clients: int(5,3600)
+  refresh_health: int(5,3600)
+  clients_enable: bool
+  clients_types:
+    - "list(WIRED|WIRELESS|VPN|TELEPORT)"
+  clients_networks:
+    - str
+  clients_vlans:
+    - int(0,4094)
+  clients_ssids:
+    - str
+  clients_include_macs:
+    - str
+  clients_exclude_macs:
+    - str
+  clients_max: int(1,2000)
+  controls_enable: bool
+  web_enable: bool
+  language: "list(en|de)"
+  debug: bool

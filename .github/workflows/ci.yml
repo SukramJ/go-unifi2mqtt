@@ -1,0 +1,80 @@
+# GitHub Actions CI for go-unifi2mqtt.
+#
+# Three jobs: lint (gofumpt + go vet), test (matrix across the OS
+# triplet the daemon supports — race detector on, so CGo enabled for
+# this single step), build (sanity-check that the binary produces a
+# version banner). Concurrency cancels stale runs on the same ref so
+# a fast-pushing developer isn't billed for outdated commits.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CGO_ENABLED: "0"
+  GO_VERSION: "1.26"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: gofumpt
+        run: |
+          go install mvdan.cc/gofumpt@latest
+          diff=$(gofumpt -l .)
+          if [ -n "$diff" ]; then
+            echo "::error::gofumpt would rewrite:"
+            echo "$diff"
+            exit 1
+          fi
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: go test
+        env:
+          # Race detector requires CGo; re-enable just for this step.
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 -timeout=120s ./...
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: build daemon
+        run: make build
+      - name: version banner
+        run: ./bin/unifi2mqtt --version

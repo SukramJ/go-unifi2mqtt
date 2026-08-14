@@ -1,0 +1,15 @@
+# Keep the build context small so `docker build` is fast and
+# reproducible. Anything we don't need at build time stays out.
+.git
+.github
+.idea
+.vscode
+bin/
+coverage.out
+*.out
+*.test
+README.md
+Makefile
+Dockerfile
+.dockerignore
+.gitignore

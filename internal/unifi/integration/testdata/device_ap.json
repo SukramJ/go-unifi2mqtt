@@ -1,0 +1,44 @@
+{
+  "id": "33333333-3333-4333-8333-333333333333",
+  "macAddress": "00:00:5E:00:53:03",
+  "ipAddress": "192.0.2.3",
+  "name": "Living Room AP",
+  "model": "U6-Pro",
+  "supported": true,
+  "state": "ONLINE",
+  "firmwareVersion": "6.6.55",
+  "firmwareUpdatable": false,
+  "adoptedAt": "2026-02-20T19:05:00Z",
+  "configurationId": "cfg-def456",
+  "uplink": {
+    "deviceId": "22222222-2222-4222-8222-222222222222"
+  },
+  "features": {
+    "accessPoint": {}
+  },
+  "interfaces": {
+    "ports": [
+      {
+        "idx": 1,
+        "state": "UP",
+        "connector": "RJ45",
+        "maxSpeedMbps": 1000,
+        "speedMbps": 1000
+      }
+    ],
+    "radios": [
+      {
+        "wlanStandard": "802.11ax",
+        "frequencyGHz": 2.4,
+        "channelWidthMHz": 20,
+        "channel": 6
+      },
+      {
+        "wlanStandard": "802.11ax",
+        "frequencyGHz": 5,
+        "channelWidthMHz": 80,
+        "channel": 36
+      }
+    ]
+  }
+}
