@@ -84,6 +84,9 @@ func (c *Coordinator) refreshClients(ctx context.Context) error {
 		}
 	}
 	c.expireAbsent(ctx, present, now)
+	if c.store != nil {
+		c.store.DropClients(present)
+	}
 	return nil
 }
 
@@ -99,6 +102,9 @@ func (c *Coordinator) trackPresent(ctx context.Context, cl *model.Client, now ti
 	c.clients[key] = st
 	c.mu.Unlock()
 
+	if c.store != nil {
+		c.store.SetClient(*cl, true, now)
+	}
 	if !known {
 		if err := c.publishClientDiscovery(ctx, cl); err != nil {
 			return err
@@ -141,6 +147,9 @@ func (c *Coordinator) expireAbsent(ctx context.Context, present map[string]bool,
 		c.log.Debug("coordinator.client_away",
 			slog.String("client", e.client.Name),
 			slog.Duration("absent_for", timeout))
+		if c.store != nil {
+			c.store.SetClient(e.client, false, now)
+		}
 		if err := c.publishClient(ctx, &e.client, false); err != nil {
 			c.log.Warn("coordinator.client_publish_failed",
 				slog.String("client", e.client.Name), slog.String("err", err.Error()))

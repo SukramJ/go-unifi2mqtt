@@ -19,12 +19,13 @@ PoE port, block a client, …) are written back to the console.
 **Read [`CONCEPT.md`](./CONCEPT.md) before touching anything** — it is
 the implementation concept: API strategy, package layout, MQTT topic
 tree, HA entity model, client filtering, polling design and the phased
-roadmap. Phases 0–6 are done: the daemon polls the console, publishes
+roadmap. Phases 0–7 are done: the daemon polls the console, publishes
 devices, ports, radios, the WLAN catalogue, filtered clients with
 presence detection and — with the optional classic layer — site health,
 per-client SSID/signal and PoE wattage, announces all of it to Home
-Assistant, and accepts write-back commands. The diagnostic web UI
-(phase 7) is next.
+Assistant, accepts write-back commands, and serves a diagnostic web UI.
+What remains is the documentation pass and the 1.0.0 release (phase 8),
+plus the optional WebSocket accelerator (phase 9).
 
 ## Key Characteristics
 
@@ -72,8 +73,7 @@ CONCEPT.md               implementation concept — the design source of truth
 .github/workflows/       ci.yml, docker-build-push.yml, addon-image.yml, release-on-tag.yml, codeql.yml, dependabot-auto-merge.yml
 ```
 
-Everything above exists as of phase 5 except `state` and `web`, which
-arrive with the diagnostic UI in phase 7.
+Every package above exists as of phase 7.
 
 The MQTT transport is not part of this tree: it comes from the external
 `github.com/SukramJ/go-mqtt` module as a regular `go.mod` dependency,
@@ -184,6 +184,13 @@ etc. — no special test runner beyond `go test`.
   expired session arrives as `meta.rc = "error"` with a 200 status. A
   client checking only status codes decodes an empty data array and
   treats a logged-out session as "the site has no clients" — forever.
+- **Web assets must use relative references.** The Home Assistant
+  Ingress proxy serves the page under a generated path prefix; an
+  absolute `/app.css` or `/api/state` escapes it and 404s.
+  `TestAssetReferencesAreRelative` pins this.
+- **Never interpolate console values as HTML.** A device named
+  `<img onerror=…>` is a legal UniFi name. The UI builds text nodes
+  only, and a test rejects `innerHTML` outright.
 - **Never rebuild a topic in a second place.** `internal/hass` receives
   the topic layout through the `Topics` interface rather than
   reconstructing it from config. Two copies drifting apart produce

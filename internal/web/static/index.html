@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>go-unifi2mqtt</title>
+<!--
+  Every reference here is relative on purpose. The Home Assistant
+  Ingress proxy serves this page under a generated path prefix, and an
+  absolute /app.css or /api/state would escape it and 404.
+-->
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<header>
+  <h1>go-unifi2mqtt</h1>
+  <div class="badges">
+    <span id="mqtt-badge" class="badge">MQTT</span>
+    <span id="site-badge" class="badge muted"></span>
+    <span id="version-badge" class="badge muted"></span>
+  </div>
+</header>
+
+<main>
+  <section id="alerts" hidden>
+    <h2 data-i18n="problems">Problems</h2>
+    <ul id="alert-list"></ul>
+  </section>
+
+  <section>
+    <h2 data-i18n="loops">Poll loops</h2>
+    <div id="loops" class="chips"></div>
+  </section>
+
+  <section id="health-section" hidden>
+    <h2 data-i18n="health">Site health</h2>
+    <div id="health" class="grid"></div>
+  </section>
+
+  <section>
+    <h2><span data-i18n="devices">Devices</span> <span id="device-count" class="count"></span></h2>
+    <div class="table-scroll">
+      <table id="devices">
+        <thead><tr>
+          <th data-i18n="name">Name</th>
+          <th data-i18n="model">Model</th>
+          <th data-i18n="state">State</th>
+          <th data-i18n="uptime">Uptime</th>
+          <th>CPU</th>
+          <th data-i18n="memory">Memory</th>
+          <th data-i18n="throughput">Throughput</th>
+          <th data-i18n="uplink">Uplink</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="clients-section">
+    <h2><span data-i18n="clients">Clients</span> <span id="client-count" class="count"></span></h2>
+    <div class="table-scroll">
+      <table id="clients">
+        <thead><tr>
+          <th data-i18n="name">Name</th>
+          <th data-i18n="type">Type</th>
+          <th data-i18n="presence">Presence</th>
+          <th data-i18n="address">Address</th>
+          <th data-i18n="network">Network</th>
+          <th data-i18n="signal">Signal</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="clients-empty" class="empty" data-i18n="clientsOff" hidden>
+      Client publication is off (CLIENTS.ENABLE).
+    </p>
+  </section>
+
+  <section id="wlan-section" hidden>
+    <h2 data-i18n="wlans">WLANs</h2>
+    <div id="wlans" class="chips"></div>
+  </section>
+</main>
+
+<footer>
+  <span id="updated"></span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
