@@ -80,6 +80,7 @@ controller API to fill those gaps.
 | `mqtt_topic` | `unifi` | Root of the published topic tree. |
 | `hass_enable` | `true` | Publish Home Assistant discovery. |
 | `hass_base_topic` | `homeassistant` | Discovery prefix. Only change this if you changed it in the MQTT integration too. |
+| `hass_cleanup` | `true` | On start, remove discovery configs this add-on owns but no longer publishes — leftovers from an older version, a removed device, or a filter that no longer matches. Only configs carrying this bridge's own identifiers are touched, so other integrations and a second instance on the same broker are unaffected. |
 
 ### Polling
 
@@ -187,6 +188,10 @@ IP; it presents a self-signed certificate.
 integration is configured, and the log shows a successful broker
 connect. After a Home Assistant restart the add-on re-announces
 everything automatically.
+
+**An entity is stuck `unavailable` and nothing publishes to it** — it is
+a leftover discovery config. With `hass_cleanup` on it is removed at the
+next start, once the poll it belongs to has reported.
 
 **Entity ids came out in German** — entities created before version
 1.0.1 could pick up their id from the translated name. Home Assistant

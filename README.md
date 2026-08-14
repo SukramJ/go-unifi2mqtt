@@ -159,6 +159,13 @@ unifi/<site>/client/<mac>/cmd/authorize          ← {"minutes":60} or empty
 unifi/<site>/wlan/<id>/enabled/set               ← ON | OFF
 ```
 
+Discovery configs are retained too, and stale ones are cleared on
+start: the daemon reads back what is retained under the discovery
+prefix and removes the entities it owns but no longer publishes. It
+identifies its own by `unique_id` prefix *and* availability topic, so a
+second instance on the same broker is left alone. `HASS_CLEANUP: false`
+disables it.
+
 State topics are retained, command topics are not. **Retained commands
 are ignored on purpose**: a stale `mosquitto_pub -r` would otherwise
 power-cycle a port every time the daemon starts.

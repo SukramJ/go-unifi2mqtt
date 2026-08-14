@@ -200,6 +200,18 @@ etc. — no special test runner beyond `go test`.
 - **Never interpolate console values as HTML.** A device named
   `<img onerror=…>` is a legal UniFi name. The UI builds text nodes
   only, and a test rejects `innerHTML` outright.
+- **Orphan cleanup needs two ownership signals, not one.** The startup
+  reconcile clears retained discovery configs by `unique_id` prefix
+  **and** the bridge availability topic in the payload. Dropping either
+  check compiles and passes a naive test: the id alone makes two
+  instances of this daemon on one broker delete each other's entities,
+  because they share the `unifi_` namespace.
+- **Never sweep a class whose source has not reported.** An empty
+  announced set means "not polled yet", not "gone".
+  `internal/coordinator/reconcile.go` gates per class and treats a
+  device poll returning zero devices as *not* ready — an empty list is
+  usually a permission problem, and reading it as truth deletes every
+  device entity with its history.
 - **Never rebuild a topic in a second place.** `internal/hass` receives
   the topic layout through the `Topics` interface rather than
   reconstructing it from config. Two copies drifting apart produce

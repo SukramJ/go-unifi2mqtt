@@ -22,7 +22,10 @@ type fakeSubscriber struct {
 	mu       sync.Mutex
 	filters  []string
 	handlers []mqtt.MessageHandler
-	err      error
+	// unsubscribed records the filters torn down again, which the orphan
+	// reconcile is expected to do.
+	unsubscribed []string
+	err          error
 }
 
 func (s *fakeSubscriber) Subscribe(_ context.Context, filter string, _ mqtt.QoS, h mqtt.MessageHandler, _ ...mqtt.SubscribeOption) (mqtt.SubscribeResult, error) {

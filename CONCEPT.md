@@ -714,11 +714,41 @@ grace period every presence automation flaps. An `AWAY_TIMEOUT` below
 - **Two-stage availability:** device entities additionally use their own
   `state` topic as an availability source, so a switch that went offline does
   not sit there showing stale CPU figures.
-- **Orphaned discovery configs** are reconciled at startup and after every
-  structural-change poll: the coordinator remembers which `config` topics it
-  published and deletes (empty retained message) those whose object
-  disappeared. A removed device would otherwise leave a dead entity in HA
-  forever.
+- **Orphaned discovery configs** are reconciled on two levels, because the
+  cheap one cannot see the interesting case.
+
+  *Within a run*, the coordinator remembers which `config` topics each object
+  published and clears (empty retained message) those whose object
+  disappeared — a device removed from the site, a port that vanished.
+
+  *Across runs*, that memory does not exist. A config written by an earlier
+  version under a different key, by a device unplugged while the daemon was
+  stopped, or by a filter that used to match more clients, stays retained on
+  the broker: HA recreates the entity on every start and it sits `unavailable`
+  forever with nothing to explain it. So on start the daemon subscribes to
+  `<HASS_BASE_TOPIC>/+/+/+/config`, collects what the broker replays, and
+  clears what it owns but no longer publishes. `HASS_CLEANUP: false` disables
+  it.
+
+  **Ownership needs two signals to agree** — the `unique_id` must be in the
+  `unifi_` namespace *and* the payload must name this bridge's availability
+  topic, which embeds `MQTT_TOPIC`. Neither alone is enough: another
+  integration could use a colliding id, and a second instance of this daemon
+  bridging another console to the same broker uses the same id namespace. With
+  only the id check the two instances would delete each other's entities on
+  every start.
+
+  **The sweep is gated per class** (device / client / site / WLAN) on that
+  class's source having reported. An empty announced set means "not polled
+  yet" until the corresponding poll succeeds, and sweeping on the other
+  reading would delete every live entity along with its history. A device poll
+  that returns *nothing* does not count as having reported — an empty list is
+  far more often a permission problem than an empty site. A source that is
+  switched off, by contrast, is ready immediately: turning `CLIENTS.ENABLE`
+  off is a decision that those entities should go. A source that never
+  succeeds (classic health against a console that rejects the login) stops
+  holding the sweep back after a timeout, so the classes that did report are
+  still tidied.
 - **HA birth message:** the daemon subscribes to `homeassistant/status` and
   republishes the whole discovery `HASS_BIRTH_GRACETIME` seconds after HA
   announces `online`.

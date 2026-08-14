@@ -194,6 +194,7 @@ func applyEnv(cfg *Config, env Env) error {
 		"HASS_ENABLE":          boolean(&cfg.HASSEnable),
 		"HASS_BASE_TOPIC":      str(&cfg.HASSBaseTopic),
 		"HASS_BIRTH_GRACETIME": num(&cfg.HASSBirthGracetime),
+		"HASS_CLEANUP":         boolean(&cfg.HASSCleanup),
 
 		// Polling
 		"REFRESH_DEVICES":      num(&cfg.RefreshDevices),

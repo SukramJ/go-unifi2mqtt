@@ -75,6 +75,15 @@ configuration:
     name: Discovery-Präfix
     description: >-
       Nur ändern, wenn du es auch in der MQTT-Integration geändert hast.
+  hass_cleanup:
+    name: Verwaiste Entitäten entfernen
+    description: >-
+      Beim Start die Discovery-Konfigurationen entfernen, die dieses Add-on
+      besitzt, aber nicht mehr veröffentlicht — Entitäten aus einer älteren
+      Version, von einem entfernten Gerät oder aus einem Filter, der nicht
+      mehr zutrifft. Angefasst werden nur Konfigurationen mit den eigenen
+      Kennungen dieser Bridge. Aus lassen, wenn Entitäten nur manuell
+      verschwinden sollen.
 
   refresh_devices:
     name: Geräte abfragen (Sekunden)

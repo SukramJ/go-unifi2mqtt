@@ -87,6 +87,10 @@ func (c *Coordinator) refreshClients(ctx context.Context) error {
 	if c.store != nil {
 		c.store.DropClients(present)
 	}
+	// Unlike devices, an empty result is a legitimate steady state here:
+	// filters exist precisely to narrow the list, sometimes to nothing.
+	// The poll succeeded, so the announced set is complete either way.
+	c.readyClients.Store(true)
 	return nil
 }
 

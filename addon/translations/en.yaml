@@ -74,6 +74,14 @@ configuration:
     name: Discovery prefix
     description: >-
       Only change this if you also changed it in the MQTT integration.
+  hass_cleanup:
+    name: Remove orphaned entities
+    description: >-
+      On start, clear the discovery configs this add-on owns but no longer
+      publishes — entities left behind by an earlier version, by a device
+      that was removed, or by a filter that no longer matches. Only configs
+      carrying this bridge's own identifiers are touched. Turn off to keep
+      every entity until you delete it yourself.
 
   refresh_devices:
     name: Device refresh (seconds)

@@ -53,6 +53,7 @@ export UNIFI_MQTT_TOPIC="$(bashio::config 'mqtt_topic')"
 # --- Home Assistant discovery ---
 export UNIFI_HASS_ENABLE="$(bashio::config 'hass_enable')"
 export UNIFI_HASS_BASE_TOPIC="$(bashio::config 'hass_base_topic')"
+export UNIFI_HASS_CLEANUP="$(bashio::config 'hass_cleanup')"
 
 # --- Polling cadences (seconds) ---
 export UNIFI_REFRESH_DEVICES="$(bashio::config 'refresh_devices')"

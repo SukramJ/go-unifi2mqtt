@@ -66,6 +66,15 @@ type publisher struct {
 	// minutes". Per-topic ages also spread the forced traffic out
 	// instead of bunching it into one burst.
 	last map[string]entry
+	// configs is the set of discovery config topics currently announced.
+	//
+	// Separate from last because the two answer different questions.
+	// last is "what did we send", and a reconnect wipes it so everything
+	// is resent; configs is "which entities do we currently claim", which
+	// a reconnect does not change. The orphan reconcile compares the
+	// broker's retained configs against this set, so clearing it on
+	// reconnect would make every entity look orphaned.
+	configs map[string]bool
 }
 
 // entry is one topic's last publication.
@@ -81,6 +90,7 @@ func newPublisher(out Publisher, forceEvery time.Duration, now func() time.Time,
 		now:        now,
 		forceEvery: forceEvery,
 		last:       make(map[string]entry),
+		configs:    make(map[string]bool),
 	}
 }
 
@@ -166,6 +176,13 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 	now := p.now()
 	if payload != nil {
 		p.mu.Lock()
+		// Recorded before the skip check, not after: change detection
+		// suppresses the send, but the entity is still claimed. Recording
+		// only on the sends that go out would drop a topic from the set
+		// the moment its payload stopped changing — and the reconcile
+		// would then read it back off the broker as an orphan and delete
+		// a live entity.
+		p.configs[topic] = true
 		prev, known := p.last[topic]
 		skip := known && bytes.Equal(prev.payload, payload) && !p.staleLocked(prev, now)
 		p.mu.Unlock()
@@ -178,6 +195,9 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 		return err
 	}
 	if payload == nil {
+		p.mu.Lock()
+		delete(p.configs, topic)
+		p.mu.Unlock()
 		return nil
 	}
 
@@ -185,6 +205,14 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 	p.last[topic] = entry{payload: payload, at: now}
 	p.mu.Unlock()
 	return nil
+}
+
+// announcedConfigs is the set of discovery config topics currently
+// claimed, copied so the caller cannot race the poll loops.
+func (p *publisher) announcedConfigs() map[string]bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return maps.Clone(p.configs)
 }
 
 // forget clears the remembered payloads for every topic under prefix
