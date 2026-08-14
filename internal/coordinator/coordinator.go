@@ -36,6 +36,7 @@ import (
 	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
+	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
 	"github.com/SukramJ/go-unifi2mqtt/internal/version"
@@ -64,6 +65,9 @@ type Deps struct {
 	// Info is what the console reported at startup; republished on the
 	// bridge info topic.
 	Info model.ControllerInfo
+	// Subscriber receives the Home Assistant birth message. Nil disables
+	// re-announcing on Home Assistant restarts.
+	Subscriber Subscriber
 	// Logger receives diagnostics; nil uses slog.Default().
 	Logger *slog.Logger
 	// Now supplies wall-clock time. Tests inject a fixed or steerable
@@ -76,6 +80,7 @@ type Coordinator struct {
 	cfg    *config.Config
 	site   model.Site
 	src    Source
+	sub    Subscriber
 	info   model.ControllerInfo
 	log    *slog.Logger
 	now    func() time.Time
@@ -95,6 +100,17 @@ type Coordinator struct {
 	// seen tracks which devices have been published, so one that
 	// disappears can have its topics cleared instead of lingering.
 	seen map[model.MAC]bool
+	// announced maps a device to the discovery config topics it created,
+	// which is what makes removing its entities possible when it
+	// disappears or loses a port.
+	announced map[model.MAC][]string
+
+	// hass builds discovery payloads; nil when HASS_ENABLE is false.
+	hass *hass.Discovery
+	// rediscover carries Home Assistant birth messages from the MQTT
+	// read loop to the goroutine that re-announces discovery. Buffered
+	// with room for one: several births in a row need one re-announce.
+	rediscover chan struct{}
 }
 
 // New builds a Coordinator from deps.
@@ -109,18 +125,25 @@ func New(d Deps) *Coordinator {
 	}
 
 	topics := newTopicBuilder(d.Cfg.MQTTTopic, d.Site.Internal)
-	return &Coordinator{
-		cfg:     d.Cfg,
-		site:    d.Site,
-		src:     d.Source,
-		info:    d.Info,
-		log:     log,
-		now:     now,
-		topics:  topics,
-		pub:     newPublisher(d.MQTT, d.Cfg.ForceRepublishDuration(), now, log),
-		details: make(map[model.MAC]model.Device),
-		seen:    make(map[model.MAC]bool),
+	c := &Coordinator{
+		cfg:        d.Cfg,
+		site:       d.Site,
+		src:        d.Source,
+		info:       d.Info,
+		sub:        d.Subscriber,
+		log:        log,
+		now:        now,
+		topics:     topics,
+		pub:        newPublisher(d.MQTT, d.Cfg.ForceRepublishDuration(), now, log),
+		details:    make(map[model.MAC]model.Device),
+		seen:       make(map[model.MAC]bool),
+		announced:  make(map[model.MAC][]string),
+		rediscover: make(chan struct{}, 1),
 	}
+	if d.Cfg.HASSEnable {
+		c.hass = hass.New(c.DiscoveryConfig(d.Cfg.HASSBaseTopic, d.Cfg.Language))
+	}
+	return c
 }
 
 // SetPublisher swaps in the outbound publisher after construction.
@@ -133,6 +156,11 @@ func New(d Deps) *Coordinator {
 func (c *Coordinator) SetPublisher(p Publisher) {
 	c.pub.out = p
 }
+
+// SetSubscriber wires the inbound MQTT client. Like [SetPublisher] this
+// happens after construction because the MQTT client needs the will
+// topic the coordinator owns. Call before Run.
+func (c *Coordinator) SetSubscriber(s Subscriber) { c.sub = s }
 
 // AvailabilityTopic is the retained topic carrying the bridge's
 // online/offline state. main wires it as the MQTT will and republishes
@@ -185,8 +213,15 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		c.log.Warn("coordinator.initial_static_failed", slog.String("err", err.Error()))
 	}
 
+	// Subscribing before the loops start means a Home Assistant that
+	// restarts during the first poll is still caught.
+	if err := c.watchHomeAssistant(ctx, c.sub); err != nil {
+		c.log.Warn("coordinator.hass_status_subscribe_failed", slog.String("err", err.Error()))
+	}
+
 	g, gctx := errgroup.WithContext(ctx)
 
+	g.Go(func() error { return c.rediscoverLoop(gctx) })
 	g.Go(func() error {
 		return c.loop(gctx, "devices", c.cfg.RefreshDevicesDuration(), c.refreshDevices)
 	})
@@ -286,6 +321,19 @@ func (c *Coordinator) refreshStatic(ctx context.Context) error {
 	c.networks = networks
 	c.mu.Unlock()
 
+	// Discovery is announced from here rather than the fast loop because
+	// ports and radios decide how many entities a device has, and those
+	// only arrive with the details.
+	for i := range devices {
+		if devices[i].MAC.IsZero() {
+			continue
+		}
+		if err := c.publishDiscovery(ctx, &devices[i]); err != nil {
+			c.log.Warn("coordinator.discovery_publish_failed",
+				slog.String("device", devices[i].Name), slog.String("err", err.Error()))
+		}
+	}
+
 	return c.publishWLANs(ctx, wlans)
 }
 
@@ -330,7 +378,7 @@ func (c *Coordinator) refreshDevices(ctx context.Context) error {
 		}
 	}
 
-	c.sweepDevices(present)
+	c.sweepDevices(ctx, present)
 	return nil
 }
 
@@ -341,21 +389,33 @@ func (c *Coordinator) refreshDevices(ctx context.Context) error {
 // The retained topics themselves are left in place here; removing them
 // is discovery's job in phase 3, where the config topic that created
 // the entity is also cleared.
-func (c *Coordinator) sweepDevices(present map[model.MAC]bool) {
+func (c *Coordinator) sweepDevices(ctx context.Context, present map[model.MAC]bool) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
+	var gone []model.MAC
 	for mac := range c.seen {
-		if present[mac] {
-			continue
+		if !present[mac] {
+			gone = append(gone, mac)
 		}
-		dropped := c.pub.forget(c.topics.devicePrefix(mac))
-		c.log.Info("coordinator.device_gone",
-			slog.String("mac", mac.Colon()), slog.Int("topics", len(dropped)))
+	}
+	for _, mac := range gone {
 		delete(c.seen, mac)
 	}
 	for mac := range present {
 		c.seen[mac] = true
+	}
+	c.mu.Unlock()
+
+	for _, mac := range gone {
+		dropped := c.pub.forget(c.topics.devicePrefix(mac))
+		c.log.Info("coordinator.device_gone",
+			slog.String("mac", mac.Colon()), slog.Int("topics", len(dropped)))
+		// Removing the entities matters more than dropping the memory: a
+		// device that was decommissioned would otherwise leave a set of
+		// permanently unavailable entities in Home Assistant.
+		c.forgetDiscovery(ctx, mac)
+		c.mu.Lock()
+		delete(c.details, mac)
+		c.mu.Unlock()
 	}
 }
 

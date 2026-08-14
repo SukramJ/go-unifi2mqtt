@@ -147,6 +147,46 @@ func (p *publisher) publishRaw(ctx context.Context, topic, payload string, qos m
 	return nil
 }
 
+// publishConfig sends a Home Assistant discovery config.
+//
+// QoS 1 and retained, unlike state values: a config creates an entity,
+// and a lost one leaves a device silently missing from Home Assistant
+// while its state topics keep arriving. A nil payload clears the
+// retained message, which is how an entity is removed.
+//
+// It goes through change detection like everything else — a config
+// republished on every poll would be pure noise — but a nil payload
+// always goes out, because "already deleted" is not something worth
+// optimising and skipping it would leave a stale entity behind.
+func (p *publisher) publishConfig(ctx context.Context, topic string, payload []byte) error {
+	if p.out == nil {
+		return ErrNoPublisher
+	}
+
+	now := p.now()
+	if payload != nil {
+		p.mu.Lock()
+		prev, known := p.last[topic]
+		skip := known && bytes.Equal(prev.payload, payload) && !p.staleLocked(prev, now)
+		p.mu.Unlock()
+		if skip {
+			return nil
+		}
+	}
+
+	if err := p.out.Publish(ctx, topic, payload, mqtt.QoS1, true); err != nil {
+		return err
+	}
+	if payload == nil {
+		return nil
+	}
+
+	p.mu.Lock()
+	p.last[topic] = entry{payload: payload, at: now}
+	p.mu.Unlock()
+	return nil
+}
+
 // forget clears the remembered payloads for every topic under prefix
 // and returns the topics that were dropped.
 //

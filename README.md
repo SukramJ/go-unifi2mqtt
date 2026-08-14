@@ -11,12 +11,12 @@ It talks to the console over the **official UniFi Network Integration API**
 classic controller API for the handful of things the official surface does
 not expose.
 
-> **Status: early development (phase 2 of 9).** The daemon polls the
-> console and publishes devices, ports, radios and the WLAN catalogue to
-> MQTT with change detection and a retained availability topic. Home
-> Assistant discovery is phase 3 and clients are phase 4, so entities
-> still have to be configured by hand for now. The roadmap and the design
-> rationale live in [`CONCEPT.md`](CONCEPT.md), the design source of truth.
+> **Status: early development (phase 3 of 9).** The daemon polls the
+> console, publishes devices, ports, radios and the WLAN catalogue to
+> MQTT, and announces them to Home Assistant — devices appear on their
+> own, wired into the real network topology. Clients and presence
+> detection are phase 4. The roadmap and the design rationale live in
+> [`CONCEPT.md`](CONCEPT.md), the design source of truth.
 
 ## What it publishes
 

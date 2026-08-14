@@ -91,6 +91,16 @@ func (b topicBuilder) bridge(key string) string {
 	return b.root + "/" + bridgeSegment + "/" + key
 }
 
+// DeviceTopic returns a device topic, e.g.
+// "unifi/default/device/aabbccddeeff/state".
+//
+// Exported so the discovery builder can point its configs at the exact
+// topics this package publishes to, instead of rebuilding the layout
+// from the same config values and drifting apart later.
+func (c *Coordinator) DeviceTopic(mac model.MAC, key string) string {
+	return c.topics.device(mac, key)
+}
+
 // device returns a device topic, e.g.
 // "unifi/default/device/aabbccddeeff/state".
 func (b topicBuilder) device(mac model.MAC, key string) string {
@@ -115,7 +125,7 @@ func (b topicBuilder) port(mac model.MAC, idx int, key string) string {
 // The band is used as the identifier because the API gives radios no
 // index and no MAC — frequency is all there is to tell them apart.
 func (b topicBuilder) radio(mac model.MAC, freqGHz float64, key string) string {
-	return b.device(mac, "radio/"+bandSegment(freqGHz)+"/"+key)
+	return b.device(mac, "radio/"+model.BandSegment(freqGHz)+"/"+key)
 }
 
 // wlan returns a WLAN topic, e.g. "unifi/default/wlan/<id>/enabled".
@@ -130,27 +140,6 @@ func (b topicBuilder) wlan(id, key string) string {
 // carries it now so the layout stays in one place.
 func (b topicBuilder) client(key, valueKey string) string {
 	return b.root + "/" + b.site + "/client/" + sanitiseSegment(key) + "/" + valueKey
-}
-
-// bandSegment turns a radio frequency into a topic segment: 2.4 -> "2g4",
-// 5 -> "5g", 6 -> "6g". The 2.4 GHz band cannot use a bare decimal point
-// because that reads badly in a topic and in an entity id derived from
-// it.
-func bandSegment(freqGHz float64) string {
-	switch freqGHz {
-	case 2.4:
-		return "2g4"
-	case 5:
-		return "5g"
-	case 6:
-		return "6g"
-	case 60:
-		return "60g"
-	default:
-		// Unknown band: keep it addressable rather than dropping the
-		// radio, replacing the separator so the topic stays one segment.
-		return strings.ReplaceAll(strconv.FormatFloat(freqGHz, 'f', -1, 64), ".", "g")
-	}
 }
 
 // sanitiseSegment makes an operator- or API-supplied string safe as a

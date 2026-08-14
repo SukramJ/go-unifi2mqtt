@@ -19,9 +19,9 @@ PoE port, block a client, …) are written back to the console.
 **Read [`CONCEPT.md`](./CONCEPT.md) before touching anything** — it is
 the implementation concept: API strategy, package layout, MQTT topic
 tree, HA entity model, client filtering, polling design and the phased
-roadmap. Phases 0–2 are done: the daemon polls the console and publishes
-devices, ports, radios and the WLAN catalogue. Home Assistant discovery
-(phase 3) and clients (phase 4) are next.
+roadmap. Phases 0–3 are done: the daemon polls the console, publishes
+devices, ports, radios and the WLAN catalogue, and announces them to
+Home Assistant via MQTT discovery. Clients (phase 4) are next.
 
 ## Key Characteristics
 
@@ -69,10 +69,10 @@ CONCEPT.md               implementation concept — the design source of truth
 .github/workflows/       ci.yml, docker-build-push.yml, addon-image.yml, release-on-tag.yml, codeql.yml, dependabot-auto-merge.yml
 ```
 
-`model`, `config`, `unifi`, `unifi/integration` and `coordinator` exist
-as of phase 2; `hass`, `state`, `web` and `unifi/classic` are created as
-the later phases in `CONCEPT.md` land. The layout above is the target
-shape, not a claim about what exists today.
+`model`, `config`, `unifi`, `unifi/integration`, `coordinator` and
+`hass` exist as of phase 3; `state`, `web` and `unifi/classic` are
+created as the later phases in `CONCEPT.md` land. The layout above is
+the target shape, not a claim about what exists today.
 
 The MQTT transport is not part of this tree: it comes from the external
 `github.com/SukramJ/go-mqtt` module as a regular `go.mod` dependency,
@@ -161,7 +161,13 @@ etc. — no special test runner beyond `go test`.
 - **Topic suffixes are an API.** Every key in `internal/coordinator/topics.go`
   doubles as the Home Assistant entity key and the translation-table
   lookup. Renaming one orphans the entity and its history in every
-  existing installation.
+  existing installation. The same goes for `unique_id` and `object_id`
+  in `internal/hass` — `TestIdentifiersAreStable` pins the exact strings.
+- **Never rebuild a topic in a second place.** `internal/hass` receives
+  the topic layout through the `Topics` interface rather than
+  reconstructing it from config. Two copies drifting apart produce
+  entities that stay "unavailable" forever with nothing visibly wrong in
+  either package.
 
 ## UniFi API Notes
 
