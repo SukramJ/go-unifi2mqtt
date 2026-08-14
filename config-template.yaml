@@ -1,0 +1,164 @@
+# go-unifi2mqtt — annotated reference configuration.
+#
+# Copy to config.yaml and edit. The daemon looks for the file in this order:
+#   1. --config <path>
+#   2. $XDG_CONFIG_HOME/unifi2mqtt/config.yaml  (%APPDATA% on Windows)
+#   3. ~/.config/unifi2mqtt/config.yaml
+#
+# Every key can also be supplied as an environment variable with the UNIFI_
+# prefix (UNIFI_HOST, UNIFI_MQTT_SERVER, ...). Env always wins over the file,
+# which is how the Home Assistant add-on and env-only `docker run` deployments
+# configure the daemon without shipping a file at all.
+
+# ---------------------------------------------------------------------------
+# UniFi console — official Network Integration API
+# ---------------------------------------------------------------------------
+# Requires UniFi Network 10.5 or newer (older versions may work, untested). The API key is created in the UniFi
+# Network UI under Settings -> Control Plane -> Integrations and inherits the
+# permissions of the admin that created it — a read-only admin is enough
+# unless CONTROLS_ENABLE is true.
+HOST: 192.168.1.1 # IP / hostname of the console
+PORT: 443 # 443 UniFi OS · 8443 software controller · 11443 UniFi OS Server
+API_KEY: "" # Integration API key (override: env UNIFI_API_KEY)
+SITE: default # Site to bridge; "default" on most installs
+
+# Certificate verification for the console's HTTPS endpoint. UniFi consoles
+# present a self-signed certificate on their LAN address, so this is off by
+# default. Turn it on when you reach the console through a hostname with a
+# trusted certificate, or point CA_FILE at the console's own CA.
+VERIFY_TLS: false
+# CA_FILE: /etc/ssl/certs/unifi-ca.pem  # PEM bundle trusted in addition to
+#                                       # the system roots. Preferred over
+#                                       # VERIFY_TLS: false.
+
+# HTTP timeouts / retry behaviour against the console.
+HTTP_TIMEOUT: 10 # Per-request timeout (s)
+HTTP_RETRIES: 3 # Retries on 5xx / network errors (429 always honours Retry-After)
+
+# ---------------------------------------------------------------------------
+# Classic controller API (optional fallback)
+# ---------------------------------------------------------------------------
+# The official Integration API exposes no site health, no client blocking and
+# no WLAN on/off. Enabling this adds a cookie-session client against the
+# classic API (/proxy/network/api/s/<site>/ on UniFi OS) to fill those gaps.
+# It is undocumented and may change between controller releases — everything
+# it powers is optional, and with CLASSIC_ENABLE: false the daemon runs
+# entirely on the officially supported surface.
+CLASSIC_ENABLE: false
+CLASSIC_USERNAME: "" # LOCAL UniFi admin (not a Ubiquiti SSO login); 2FA must be off
+CLASSIC_PASSWORD: "" # (override: env UNIFI_CLASSIC_PASSWORD)
+
+# ---------------------------------------------------------------------------
+# MQTT
+# ---------------------------------------------------------------------------
+MQTT_SERVER: localhost # Broker host
+MQTT_PORT: 1883 # 1883 plain · 8883 when MQTT_SSL is true
+MQTT_LOGIN: "" # (override: env UNIFI_MQTT_LOGIN)
+MQTT_PASSWORD: "" # (override: env UNIFI_MQTT_PASSWORD)
+MQTT_TOPIC: unifi # Root of the published topic tree
+# MQTT_SSL: false          # Connect via TLS (tls://) instead of plain TCP
+# MQTT_SSL_INSECURE: false # DANGEROUS: skip broker certificate verification
+#                          # (self-signed certs only); only takes effect when
+#                          # MQTT_SSL is true. Never enable this against a
+#                          # broker you do not fully trust.
+
+# ---------------------------------------------------------------------------
+# Home Assistant MQTT discovery
+# ---------------------------------------------------------------------------
+HASS_ENABLE: false # Publish auto-discovery config topics
+HASS_BASE_TOPIC: homeassistant # Discovery prefix configured in HA
+HASS_BIRTH_GRACETIME: 15 # Seconds to wait after HA's birth message before republishing
+
+# ---------------------------------------------------------------------------
+# Polling cadences (seconds)
+# ---------------------------------------------------------------------------
+REFRESH_DEVICES: 60 # Device list (state, firmware, update available)
+REFRESH_CLIENTS: 30 # Client list — sets presence detection latency
+REFRESH_HEALTH: 60 # Site health / WAN status (needs CLASSIC_ENABLE)
+REFRESH_STATIC: 3600 # Rarely-changing data: controller info, WLAN/network catalogue
+
+# Per-device statistics (CPU, memory, uptime, uplink rates) cost one request
+# per online device, while the device list above is a single request. Set this
+# higher than REFRESH_DEVICES when the console is under load: the list stays
+# responsive while the expensive part slows down. 0 = follow REFRESH_DEVICES.
+REFRESH_DEVICE_STATS: 0
+
+# How often every value is republished even when unchanged. Publishing only on
+# change keeps broker load low, but a subscriber that missed a message and does
+# not use retained values would otherwise stay stale forever.
+FORCE_REPUBLISH: 600
+
+# ---------------------------------------------------------------------------
+# Clients / presence
+# ---------------------------------------------------------------------------
+# Off by default: a busy network would otherwise create hundreds of Home
+# Assistant entities on first start. A client is published only when it
+# matches EVERY non-empty filter below — an empty list means "no restriction
+# on this dimension".
+CLIENTS:
+  ENABLE: false
+
+  # Connection types: WIRED, WIRELESS, VPN, TELEPORT.
+  TYPES: [WIRELESS]
+
+  # Network / VLAN names as configured in UniFi, e.g. ["LAN", "IoT"].
+  NETWORKS: []
+
+  # VLAN IDs, e.g. [1, 20].
+  VLANS: []
+
+  # SSIDs, e.g. ["Home", "IoT"].
+  SSIDS: []
+
+  # When non-empty, ONLY these MAC addresses are published and every other
+  # filter above is bypassed — the explicit allowlist wins.
+  INCLUDE_MACS: []
+
+  # MAC addresses never published. Applied last, so it also overrides
+  # INCLUDE_MACS.
+  EXCLUDE_MACS: []
+
+  # Skip clients on guest networks regardless of the filters above.
+  EXCLUDE_GUESTS: true
+
+  # Hard cap. Once this many clients are published, the rest are skipped with
+  # a warning instead of silently flooding the broker.
+  MAX: 100
+
+  # Seconds a client may stay absent from the poll before its presence flips
+  # to not_home. Wireless clients briefly disappear during roaming, so a
+  # value below ~2x REFRESH_CLIENTS causes flapping.
+  AWAY_TIMEOUT: 300
+
+# ---------------------------------------------------------------------------
+# Controls (write-back from Home Assistant / MQTT)
+# ---------------------------------------------------------------------------
+# Off by default: the daemon is strictly read-only, which pairs with a
+# read-only UniFi admin for the API key. Turning this on exposes the command
+# topics and their Home Assistant button/switch entities.
+CONTROLS:
+  ENABLE: false
+  DEVICE_RESTART: true # Button: restart an adopted device
+  PORT_POWER_CYCLE: true # Button per PoE port: power-cycle
+  DEVICE_LOCATE: true # Switch: flash the device's locate LED (classic API)
+  CLIENT_BLOCK: false # Switch per client: block/unblock (classic API)
+  WLAN_ENABLE: false # Switch per WLAN: enable/disable (classic API)
+  GUEST_AUTHORIZE: false # Button per client: authorize guest access
+
+# ---------------------------------------------------------------------------
+# Web UI (optional status / health dashboard)
+# ---------------------------------------------------------------------------
+WEB_ENABLE: false # Enable the embedded web UI
+WEB_BIND: 127.0.0.1:8080 # Listen address host:port (0.0.0.0:8080 for LAN access)
+WEB_USER: "" # HTTP Basic auth user (empty user + password disables auth)
+WEB_PASSWORD: "" # (override: env UNIFI_WEB_PASSWORD)
+
+# ---------------------------------------------------------------------------
+# General
+# ---------------------------------------------------------------------------
+# Display language for the web dashboard and Home Assistant friendly names.
+# Entity_ids stay language-independent, so switching never re-creates
+# entities. Options: 'en' (default), 'de'.
+LANGUAGE: en
+
+DEBUG: false # Verbose logging

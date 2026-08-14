@@ -1,0 +1,20 @@
+# Build configuration for the local-build fallback path.
+#
+# This is only consulted by the Supervisor when addon/config.yaml has NO
+# `image:` key (i.e. you want the add-on built on the host from
+# addon/Dockerfile). The preferred path uses the pre-built GHCR images
+# referenced by `image:` in config.yaml — see addon/README.md.
+#
+# build_from maps each supported architecture to the matching official
+# Home Assistant base image, which provides bashio and the
+# /usr/bin/with-contenv entrypoint used by script/run.sh.
+build_from:
+  aarch64: "ghcr.io/home-assistant/aarch64-base:latest"
+  amd64: "ghcr.io/home-assistant/amd64-base:latest"
+  armv7: "ghcr.io/home-assistant/armv7-base:latest"
+
+# Optional OCI labels stamped onto the built image.
+labels:
+  org.opencontainers.image.title: "go-unifi2mqtt"
+  org.opencontainers.image.source: "https://github.com/SukramJ/go-unifi2mqtt"
+  org.opencontainers.image.licenses: "MIT"

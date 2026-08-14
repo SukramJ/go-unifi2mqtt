@@ -1,0 +1,113 @@
+version: "2"
+run:
+  go: "1.26"
+  tests: true
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - errcheck
+    - errorlint
+    - exhaustive
+    - gocritic
+    - gosec
+    - govet
+    - intrange
+    - makezero
+    - nilerr
+    - noctx
+    - prealloc
+    - reassign
+    - revive
+    - sloglint
+    - staticcheck
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+  settings:
+    errcheck:
+      check-type-assertions: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - hugeParam
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+        - opinionated
+    gosec:
+      excludes:
+        - G104
+    sloglint:
+      no-mixed-args: true
+      static-msg: false
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: var-declaration
+        - name: var-naming
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - contextcheck
+          - errcheck
+          - gosec
+          - noctx
+          - unparam
+        path: _test\.go
+      - linters:
+          - gosec
+        path: cmd/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/SukramJ/go-unifi2mqtt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

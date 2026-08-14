@@ -1,0 +1,36 @@
+#!/usr/bin/env sh
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 SukramJ
+#
+# Pre-commit hook: refuse direct commits on protected branches.
+#
+# Work on a feature branch and open a pull request instead. Merges
+# (git merge / git pull) are unaffected — they use the pre-merge-commit
+# hook, not this one — so updating main from the remote still works.
+#
+# Deliberate one-off override:
+#     ALLOW_MAIN_COMMIT=1 git commit ...
+#   or bypass every hook with:
+#     git commit --no-verify
+#
+# Enable for your clone (also wired into `make setup` / `make hooks`):
+#     git config core.hooksPath .githooks
+
+protected="main master"
+
+branch="$(git symbolic-ref --short -q HEAD)" || branch=""
+
+for p in $protected; do
+	if [ "$branch" = "$p" ]; then
+		if [ "${ALLOW_MAIN_COMMIT:-0}" = "1" ]; then
+			exit 0
+		fi
+		printf '\033[31m✗ Direct commits to "%s" are blocked.\033[0m\n' "$branch" >&2
+		printf '  Create a feature branch and open a PR:\n' >&2
+		printf '      git switch -c feature/my-change\n' >&2
+		printf '  Override once: ALLOW_MAIN_COMMIT=1 git commit ...   (or --no-verify)\n' >&2
+		exit 1
+	fi
+done
+
+exit 0

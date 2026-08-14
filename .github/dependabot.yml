@@ -1,0 +1,45 @@
+version: 2
+updates:
+  # Go modules (root)
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    reviewers:
+      - "SukramJ"
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      # Bundle minor/patch bumps into one PR; majors stay individual so
+      # they get a focused review (see the SPA TypeScript 6 / bits-ui 2
+      # migration as an example of why).
+      go-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # GitHub Actions (pinned by commit SHA; Dependabot bumps the SHA and
+  # keeps the `# vX` version comment in sync).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    reviewers:
+      - "SukramJ"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns: ["*"]
