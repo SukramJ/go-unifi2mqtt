@@ -11,11 +11,12 @@ It talks to the console over the **official UniFi Network Integration API**
 classic controller API for the handful of things the official surface does
 not expose.
 
-> **Status: early development (phase 1 of 9).** The console client, the
-> configuration layer and the domain model are in place, so
-> `unifi2mqtt --once` connects and reports the full site inventory. MQTT
-> publication is phase 2. The roadmap and the design rationale live in
-> [`CONCEPT.md`](CONCEPT.md), which is the design source of truth.
+> **Status: early development (phase 2 of 9).** The daemon polls the
+> console and publishes devices, ports, radios and the WLAN catalogue to
+> MQTT with change detection and a retained availability topic. Home
+> Assistant discovery is phase 3 and clients are phase 4, so entities
+> still have to be configured by hand for now. The roadmap and the design
+> rationale live in [`CONCEPT.md`](CONCEPT.md), the design source of truth.
 
 ## What it publishes
 

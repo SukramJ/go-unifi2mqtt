@@ -9,15 +9,20 @@
 // API, and republishes sites, devices, clients and health data to an
 // MQTT broker with optional Home Assistant auto-discovery.
 //
-// Build status: phase 1 of CONCEPT.md §12. Configuration, the console
-// client and the domain model are in place, so `--once` connects, reads
-// the whole site inventory and reports it — which is also the fastest
-// way to check credentials and filters against a real console. The MQTT
-// publication loop is phase 2.
+// Build status: phase 2 of CONCEPT.md §12. The daemon polls the console
+// and publishes devices, ports, radios and the WLAN catalogue to MQTT
+// with change detection and a retained availability topic. Home
+// Assistant discovery is phase 3 and clients are phase 4, so entities
+// still have to be wired up by hand for now.
+//
+// `--once` skips all of that and just reports the site inventory, which
+// is the fastest way to check credentials and filters against a real
+// console.
 package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -29,8 +34,12 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
+	"github.com/SukramJ/go-unifi2mqtt/internal/coordinator"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi/integration"
@@ -44,6 +53,14 @@ import (
 const (
 	minAppMajor = 10
 	minAppMinor = 5
+)
+
+const (
+	// keepAlive is the MQTT keep-alive interval.
+	keepAlive = 60 * time.Second
+	// shutdownTimeout bounds the graceful disconnect so a hung broker
+	// cannot hold up a systemd stop.
+	shutdownTimeout = 3 * time.Second
 )
 
 func main() {
@@ -102,25 +119,24 @@ func run(configPath string, once bool, logger *slog.Logger) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	client, site, err := connect(ctx, cfg, logger)
+	client, site, info, err := connect(ctx, cfg, logger)
 	if err != nil {
 		return err
 	}
 
-	if !once {
-		// Refusing beats pretending: a daemon that connects and then
-		// sits idle looks healthy to systemd while publishing nothing.
-		return errors.New(
-			"unifi2mqtt: the MQTT bridge loop is not implemented yet (phase 2 of CONCEPT.md); " +
-				"run with --once to verify the console connection meanwhile",
-		)
+	if once {
+		return inventory(ctx, client, cfg, site, logger)
 	}
-	return inventory(ctx, client, cfg, site, logger)
+	return bridge(ctx, cfg, client, site, info, logger)
 }
 
 // connect builds the console client, probes the API and resolves the
 // configured site.
-func connect(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*integration.Client, model.Site, error) {
+func connect(
+	ctx context.Context,
+	cfg *config.Config,
+	logger *slog.Logger,
+) (*integration.Client, model.Site, model.ControllerInfo, error) {
 	tr, err := unifi.NewTransport(unifi.TransportConfig{
 		BaseURL:   cfg.BaseURL(),
 		Timeout:   cfg.HTTPTimeoutDuration(),
@@ -130,7 +146,7 @@ func connect(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*int
 		Logger:    logger,
 	})
 	if err != nil {
-		return nil, model.Site{}, err
+		return nil, model.Site{}, model.ControllerInfo{}, err
 	}
 
 	client := integration.New(integration.Config{
@@ -141,7 +157,7 @@ func connect(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*int
 
 	info, err := client.Probe(ctx)
 	if err != nil {
-		return nil, model.Site{}, fmt.Errorf("unifi2mqtt: connect to %s: %w", cfg.BaseURL(), err)
+		return nil, model.Site{}, model.ControllerInfo{}, fmt.Errorf("unifi2mqtt: connect to %s: %w", cfg.BaseURL(), err)
 	}
 	logger.Info("unifi2mqtt.console",
 		slog.String("host", cfg.Host),
@@ -150,14 +166,147 @@ func connect(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*int
 
 	site, err := client.ResolveSite(ctx, cfg.Site)
 	if err != nil {
-		return nil, model.Site{}, err
+		return nil, model.Site{}, model.ControllerInfo{}, err
 	}
 	logger.Info("unifi2mqtt.site",
 		slog.String("name", site.Name),
 		slog.String("reference", site.Internal),
 		slog.String("id", site.ID))
 
-	return client, site, nil
+	return client, site, info, nil
+}
+
+// bridge runs the daemon proper: it opens the broker session, wires the
+// availability topic to the MQTT will, and hands both transports to the
+// coordinator.
+func bridge(
+	ctx context.Context,
+	cfg *config.Config,
+	client *integration.Client,
+	site model.Site,
+	info model.ControllerInfo,
+	logger *slog.Logger,
+) error {
+	// The coordinator owns the topic layout, so it also decides where
+	// availability lives — main only needs the string to build the will.
+	c := coordinator.New(coordinator.Deps{
+		Cfg:    cfg,
+		Site:   site,
+		Source: client,
+		Info:   info,
+		Logger: logger,
+	})
+	lwtTopic := c.AvailabilityTopic()
+
+	var tlsConfig *tls.Config
+	if cfg.MQTTSSL {
+		tlsConfig = mqtt.NewClientTLSConfig(cfg.MQTTServer, cfg.MQTTSSLInsecure)
+	}
+	mqttClient := mqtt.NewTCPClient(mqtt.TCPConfig{
+		BrokerURL:  cfg.MQTTBrokerURL(),
+		ClientID:   cfg.ClientID(),
+		Username:   cfg.MQTTLogin,
+		Password:   cfg.MQTTPassword.Reveal(),
+		KeepAlive:  keepAlive,
+		CleanStart: true,
+		// The will covers ungraceful death; the OnConnect hook below
+		// publishes the matching birth, and the shutdown path
+		// re-publishes "offline" because a clean DISCONNECT suppresses
+		// the will. Without the birth, one network blip would leave the
+		// retained topic stuck at "offline" for the rest of the run.
+		Will: &mqtt.Will{
+			Topic:   lwtTopic,
+			Payload: []byte("offline"),
+			Retain:  true,
+		},
+		TLSConfig: tlsConfig,
+		Logger:    logger,
+	})
+
+	// The circuit breaker addresses the case the reconnect loop cannot
+	// see: TCP up, but the broker stopped acknowledging. Without it
+	// every publish would block for the full ack timeout, and a poll
+	// cycle publishing hundreds of topics would stall for minutes.
+	breaker := mqtt.NewBreaker(mqttClient, mqtt.BreakerConfig{
+		OnStateChange: func(from, to mqtt.BreakerState) {
+			logger.Warn("unifi2mqtt.mqtt_breaker_state",
+				slog.String("from", from.String()),
+				slog.String("to", to.String()))
+		},
+	})
+	// Must happen before Start: the lifecycle calls OnConnect from
+	// inside its first connect, and that hook publishes.
+	c.SetPublisher(breaker)
+
+	lifecycle := mqtt.NewLifecycle(mqtt.DefaultLifecycle(), mqttClient)
+	lifecycle.OnConnect(c.OnConnect)
+
+	if err := startMQTT(ctx, lifecycle, time.Second, 30*time.Second, logger); err != nil {
+		return fmt.Errorf("unifi2mqtt: mqtt start: %w", err)
+	}
+	logger.Info("unifi2mqtt.mqtt_connected",
+		slog.String("broker", cfg.MQTTBrokerURL()),
+		slog.String("client_id", cfg.ClientID()),
+		slog.String("topic_root", cfg.MQTTTopic))
+
+	//nolint:contextcheck // disconnect deliberately uses a fresh context;
+	// the run context is already cancelled when this defer fires.
+	defer disconnect(c, lifecycle, logger)
+
+	return c.Run(ctx)
+}
+
+// disconnect announces the bridge offline and closes the broker session.
+//
+// It deliberately builds a fresh context instead of taking the run
+// context: by the time this runs the run context is already cancelled,
+// so reusing it would abort both calls before they reach the broker and
+// leave the retained availability topic stuck at "online" until the
+// keep-alive expires. The fresh context is bounded so a hung broker
+// cannot hold up a systemd stop either.
+func disconnect(c *coordinator.Coordinator, lc *mqtt.Lifecycle, logger *slog.Logger) {
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	c.AnnounceOffline(ctx)
+	if err := lc.Stop(ctx); err != nil {
+		logger.Debug("unifi2mqtt.mqtt_stop", slog.String("err", err.Error()))
+	}
+}
+
+// mqttStarter is the subset of *mqtt.Lifecycle that startMQTT drives,
+// narrowed so tests can inject first-connect failures.
+type mqttStarter interface {
+	Start(ctx context.Context) error
+}
+
+// startMQTT retries the lifecycle's synchronous first connect with
+// bounded backoff.
+//
+// Lifecycle.Start makes exactly one attempt and only runs its reconnect
+// loop after that first success, so a broker that is still booting —
+// the power-outage case, where the daemon and the broker start together
+// — must be retried here instead of being treated as a fatal
+// configuration error.
+func startMQTT(ctx context.Context, lc mqttStarter, backoff, maxBackoff time.Duration, logger *slog.Logger) error {
+	for {
+		err := lc.Start(ctx)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		logger.Warn("unifi2mqtt.mqtt_start_retry",
+			slog.String("err", err.Error()),
+			slog.Duration("retry_in", backoff))
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(2*backoff, maxBackoff)
+	}
 }
 
 // inventory reads everything the Integration API offers for the site

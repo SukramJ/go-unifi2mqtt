@@ -147,8 +147,18 @@ func TestDeviceTypeFrom(t *testing.T) {
 		want     DeviceType
 	}{
 		// Gateways report switching (and often accessPoint too), so the
-		// model prefix is what tells them apart from a plain switch.
+		// model name is what tells them apart from a plain switch.
 		{"dream machine", []string{"switching", "accessPoint"}, "UDM-Pro", DeviceGateway},
+
+		// A live console returns display names with spaces, not the
+		// hyphenated product codes the docs use. Matching only the
+		// hyphenated form classified every real gateway as a switch.
+		{"space-separated gateway", []string{"switching"}, "UCG Fiber", DeviceGateway},
+		{"space-separated dream machine", []string{"switching"}, "UDM Pro Max", DeviceGateway},
+		{"space-separated switch", []string{"switching"}, "USW Pro Max 16 PoE", DeviceSwitch},
+		{"space-separated flex", []string{"switching"}, "USW Flex 2.5G 5", DeviceSwitch},
+		{"space-separated AP", []string{"accessPoint"}, "Nano HD", DeviceAccessPoint},
+		{"space-separated mesh AP", []string{"accessPoint"}, "AC Mesh", DeviceAccessPoint},
 		{"dream machine bare", nil, "UDM", DeviceGateway},
 		{"cloud gateway ultra", []string{"switching"}, "UCG-Ultra", DeviceGateway},
 		{"express", []string{"switching", "accessPoint"}, "UX", DeviceGateway},

@@ -98,28 +98,36 @@ func DeviceTypeFrom(features []string, deviceModel string) DeviceType {
 	}
 }
 
-// gatewayModels lists the model-name prefixes UniFi uses for consoles
-// and security gateways. Matching is prefix-based and case-insensitive
-// so new members of a line (UDM-Pro-Max, UCG-Fiber, …) are covered
-// without a code change.
-var gatewayModels = []string{
-	"UDM",  // Dream Machine / Pro / SE / Max
-	"UDR",  // Dream Router
-	"UDW",  // Dream Wall
-	"UCG",  // Cloud Gateway (Ultra / Max / Fiber)
-	"UXG",  // Next-Gen Gateway
-	"USG",  // legacy Security Gateway
-	"UX",   // Express
-	"UCGM", // Cloud Gateway Max variants
-	"EFG",  // Enterprise Fortress Gateway
+// gatewayModels lists the product-line tokens UniFi uses for consoles
+// and security gateways.
+//
+// Matching is on the model name's first token so every member of a line
+// is covered without a code change. The token is taken with both space
+// and hyphen as separators because the API returns display names, not
+// product codes: a live console reports "UCG Fiber" and "USW Pro Max 16
+// PoE", while the documentation writes "UCG-Fiber". Matching only the
+// hyphenated form classified every gateway as a switch.
+var gatewayModels = map[string]bool{
+	"UDM": true, // Dream Machine / Pro / SE / Max
+	"UDR": true, // Dream Router
+	"UDW": true, // Dream Wall
+	"UCG": true, // Cloud Gateway (Ultra / Max / Fiber)
+	"UXG": true, // Next-Gen Gateway
+	"USG": true, // legacy Security Gateway
+	"UX":  true, // Express
+	"EFG": true, // Enterprise Fortress Gateway
 }
 
 func isGatewayModel(m string) bool {
+	return gatewayModels[modelToken(m)]
+}
+
+// modelToken returns the leading product-line token of a model name,
+// upper-cased: "UCG Fiber" and "UCG-Fiber" both yield "UCG".
+func modelToken(m string) string {
 	u := strings.ToUpper(strings.TrimSpace(m))
-	for _, p := range gatewayModels {
-		if u == p || strings.HasPrefix(u, p+"-") {
-			return true
-		}
+	if i := strings.IndexAny(u, " -_"); i >= 0 {
+		return u[:i]
 	}
-	return false
+	return u
 }
