@@ -10,8 +10,12 @@ name: ci
 on:
   push:
     branches: [main]
+  # Every pull request, not just those targeting main: a stacked PR
+  # based on another branch is still code that has to pass the gates,
+  # and branch protection requires these checks before it can merge at
+  # all. Filtering on the base branch left such a PR permanently
+  # unmergeable with no way to see why.
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
