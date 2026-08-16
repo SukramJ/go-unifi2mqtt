@@ -3,7 +3,7 @@
 # version MUST equal the published image tag (ghcr.io/sukramj/go-unifi2mqtt-addon-{arch})
 # and is bumped in the release commit that cuts the matching git tag.
 name: go-unifi2mqtt
-version: "1.0.1"
+version: "1.1.0"
 slug: go-unifi2mqtt
 description: >-
   Bridges a local UniFi Network console (UDM / UCG / UniFi OS Server /
