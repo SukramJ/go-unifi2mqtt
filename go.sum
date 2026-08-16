@@ -1,5 +1,5 @@
-github.com/SukramJ/go-mqtt v1.2.0 h1:bYRR2Vpo2tyEt5IvFJMdMhPhDUCJpHD+Lhl2DRUfIMw=
-github.com/SukramJ/go-mqtt v1.2.0/go.mod h1:VYpxzNQSbOiPO1xtW0nrL6uSYtjf58hGkYGJ6ebjxXA=
+github.com/SukramJ/go-mqtt v1.3.0 h1:kCL4oWtxNFIRKd9GrxlsWOn6C6O/QXzBXwUntkG45MY=
+github.com/SukramJ/go-mqtt v1.3.0/go.mod h1:VYpxzNQSbOiPO1xtW0nrL6uSYtjf58hGkYGJ6ebjxXA=
 golang.org/x/sync v0.22.0 h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
 golang.org/x/sync v0.22.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=

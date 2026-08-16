@@ -1,3 +1,39 @@
+# Version 1.1.0 (2026-08-16)
+
+A dependency release: the MQTT client library go-mqtt moves from 1.2.0
+to 1.3.0, an audit release that fixed 42 findings from a full-codebase
+adversarial review. No bridge code changed — everything below arrives
+through the library.
+
+## Reconnects are damped when the broker flaps
+
+A connection that dies within ten seconds of coming up now counts as
+flapping and reconnects with an exponentially growing delay instead of
+redialling immediately — the pattern two instances fighting over one
+ClientID (or a draining broker) produce, which previously turned into
+a full-speed reconnect storm. A connection that was stable and then
+drops still reconnects instantly, and an intentional shutdown no
+longer risks a spurious reconnect racing the broker's own socket
+close.
+
+## The circuit breaker only trips on real broker trouble
+
+Client-side validation errors (an invalid topic, a QoS the broker does
+not allow) no longer count toward opening the circuit, so one bad
+topic cannot block every healthy publish for the recovery window. The
+breaker also discards outcomes of publishes that started before a
+state change, and `unifi2mqtt.mqtt_breaker_state` transitions are now
+delivered in order — the logged state always reflects broker health.
+
+## Hardened wire handling
+
+The client validates inbound frames strictly per MQTT 5.0 (malformed
+broker traffic tears the connection down cleanly instead of being
+carried along), QoS 2 exchanges recover when broker and client
+disagree about an identifier, and payload buffers handed to Publish
+may now be reused immediately — the library copies what it must keep
+for a retransmit.
+
 # Version 1.0.1 (2026-08-14)
 
 A fix release for two things a German Home Assistant install surfaced,
