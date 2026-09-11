@@ -221,7 +221,7 @@ func TestLanguageChangesOnlyTheDisplayName(t *testing.T) {
 			t.Errorf("topic %s exists only in English — the config topic must not be localised", topic)
 			continue
 		}
-		for _, field := range []string{"unique_id", "object_id", "state_topic", "json_attributes_topic"} {
+		for _, field := range []string{"unique_id", "default_entity_id", "state_topic", "json_attributes_topic"} {
 			if enPayload[field] != dePayload[field] {
 				t.Errorf("%s: %s differs by language (%v vs %v) — this would orphan the entity",
 					topic, field, enPayload[field], dePayload[field])
@@ -276,40 +276,64 @@ func TestIdentifiersAreStable(t *testing.T) {
 	}
 	for topic, seed := range wantSeed {
 		e := byTopic[topic]
-		if got := e["object_id"]; got != seed {
-			t.Errorf("%s object_id = %v, want %v", topic, got, seed)
+		platform := strings.Split(topic, "/")[1]
+		if want, got := platform+"."+seed, e["default_entity_id"]; got != want {
+			t.Errorf("%s default_entity_id = %v, want %v", topic, got, want)
 		}
 	}
 }
 
-// Both seeds are published because which one works depends on the Home
-// Assistant version: object_id was removed in HA Core 2026.4, and
-// default_entity_id is not honoured consistently on older releases —
-// the release where a localised name leaks into the entity_id instead.
-func TestBothEntityIDSeedsArePublished(t *testing.T) {
+// default_entity_id is the only entity_id seed published. The older
+// object_id key is dropped unread by Home Assistant's discovery
+// schemas (extra=REMOVE_EXTRA; 0 of 32 MQTT platforms accept it as of
+// 2026.9), so publishing it would only mislead anyone reading a
+// retained config.
+func TestEntityIDSeedIsPublished(t *testing.T) {
 	t.Parallel()
 
-	entries, err := newTestDiscovery(LangDE).Device(testDevice())
-	if err != nil {
-		t.Fatalf("Device: %v", err)
+	// Every builder, not only Device(). The platform-prefix assertion below
+	// is the one that catches a seed naming a different domain than the
+	// topic it rides on, and running it over one builder is how such a
+	// mismatch stayed invisible in deviceSwitch: the seed said `button.`
+	// while the config went to `switch/`.
+	d := newTestDiscovery(LangDE)
+	var entries []Entry
+	for _, build := range []struct {
+		what string
+		fn   func() ([]Entry, error)
+	}{
+		{"Device", func() ([]Entry, error) { return d.Device(testDevice()) }},
+		{"DeviceControls", func() ([]Entry, error) { return d.DeviceControls(testDevice(), allControls()) }},
+		{"ClientControls", func() ([]Entry, error) { return d.ClientControls(testClient(), allControls()) }},
+		{"WLANControl", func() ([]Entry, error) {
+			e, err := d.WLANControl(&model.WLAN{ID: "w-1", Name: "HomeNet", Enabled: true})
+			return []Entry{e}, err
+		}},
+		{"Health", func() ([]Entry, error) { return d.Health("Default") }},
+	} {
+		got, err := build.fn()
+		if err != nil {
+			t.Fatalf("%s: %v", build.what, err)
+		}
+		if len(got) == 0 {
+			t.Fatalf("%s produced no entries, so it would pass vacuously", build.what)
+		}
+		entries = append(entries, got...)
 	}
 
 	for topic, payload := range decode(t, entries) {
-		obj, hasObj := payload["object_id"].(string)
 		def, hasDef := payload["default_entity_id"].(string)
-		if !hasObj || obj == "" {
-			t.Errorf("%s has no object_id", topic)
-			continue
-		}
 		if !hasDef || def == "" {
-			t.Errorf("%s has no default_entity_id — on HA 2026.4+ the localised name would seed the entity_id", topic)
+			t.Errorf("%s has no default_entity_id — the localised name would seed the entity_id", topic)
 			continue
 		}
-		// default_entity_id is "<platform>.<seed>" and must agree with
-		// object_id, or the two HA versions would disagree about the id.
+		if _, ok := payload["object_id"]; ok {
+			t.Errorf("%s still carries object_id — Home Assistant drops it unread", topic)
+		}
+		// default_entity_id is "<platform>.<seed>".
 		platform := strings.Split(topic, "/")[1]
-		if want := platform + "." + obj; def != want {
-			t.Errorf("%s default_entity_id = %q, want %q", topic, def, want)
+		if !strings.HasPrefix(def, platform+".") {
+			t.Errorf("%s default_entity_id = %q, want prefix %q", topic, def, platform+".")
 		}
 	}
 }
@@ -331,16 +355,16 @@ func TestEntityIDSeedIsLanguageIndependent(t *testing.T) {
 	enByTopic, deByTopic := decode(t, en), decode(t, de)
 	for topic, e := range enByTopic {
 		d := deByTopic[topic]
-		for _, field := range []string{"object_id", "default_entity_id"} {
+		for _, field := range []string{"unique_id", "default_entity_id"} {
 			if e[field] != d[field] {
 				t.Errorf("%s: %s differs by language (%v vs %v)", topic, field, e[field], d[field])
 			}
 		}
 		// And nothing German may appear in the seed at all.
-		seed, _ := d["object_id"].(string)
+		seed, _ := d["default_entity_id"].(string)
 		for _, german := range []string{"auslastung", "betriebszeit", "erreichbar", "verfuegbar"} {
 			if strings.Contains(seed, german) {
-				t.Errorf("%s object_id = %q contains a localised word", topic, seed)
+				t.Errorf("%s default_entity_id = %q contains a localised word", topic, seed)
 			}
 		}
 	}

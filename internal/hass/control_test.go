@@ -205,7 +205,7 @@ func TestControlLanguageChangesOnlyTheDisplayName(t *testing.T) {
 			t.Errorf("topic %s exists only in English", topic)
 			continue
 		}
-		for _, field := range []string{"unique_id", "object_id", "command_topic"} {
+		for _, field := range []string{"unique_id", "default_entity_id", "command_topic"} {
 			if enPayload[field] != dePayload[field] {
 				t.Errorf("%s: %s differs by language — this would orphan the entity", topic, field)
 			}

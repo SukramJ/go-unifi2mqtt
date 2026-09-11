@@ -73,7 +73,6 @@ func (d *Discovery) Health(siteName string) ([]Entry, error) {
 		e := entity{
 			Name:                name(s.nameKey, d.lang),
 			UniqueID:            uid,
-			ObjectID:            seed,
 			DefaultEntityID:     string(s.platform) + "." + seed,
 			StateTopic:          d.topics.HealthTopic(s.stateSuffix),
 			UnitOfMeasurement:   s.unit,
