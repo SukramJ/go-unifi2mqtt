@@ -291,9 +291,34 @@ func TestIdentifiersAreStable(t *testing.T) {
 func TestEntityIDSeedIsPublished(t *testing.T) {
 	t.Parallel()
 
-	entries, err := newTestDiscovery(LangDE).Device(testDevice())
-	if err != nil {
-		t.Fatalf("Device: %v", err)
+	// Every builder, not only Device(). The platform-prefix assertion below
+	// is the one that catches a seed naming a different domain than the
+	// topic it rides on, and running it over one builder is how such a
+	// mismatch stayed invisible in deviceSwitch: the seed said `button.`
+	// while the config went to `switch/`.
+	d := newTestDiscovery(LangDE)
+	var entries []Entry
+	for _, build := range []struct {
+		what string
+		fn   func() ([]Entry, error)
+	}{
+		{"Device", func() ([]Entry, error) { return d.Device(testDevice()) }},
+		{"DeviceControls", func() ([]Entry, error) { return d.DeviceControls(testDevice(), allControls()) }},
+		{"ClientControls", func() ([]Entry, error) { return d.ClientControls(testClient(), allControls()) }},
+		{"WLANControl", func() ([]Entry, error) {
+			e, err := d.WLANControl(&model.WLAN{ID: "w-1", Name: "HomeNet", Enabled: true})
+			return []Entry{e}, err
+		}},
+		{"Health", func() ([]Entry, error) { return d.Health("Default") }},
+	} {
+		got, err := build.fn()
+		if err != nil {
+			t.Fatalf("%s: %v", build.what, err)
+		}
+		if len(got) == 0 {
+			t.Fatalf("%s produced no entries, so it would pass vacuously", build.what)
+		}
+		entries = append(entries, got...)
 	}
 
 	for topic, payload := range decode(t, entries) {

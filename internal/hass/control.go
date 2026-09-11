@@ -262,9 +262,13 @@ func (d *Discovery) deviceSwitch(
 	seed := entityIDSeed(info.Name, key)
 	e := controlEntity{
 		entity: entity{
-			Name:            name(nameKey, d.lang),
-			UniqueID:        uid,
-			DefaultEntityID: string(PlatformButton) + "." + seed,
+			Name:     name(nameKey, d.lang),
+			UniqueID: uid,
+			// PlatformSwitch, matching the config topic this entity is published
+			// on. A cross-domain seed is not usable by the platform that reads it,
+			// so the entity falls back to deriving its id from the localised name —
+			// which is the exact failure the seed exists to prevent.
+			DefaultEntityID: string(PlatformSwitch) + "." + seed,
 			StateTopic:      stateTopic,
 			Icon:            icon,
 			EntityCategory:  "config",
