@@ -13,7 +13,7 @@ import (
 // The rule this file implements, from CONCEPT.md §6.2:
 //
 //	unique_id       never localised
-//	object_id       never localised (it seeds the entity_id)
+//	default_entity_id never localised (it seeds the entity_id)
 //	name            localised
 //	topic segments  never localised
 //

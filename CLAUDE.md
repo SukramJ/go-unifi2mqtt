@@ -159,11 +159,12 @@ etc. — no special test runner beyond `go test`.
   subnets and `GET /devices` omits `uplink`/`interfaces`. Both fan out a
   per-object detail call. Collapsing that back would compile, pass a
   naive test, and silently lose VLAN mapping and the device topology.
-- **Publish `object_id` AND `default_entity_id`.** HA Core removed
-  `object_id` in 2026.4 and does not honour `default_entity_id`
-  consistently before that. With only one of them, some HA version
-  derives the entity_id from the localised `name` — which is how German
-  entity_ids appear in a de-configured install.
+- **Publish `default_entity_id`.** It is the only entity_id seed Home
+  Assistant still reads. Without a seed, HA derives the entity_id from
+  the localised `name` — which is how German entity_ids appear in a
+  de-configured install. `object_id` is *not* published: the MQTT
+  discovery schemas are `extra=REMOVE_EXTRA` and accept it on 0 of 32
+  platforms (HA 2026.9), so it is dropped on arrival, silently.
 - **The add-on has four files that must agree** about its options:
   `config.yaml` options, `config.yaml` schema, `translations/{en,de}.yaml`
   and `script/run.sh`. Each disagreement fails differently and quietly;
@@ -171,7 +172,8 @@ etc. — no special test runner beyond `go test`.
 - **Topic suffixes are an API.** Every key in `internal/coordinator/topics.go`
   doubles as the Home Assistant entity key and the translation-table
   lookup. Renaming one orphans the entity and its history in every
-  existing installation. The same goes for `unique_id` and `object_id`
+  existing installation. The same goes for `unique_id` and
+  `default_entity_id`
   in `internal/hass` — `TestIdentifiersAreStable` pins the exact strings.
 - **The MQTT command handler must never block.** It runs inline in the
   client's read loop, the same goroutine that decodes acknowledgements

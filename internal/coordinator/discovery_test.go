@@ -340,7 +340,7 @@ func TestDiscoveryPayloadIsValidJSON(t *testing.T) {
 			t.Errorf("%s: %v", m.topic, err)
 			continue
 		}
-		for _, required := range []string{"unique_id", "object_id", "state_topic", "device"} {
+		for _, required := range []string{"unique_id", "default_entity_id", "state_topic", "device"} {
 			if _, ok := payload[required]; !ok {
 				t.Errorf("%s is missing %s", m.topic, required)
 			}

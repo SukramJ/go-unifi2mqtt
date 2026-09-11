@@ -11,8 +11,8 @@
 // unique_id is not the kind of thing to notice in production.
 //
 // The naming rules it implements are in CONCEPT.md §6.2: unique_id and
-// object_id are English and stable, only the display name follows
-// LANGUAGE.
+// default_entity_id are English and stable, only the display name
+// follows LANGUAGE.
 package hass
 
 import (
@@ -138,8 +138,7 @@ type availabilityEntry struct {
 type entity struct {
 	Name     string `json:"name"`
 	UniqueID string `json:"unique_id"`
-	// ObjectID and DefaultEntityID both seed the entity_id, and both are
-	// published on purpose.
+	// DefaultEntityID seeds the entity_id as "<platform>.<seed>".
 	//
 	// Setting a seed at all is what keeps entity_ids
 	// language-independent: without one Home Assistant derives them from
@@ -147,18 +146,15 @@ type entity struct {
 	// entities and leaves the first holding all the history
 	// (CONCEPT.md §6.2).
 	//
-	// Which key does the job depends on the Home Assistant version.
-	// object_id was deprecated in HA Core 2025.10 and removed in 2026.4;
-	// default_entity_id replaces it but is not honoured consistently on
-	// older releases (home-assistant/core#157241 — exactly the bug where
-	// a localised name leaks into the entity_id). Publishing both means
-	// current and future releases each pick up the one they understand.
+	// The older object_id key is deliberately not published: Home
+	// Assistant's MQTT discovery schemas are extra=REMOVE_EXTRA, and
+	// object_id is accepted by 0 of the 32 MQTT platforms as of 2026.9,
+	// so it is silently dropped on arrival. default_entity_id replaced
+	// it and is accepted by 28 of them.
 	//
-	// Neither renames an existing entity: Home Assistant tracks entities
-	// by unique_id, so a seed only shapes the id an entity gets when it
-	// is first created.
-	ObjectID string `json:"object_id"`
-	// DefaultEntityID is "<platform>.<seed>".
+	// It never renames an existing entity: Home Assistant tracks
+	// entities by unique_id, so a seed only shapes the id an entity gets
+	// when it is first created.
 	DefaultEntityID string `json:"default_entity_id,omitempty"`
 
 	StateTopic          string `json:"state_topic"`
@@ -362,7 +358,6 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 	e := entity{
 		Name:                label,
 		UniqueID:            uid,
-		ObjectID:            seed,
 		DefaultEntityID:     string(s.platform) + "." + seed,
 		StateTopic:          d.stateTopic(mac, s.stateSuffix),
 		UnitOfMeasurement:   s.unit,

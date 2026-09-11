@@ -115,7 +115,6 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 			entity: entity{
 				Name:            name("client_blocked", d.lang),
 				UniqueID:        uid,
-				ObjectID:        seed,
 				DefaultEntityID: string(PlatformSwitch) + "." + seed,
 				StateTopic:      d.topics.ClientTopic(key, "blocked"),
 				Icon:            "mdi:cancel",
@@ -146,7 +145,6 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 			entity: entity{
 				Name:            name("client_authorize", d.lang),
 				UniqueID:        uid,
-				ObjectID:        seed,
 				DefaultEntityID: string(PlatformButton) + "." + seed,
 				// A button has no state topic; Home Assistant only needs
 				// somewhere to publish.
@@ -190,7 +188,6 @@ func (d *Discovery) WLANControl(w *model.WLAN) (Entry, error) {
 			// would produce a page full of identical names.
 			Name:            w.Name,
 			UniqueID:        uid,
-			ObjectID:        seed,
 			DefaultEntityID: string(PlatformSwitch) + "." + seed,
 			StateTopic:      d.topics.WLANTopic(w.ID, "enabled"),
 			Icon:            "mdi:wifi",
@@ -231,7 +228,6 @@ func (d *Discovery) button(
 		entity: entity{
 			Name:            name(nameKey, d.lang),
 			UniqueID:        uid,
-			ObjectID:        seed,
 			DefaultEntityID: string(PlatformButton) + "." + seed,
 			Icon:            icon,
 			EntityCategory:  category,
@@ -268,7 +264,6 @@ func (d *Discovery) deviceSwitch(
 		entity: entity{
 			Name:            name(nameKey, d.lang),
 			UniqueID:        uid,
-			ObjectID:        seed,
 			DefaultEntityID: string(PlatformButton) + "." + seed,
 			StateTopic:      stateTopic,
 			Icon:            icon,

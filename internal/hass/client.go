@@ -89,7 +89,6 @@ func (d *Discovery) renderTracker(key string, info deviceInfo) (Entry, error) {
 		entity: entity{
 			Name:            name("client_presence", d.lang),
 			UniqueID:        uid,
-			ObjectID:        seed,
 			DefaultEntityID: string(PlatformDeviceTracker) + "." + seed,
 			// The tracker is the entity that reports being away, so its
 			// availability must not depend on the client being present —
@@ -126,7 +125,6 @@ func (d *Discovery) renderClientSensor(key, suffix string, info deviceInfo, s sp
 	e := entity{
 		Name:                name(s.nameKey, d.lang),
 		UniqueID:            uid,
-		ObjectID:            seed,
 		DefaultEntityID:     string(s.platform) + "." + seed,
 		StateTopic:          d.topics.ClientTopic(key, s.stateSuffix),
 		UnitOfMeasurement:   s.unit,
