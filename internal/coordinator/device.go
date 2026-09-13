@@ -160,6 +160,26 @@ func (c *Coordinator) publishPort(ctx context.Context, mac model.MAC, p *model.P
 		strconv.FormatFloat(p.PoE.PowerW, 'f', 1, 64))
 }
 
+// publishLocate publishes the locate LED's read-back.
+//
+// It is written exactly where the locate switch is announced, and
+// nowhere else: the value comes from the classic API, so without the
+// classic layer model.Device.Locating is simply false and publishing it
+// would be inventing a reading. The same condition keeps the topic out
+// of an installation that has the capability but has not enabled the
+// control, where it would be a state topic no entity reads.
+//
+// It belongs to the static loop rather than the device loop because
+// that is the loop that reads the value — the device list the fast loop
+// polls has no locate field at all. A press nudges the static loop for
+// the same reason.
+func (c *Coordinator) publishLocate(ctx context.Context, d *model.Device) error {
+	if !c.controlOptions().DeviceLocate {
+		return nil
+	}
+	return c.pub.publish(ctx, c.topics.device(d.MAC, keyLocate), boolPayload(d.Locating))
+}
+
 // publishRadio publishes one radio's channel.
 func (c *Coordinator) publishRadio(ctx context.Context, mac model.MAC, r *model.Radio) error {
 	return c.pub.publish(ctx, c.topics.radio(mac, r.FrequencyGHz, keyRadioChannel), itoa(r.Channel))

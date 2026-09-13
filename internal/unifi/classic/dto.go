@@ -105,12 +105,18 @@ type sta struct {
 	Network  string `json:"network"`
 }
 
-// statDevice is one entry of `/stat/device`, read only for the PoE
-// power draw the Integration API omits entirely.
+// statDevice is one entry of `/stat/device`, read for the two things
+// the Integration API omits entirely: the PoE power draw and the state
+// of the locate LED.
 type statDevice struct {
 	MAC       string           `json:"mac"`
 	ID        string           `json:"_id"`
 	PortTable []statDevicePort `json:"port_table"`
+	// Locating is the live state of the locate LED — the read-back for
+	// the /cmd/devmgr set-locate command. The Integration API has no
+	// equivalent, so without the classic layer the locate switch has
+	// nothing to report and is not announced at all.
+	Locating *bool `json:"locating"`
 }
 
 type statDevicePort struct {

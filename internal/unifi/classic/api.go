@@ -113,23 +113,27 @@ func (c *Client) ClientDetails(ctx context.Context, siteRef string) (map[model.M
 	return details, nil
 }
 
-// PortPower returns PoE draw in watts per device MAC and port index.
+// DeviceDetails returns the per-device fields only the classic API has.
 //
-// The Integration API has no power field at all, so this is the only
-// source (CONCEPT.md §2.2 footnote 3).
-func (c *Client) PortPower(ctx context.Context, siteRef string) (map[model.MAC]map[int]float64, error) {
+// The Integration API has no power field at all and no locate
+// read-back, so this is the only source for either (CONCEPT.md §2.2
+// footnote 3). Both come out of one `/stat/device` response on
+// purpose: they are read on the same poll, and asking twice would
+// double the cost of the endpoint for a second scalar.
+func (c *Client) DeviceDetails(ctx context.Context, siteRef string) (map[model.MAC]model.DeviceDetail, error) {
 	var out envelope[statDevice]
 	if err := c.get(ctx, siteRef, "/stat/device", &out); err != nil {
 		return nil, err
 	}
 
-	power := make(map[model.MAC]map[int]float64, len(out.Data))
+	details := make(map[model.MAC]model.DeviceDetail, len(out.Data))
 	for i := range out.Data {
 		d := &out.Data[i]
 		mac, err := model.ParseMAC(d.MAC)
 		if err != nil || mac.IsZero() {
 			continue
 		}
+		detail := model.DeviceDetail{Locating: deref(d.Locating)}
 		for j := range d.PortTable {
 			p := &d.PortTable[j]
 			// poe_power is a string ("7.40") and is "0.00" or absent on
@@ -138,13 +142,14 @@ func (c *Client) PortPower(ctx context.Context, siteRef string) (map[model.MAC]m
 			if err != nil || w == 0 {
 				continue
 			}
-			if power[mac] == nil {
-				power[mac] = make(map[int]float64, len(d.PortTable))
+			if detail.PortPowerW == nil {
+				detail.PortPowerW = make(map[int]float64, len(d.PortTable))
 			}
-			power[mac][p.PortIdx] = w
+			detail.PortPowerW[p.PortIdx] = w
 		}
+		details[mac] = detail
 	}
-	return power, nil
+	return details, nil
 }
 
 // stamgrCommand is the body of a client-manager command.

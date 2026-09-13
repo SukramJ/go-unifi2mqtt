@@ -63,7 +63,13 @@ func newReconcileHarness(t *testing.T, cfg *config.Config) (*harness, *fakeSubsc
 	sub := &fakeSubscriber{}
 	h.c.SetSubscriber(sub)
 	h.c.reconcileTimeout = 100 * time.Millisecond
-	h.c.reconcileWindow = 20 * time.Millisecond
+	// The collection window has to outlast deliverRetained's 5 ms poll
+	// for the subscription by a comfortable margin. At 20 ms it did not
+	// always — on a loaded runner, and on Windows, whose timer
+	// granularity is of the same order — and the sweep then ran against
+	// an empty broker and cleared nothing, which reads exactly like a
+	// broken sweep rather than like a lost race.
+	h.c.reconcileWindow = 250 * time.Millisecond
 	return h, sub
 }
 

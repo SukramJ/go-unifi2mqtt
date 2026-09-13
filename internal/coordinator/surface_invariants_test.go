@@ -463,7 +463,7 @@ func TestPublishQoSAndRetain(t *testing.T) {
 
 	const (
 		wantConfig = 315
-		wantState  = 305
+		wantState  = 317
 		wantAvail  = 5
 	)
 	if configQoS1 != wantConfig || stateQoS0 != wantState || availQoS1 != wantAvail || other != 0 {
@@ -483,12 +483,13 @@ func TestPublishQoSAndRetain(t *testing.T) {
 // at "unknown" forever with nothing in any log. They are listed here so
 // the test can pin the *exact* set — a new one fails, and fixing one
 // fails until it is removed from this list.
-var knownAdvertisedButUnpublished = map[string]string{
-	"unifi/default/device/00005e005301/locate": "F: the device locate switch's state topic is written by nobody",
-	"unifi/default/device/00005e005302/locate": "F: the device locate switch's state topic is written by nobody",
-	"unifi/default/device/00005e005303/locate": "F: the device locate switch's state topic is written by nobody",
-	"unifi/default/device/00005e005304/locate": "F: the device locate switch's state topic is written by nobody",
-}
+//
+// It is empty. The four entries it held were the locate switches of
+// F11, and the locate LED is now read back from the classic API and
+// published. The map stays because its emptiness is an assertion: a
+// topic that becomes advertised-but-unwritten has to be declared here,
+// in review, rather than quietly tolerated.
+var knownAdvertisedButUnpublished = map[string]string{}
 
 // TestAdvertisedStateTopicsArePublished is the builder-against-builder
 // check: every state and attributes topic a discovery config names is
@@ -547,6 +548,62 @@ func TestKnownUnpublishedTopicsAreStillAdvertised(t *testing.T) {
 				"knownAdvertisedButUnpublished (%s)", topic, why)
 		}
 	}
+}
+
+// TestLocateSwitchStateReflectsTheReadBack is the regression for F11 of
+// notes/adr0070-phase9-measurement.md.
+//
+// The locate switch advertised `…/device/<mac>/locate` as its state
+// topic and nothing in this daemon ever wrote to it. The switch sat at
+// "unknown" forever: a press was executed — the command path works —
+// and the entity never reflected it, with nothing in any log.
+//
+// Asserting only that the topic is written would pass on a publisher
+// that hard-codes OFF, so this checks the *value* against the fixture's
+// read-back, which is ON for exactly one device of the four.
+func TestLocateSwitchStateReflectsTheReadBack(t *testing.T) {
+	t.Parallel()
+
+	// The one device whose locate LED the fixture reports as lit.
+	const litDevice = "unifi/default/device/00005e005302/locate"
+
+	checked := 0
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			if !strings.HasSuffix(cfg.Topic, "/locate/config") {
+				continue
+			}
+			checked++
+			want := "OFF"
+			if cfg.StateTopic == litDevice {
+				want = "ON"
+			}
+			got, ok := s.textOn(cfg.StateTopic)
+			if !ok {
+				t.Errorf("%s: %s names %q, which nothing publishes",
+					s.name, cfg.Topic, cfg.StateTopic)
+				continue
+			}
+			if got != want {
+				t.Errorf("%s: %s = %q, want %q", s.name, cfg.StateTopic, got, want)
+			}
+		}
+	}
+	// Three scenarios have the control on, four devices each.
+	const wantChecked = 12
+	if checked != wantChecked {
+		t.Errorf("checked %d locate switches, want %d", checked, wantChecked)
+	}
+}
+
+// textOn returns the scalar payload published on a topic.
+func (s surface) textOn(topic string) (string, bool) {
+	for _, m := range s.msgs {
+		if m.Topic == topic && m.Text != nil {
+			return *m.Text, true
+		}
+	}
+	return "", false
 }
 
 // TestCommandTopicsAreSubscribed pins the third vocabulary: the command
@@ -781,9 +838,9 @@ func TestSurfaceCensus(t *testing.T) {
 	want := map[string]census{
 		"minimal.en":  {92, 45, "binary_sensor=11 sensor=34"},
 		"minimal.de":  {92, 45, "binary_sensor=11 sensor=34"},
-		"full.en":     {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
-		"full.de":     {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
-		"nonascii.de": {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"full.en":     {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"full.de":     {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"nonascii.de": {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
 	}
 	for _, s := range allSurfaces(t) {
 		counts := map[string]int{}

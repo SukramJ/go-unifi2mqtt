@@ -184,6 +184,11 @@ type Coordinator struct {
 	// interval.
 	nudgeDevices chan struct{}
 	nudgeClients chan struct{}
+	// nudgeStatic serves the two controls whose state the *static* loop
+	// owns: the locate LED and the SSID toggle. Nudging the device loop
+	// for those republishes a snapshot the device loop never refreshed,
+	// which looks like a working nudge and is not one.
+	nudgeStatic chan struct{}
 }
 
 // New builds a Coordinator from deps.
@@ -225,6 +230,7 @@ func New(d Deps) *Coordinator {
 		commands:         make(chan command, commandQueueSize),
 		nudgeDevices:     make(chan struct{}, 1),
 		nudgeClients:     make(chan struct{}, 1),
+		nudgeStatic:      make(chan struct{}, 1),
 		reconcileTimeout: defaultReconcileTimeout,
 		reconcileWindow:  defaultReconcileWindow,
 	}
@@ -330,7 +336,8 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		return c.loop(gctx, "device_stats", c.cfg.RefreshDeviceStatsDuration(), c.refreshDeviceStats)
 	})
 	g.Go(func() error {
-		return c.loop(gctx, "static", c.cfg.RefreshStaticDuration(), c.refreshStatic)
+		return c.loopWithNudge(gctx, "static", c.cfg.RefreshStaticDuration(),
+			c.nudgeStatic, c.refreshStatic)
 	})
 	if c.cfg.Clients.Enable {
 		g.Go(func() error {
@@ -492,6 +499,12 @@ func (c *Coordinator) refreshStatic(ctx context.Context) error {
 		}
 		if err := c.publishDiscovery(ctx, &devices[i]); err != nil {
 			c.log.Warn("coordinator.discovery_publish_failed",
+				slog.String("device", devices[i].Name), slog.String("err", err.Error()))
+		}
+		// The locate LED reads back from the same response, and this is
+		// the only loop that has it.
+		if err := c.publishLocate(ctx, &devices[i]); err != nil {
+			c.log.Warn("coordinator.locate_publish_failed",
 				slog.String("device", devices[i].Name), slog.String("err", err.Error()))
 		}
 	}

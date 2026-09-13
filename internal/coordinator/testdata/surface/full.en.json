@@ -2994,6 +2994,12 @@
       "text": "4.3.6"
     },
     {
+      "topic": "unifi/default/device/00005e005301/locate",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
+    },
+    {
       "topic": "unifi/default/device/00005e005301/memory_utilization",
       "qos": 0,
       "retain": true,
@@ -3055,6 +3061,12 @@
       "qos": 0,
       "retain": true,
       "text": "7.0.25"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/locate",
+      "qos": 0,
+      "retain": true,
+      "text": "ON"
     },
     {
       "topic": "unifi/default/device/00005e005302/memory_utilization",
@@ -3156,6 +3168,12 @@
       "text": "6.6.55"
     },
     {
+      "topic": "unifi/default/device/00005e005303/locate",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
+    },
+    {
       "topic": "unifi/default/device/00005e005303/memory_utilization",
       "qos": 0,
       "retain": true,
@@ -3232,6 +3250,12 @@
       "qos": 0,
       "retain": true,
       "text": "5.43.56"
+    },
+    {
+      "topic": "unifi/default/device/00005e005304/locate",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
     },
     {
       "topic": "unifi/default/device/00005e005304/state",

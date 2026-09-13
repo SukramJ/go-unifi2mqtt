@@ -217,9 +217,69 @@ func TestFailedCommandStillTriggersRefresh(t *testing.T) {
 	deliver(h.c, "unifi/default/device/00005e005302/cmd/locate/set", "ON", false)
 
 	select {
-	case <-h.c.nudgeDevices:
+	case <-h.c.nudgeStatic:
 	case <-time.After(2 * time.Second):
 		t.Fatal("a failed command did not schedule a refresh")
+	}
+}
+
+// TestEachCommandNudgesTheLoopThatPublishesItsState pins the pairing a
+// nudge depends on and nothing checked: the loop a completed command
+// wakes must be the loop that publishes that control's state topic.
+//
+// The locate LED and the SSID enable flag are both read and published
+// by the *static* loop — the fast device loop's list carries neither —
+// so nudging the device loop for them republished an unchanged snapshot
+// and left the entity on its old value until the next hourly poll. It
+// looks exactly like a working nudge.
+func TestEachCommandNudgesTheLoopThatPublishesItsState(t *testing.T) {
+	t.Parallel()
+
+	h := controlHarness(t, "")
+	// Drained so a stray nudge from an earlier command cannot satisfy a
+	// later assertion.
+	drain := func() {
+		for _, ch := range []chan struct{}{h.c.nudgeDevices, h.c.nudgeClients, h.c.nudgeStatic} {
+			select {
+			case <-ch:
+			default:
+			}
+		}
+	}
+
+	for _, tc := range []struct {
+		name string
+		cmd  command
+		want chan struct{}
+		not  []chan struct{}
+	}{
+		{"restart", command{kind: cmdKindRestart}, h.c.nudgeDevices,
+			[]chan struct{}{h.c.nudgeStatic, h.c.nudgeClients}},
+		{"power_cycle", command{kind: cmdKindPowerCycle}, h.c.nudgeDevices,
+			[]chan struct{}{h.c.nudgeStatic, h.c.nudgeClients}},
+		{"locate", command{kind: cmdKindLocate}, h.c.nudgeStatic,
+			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeClients}},
+		{"wlan", command{kind: cmdKindWLAN}, h.c.nudgeStatic,
+			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeClients}},
+		{"block", command{kind: cmdKindBlock}, h.c.nudgeClients,
+			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeStatic}},
+		{"authorize", command{kind: cmdKindAuthorize}, h.c.nudgeClients,
+			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeStatic}},
+	} {
+		drain()
+		h.c.scheduleRefresh(tc.cmd)
+		select {
+		case <-tc.want:
+		default:
+			t.Errorf("%s: nudged no refresh on the loop that publishes its state", tc.name)
+		}
+		for _, ch := range tc.not {
+			select {
+			case <-ch:
+				t.Errorf("%s: nudged a loop that does not publish its state", tc.name)
+			default:
+			}
+		}
 	}
 }
 
