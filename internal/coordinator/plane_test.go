@@ -227,6 +227,15 @@ func TestOnConnectRebuildsTheDiscoveryRuntime(t *testing.T) {
 	c.OnConnect(t.Context())
 	third := c.ha()
 
+	// A reconnect also pulls the static loop forward, because the
+	// classes it announces would otherwise wait out its hour-long
+	// cadence on a broker that came back empty.
+	select {
+	case <-c.nudgeStatic:
+	default:
+		t.Error("a reconnect left the static loop to its own cadence; its configs would wait up to an hour")
+	}
+
 	if first == second || second == third {
 		t.Error("the discovery runtime survived a connect; its memo is per connection, not per process")
 	}
@@ -407,6 +416,69 @@ func TestAReconnectRepublishesEveryClassOfConfig(t *testing.T) {
 	slices.Sort(missing)
 	if len(missing) > 0 {
 		t.Errorf("%d configs were not re-announced after the reconnect: %v", len(missing), missing)
+	}
+}
+
+// Every state publish goes through the dedup gate, and none of them
+// bypasses it.
+//
+// A byte-identical repeat across two cycles that changed nothing IS a
+// publish site that went straight to the client: the golden cannot see
+// it, because it collapses repeats into one recorded row. Keyed on the
+// whole message rather than on the topic, because a topic legitimately
+// carries two different values in one run.
+func TestEveryStateTopicGoesThroughTheDedupGate(t *testing.T) {
+	t.Parallel()
+
+	h := newHarnessWith(t, controlConfig(t, "  SIGNAL_SENSOR: true\n"), allCaps{})
+	t.Cleanup(h.c.Close)
+	withSampleClients(h)
+	ctx := t.Context()
+
+	cycle := func() {
+		t.Helper()
+		h.c.OnConnect(ctx)
+		for _, fn := range []func(context.Context) error{
+			h.c.refreshStatic, h.c.refreshDevices, h.c.refreshDeviceStats,
+			h.c.refreshClients, h.c.refreshHealth,
+		} {
+			if err := fn(ctx); err != nil {
+				t.Fatalf("warming the fixture: %v", err)
+			}
+		}
+	}
+	cycle()
+	// The second pass deliberately does NOT reconnect: the gate stays
+	// shut, so anything that goes out again went round it.
+	h.broker.reset()
+	for _, fn := range []func(context.Context) error{
+		h.c.refreshStatic, h.c.refreshDevices, h.c.refreshDeviceStats,
+		h.c.refreshClients, h.c.refreshHealth,
+	} {
+		if err := fn(ctx); err != nil {
+			t.Fatalf("second cycle: %v", err)
+		}
+	}
+
+	h.broker.mu.Lock()
+	repeats := slices.Clone(h.broker.msgs)
+	h.broker.mu.Unlock()
+	var offenders []string
+	for _, m := range repeats {
+		if strings.HasPrefix(m.topic, h.c.topics.root+"/") {
+			offenders = append(offenders, m.topic)
+		}
+	}
+	slices.Sort(offenders)
+	if len(offenders) > 0 {
+		t.Errorf("%d state publishes repeated an unchanged value: %v",
+			len(offenders), slices.Compact(offenders))
+	}
+
+	// Not vacuous: the first cycle really did publish into that tree.
+	if len(h.c.pub.state.Published()) < 50 {
+		t.Fatalf("only %d state topics were ever published; this test proves nothing",
+			len(h.c.pub.state.Published()))
 	}
 }
 
