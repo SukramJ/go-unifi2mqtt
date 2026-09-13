@@ -842,6 +842,56 @@ func TestTheRuntimeDerivesItsStatusTopicFromTheLayout(t *testing.T) {
 	}
 }
 
+// The runtime is scoped to the operator's discovery prefix, not the
+// library default.
+//
+// The two agree on every shipped configuration, which is exactly why
+// this needs saying: an installation that moved HASS_BASE_TOPIC would
+// otherwise have its sweep open a window over a tree it does not
+// publish into, and find nothing, forever, with nothing in any log.
+func TestTheRuntimeIsScopedToTheConfiguredDiscoveryPrefix(t *testing.T) {
+	t.Parallel()
+
+	cfg := hassConfig(t)
+	cfg.HASSBaseTopic = "ha-discovery"
+	c := New(Deps{
+		Cfg:    cfg,
+		Site:   testSite(),
+		Source: newFakeSource(),
+		Logger: slog.New(slog.DiscardHandler),
+		Now:    newFakeClock().now,
+	})
+	t.Cleanup(c.Close)
+
+	if got := c.ha().Prefix(); got != "ha-discovery" {
+		t.Errorf("the runtime's discovery prefix is %q, want the configured %q", got, cfg.HASSBaseTopic)
+	}
+}
+
+// The planes report rather than silently succeed when no inbound client
+// has been wired in.
+//
+// A silent no-op here is a daemon that accepts no commands and clears
+// no orphans while looking perfectly healthy.
+func TestThePlanesRefuseToSubscribeWithoutASubscriber(t *testing.T) {
+	t.Parallel()
+
+	c := New(Deps{
+		Cfg:    hassConfig(t),
+		Site:   testSite(),
+		Source: newFakeSource(),
+		MQTT:   &fakeBroker{},
+		Logger: slog.New(slog.DiscardHandler),
+		Now:    newFakeClock().now,
+	})
+	t.Cleanup(c.Close)
+	c.reconcileWindow = 10 * time.Millisecond
+
+	if _, err := c.collectRetainedConfigs(t.Context()); !errors.Is(err, ErrNoSubscriber) {
+		t.Errorf("the sweep window opened without a subscriber: %v", err)
+	}
+}
+
 // The availability marker goes around the circuit breaker, and
 // everything else goes through it.
 //
