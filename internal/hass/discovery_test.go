@@ -487,12 +487,16 @@ func TestSensorMetadata(t *testing.T) {
 		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "device_class", "connectivity"},
 		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "payload_on", "ON"},
 		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "payload_off", "OFF"},
-		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "value_template",
-			"{{ 'ON' if value == 'ONLINE' else 'OFF' }}"},
+		{
+			"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "value_template",
+			"{{ 'ON' if value == 'ONLINE' else 'OFF' }}",
+		},
 		{"homeassistant/binary_sensor/unifi_00005e005302/update_available/config", "device_class", "update"},
 		{"homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config", "payload_on", "ON"},
-		{"homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config", "value_template",
-			"{{ 'ON' if value == 'UP' else 'OFF' }}"},
+		{
+			"homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config", "value_template",
+			"{{ 'ON' if value == 'UP' else 'OFF' }}",
+		},
 	}
 	for _, tt := range tests {
 		e, ok := byTopic[tt.topic]
@@ -647,7 +651,7 @@ func TestEveryBinarySensorCanReportBothStates(t *testing.T) {
 // Deliberately not a general Jinja engine: it understands exactly the
 // form the specs are allowed to use, so a spec that reaches for
 // something else fails here rather than being waved through.
-var portIndexPattern = regexp.MustCompile(`^port_[0-9]+_`)
+var portIndexPattern = regexp.MustCompile(`^port_\d+_`)
 
 func renderBinaryTemplate(tmpl, value string) string {
 	if tmpl == "" {

@@ -1105,6 +1105,252 @@ is the line an operator would read before deciding not to set anything.
 
 ---
 
+## Step 2 outcome — what was fixed, what was left, and what step 4 must not reopen
+
+Added by the steps-1-and-2 PR. The findings above are the measurement
+and are left as they were written; this section records what happened to
+each, including the two places the measurement was wrong.
+
+### Corrections to the measurement
+
+- **F2 is a defect in this repository, not in go-hamqtt.** The finding
+  attributes the two refused keys to "struct shape", and a reader can
+  take that as naming a *shared* struct. There is no shared struct:
+  go-unifi2mqtt does not depend on go-hamqtt at all, and `entity` and
+  `controlEntity` are this repository's own types in `internal/hass`.
+  Fixed here. No library version was bumped for it.
+- **F1 has a third instance the measurement did not name.** It lists the
+  device `reachable` sensor and `wan_connectivity`. `port_link` has it
+  too: `payload_on: "UP"` and `payload_off: "DOWN"` against a
+  `model.PortState` that is `UP`, `DOWN` **or** `UNKNOWN`. Found by the
+  regression test, which is why that test asserts over each sensor's
+  real state vocabulary rather than checking that the two keys are
+  present.
+- **F10's count is 22, not 16.** Recounted below.
+
+### Disposition
+
+| Finding | Disposition |
+| --- | --- |
+| **F1** high | **Fixed.** `value_template` mapping the whole state vocabulary onto `payload_on`/`payload_off`, on `reachable`, `wan_connectivity` and `port_link`. |
+| **F2** high | **Fixed.** `omitempty` on `state_topic`, `Optimistic` becomes a `*bool` nothing sets, and the one explicit `StateTopic: ""` is gone. |
+| **F3** medium | **Left**, as go-mtec2mqtt and go-homeconnect2mqtt left theirs. Retiring a topic an installed base may already consume is an operator-contract decision, and adding the four missing entities is additive work that belongs after step 6. See below for why PoE wattage did not change that. |
+| **F4** high | **Decided: keep this bridge's own normalisers.** Recorded below so step 4 does not reopen it. |
+| **F5** high | **Recorded** as `hass.LegacyConfigTopicForm`, with a two-candidate test. The four config-topic composers are now one. |
+| **F6** high | **Half fixed:** `MQTT_CLIENT_ID`, defaulting to today's derived id. The cross-console `unifi_site_default` collision is **left** — re-keying it re-registers every existing site entity, which is a step-3 decision. |
+| **F7** low | **Left.** A payload addition on every config; step 7, and not in the same step as anything else. |
+| **F8** medium | **Left**, and narrowed — see below. |
+| **F9** medium | **Already pinned** by `TestPublishQoSAndRetain`, which reads the value off the transport call. Nothing to fix; confirmed below. |
+| **F10** medium | **Recounted and partly converged.** Four config-topic composers became one; the suffix vocabularies stay two, pinned builder-against-builder. |
+| **F11** medium | **Fixed.** The locate LED is read back from `/stat/device` and published. Which exposed a second instance of the same drift in the nudge routing. |
+| **F12** low | **Left.** A collision costs only the second entity's preferred id; `unique_id`s differ, so Home Assistant appends a discriminator rather than merging. |
+| **F13** low | **Fixed** with F6; it is the same defect in prose. |
+
+### F4 — decided: keep `slugify` and `collapseTokens`
+
+**This bridge keeps its own normalisers.** Step 4 must reproduce them,
+not replace them.
+
+Three bridges have faced this question and all three kept theirs:
+go-mtec2mqtt (8 of 100 keys), go-homeconnect2mqtt (5 of 7 device
+probes) and go-daikin2mqtt (three separate normalisers). Here 2 of 35
+entity keys diverge and 9 of 13 device-name probes, on three
+independent classes: `ä→a` vs `ä→ae`, the hyphen, and the empty string.
+
+The reasoning, in the order it matters:
+
+1. **Home Assistant never renames a registered entity.** A `unique_id`
+   it already knows keeps the `entity_id` it was first given, so
+   swapping the function does not migrate anything — it strands the old
+   ids and creates a second set for anything registered afterwards.
+2. **`ä→a` is what Home Assistant's own `slugify` does**, and
+   `discovery.go:446-454` says so. This is not a defect to be corrected
+   into agreement with the library; it is agreement with the platform.
+3. **The user base is German.** "Büro", "Küche", "Gäste" are the normal
+   case here, not the exotic one, so the divergence is not a corner.
+4. The blast radius is smaller than homeconnect's — `unique_id` and
+   `device.identifiers` are MAC-derived and no topic segment is
+   slugified, so only `default_entity_id` moves — and that is an
+   argument for the change being *cheap*, not for it being *free*. It
+   still re-registers every entity on a non-ASCII-named device.
+
+**And the seed is a composition, not a function.** `default_entity_id`
+is `collapseTokens(slugify(device.Name) + "_" + slugify(key))`
+(`discovery.go:438`, `:481`), with `collapseTokens` dropping a token
+that repeats the one before it. No single slug function reproduces
+that, for ASCII names either: a `discovery.Context` that supplies only
+an object-id slug function does not produce this bridge's seeds. **Step
+4 has to reproduce the composition.**
+
+### F9 — confirmed, and nothing to fix
+
+The QoS split is deliberate and already pinned by
+`TestPublishQoSAndRetain`, which reads `qos` off the recorded transport
+call rather than off a constant — the property that let go-mtec2mqtt's
+pin survive its entire publish plane moving. Measured on this branch:
+
+| Plane | QoS | Count across the five scenarios |
+| --- | ---: | ---: |
+| discovery configs | 1 | 315 |
+| bridge availability | 1 | 5 |
+| everything else | 0 | 317 |
+
+(317, not 305: the twelve new locate topics of F11.) Everything is
+retained.
+
+What step 5 must write: `publisher.QoSAtMostOnce` (`0x80`) explicitly in
+`StateConfig.QoS`, with `Config.QoS`, `AvailabilityConfig.QoS` and
+`CommandConfig.QoS` left at 1. `publisher.QoS`'s zero value is
+`QoSUnset` and resolves to **1**, so an unset config moves the state
+plane alone — and a reviewer checking "discovery is at QoS 1, good"
+finds that half correct and stops.
+
+### F10 — recounted: 22 composition sites, not 16
+
+Counted as places that compose an MQTT topic or filter string from
+parts, at `origin/main`:
+
+| Where | Sites |
+| --- | ---: |
+| `coordinator/topics.go` — `bridge`, `device`, `devicePrefix`, `port`, `radio`, `wlan`, `health`, `client` | 8 |
+| `coordinator/command.go` — the six subscribe filters' shared prefix, `parseCommand`'s prefix strip, `parseDeviceCommand`'s port-suffix reassembly | 3 |
+| `hass` config-topic composers — `discovery.configTopic`, `client.clientConfigTopic`, the inline one in `health.go`, the inline one in `control.go` | 4 |
+| `hass/cleanup.go` — `ConfigFilter`, a fifth independent copy of the config-topic shape | 1 |
+| `hass` suffix vocabularies — `deviceSpecs`, `portSpecs`, `radioSpecs`, `healthSpecs`, `client.go`'s, `control.go`'s command suffixes | 6 |
+| **Total** | **22** |
+
+The phase plan expected two everywhere. go-mtec2mqtt measured two and
+found five, go-homeconnect2mqtt six, go-daikin2mqtt nine, and this
+document sixteen. **Every bridge has undercounted, including this one.**
+
+Four became one: the config-topic composers. That is byte-neutral and
+proven so, which is exactly the evidence that they had agreed. **18
+remain.** They are not converged here, because unlike go-daikin2mqtt's
+twelve state-topic builders these are mostly one composer per family
+plus a second copy of the suffix *names*, and the suffix names are
+pinned builder-against-builder by `TestAdvertisedStateTopicsArePublished`
+and `TestCommandTopicsAreSubscribed`. Converging them is a step-4
+question, not a defect.
+
+The measurement said F11 was the one live instance of the drift. It was
+the one live instance **in the published topics**. There was a second,
+in the *routing*: `scheduleRefresh` sent locate and WLAN commands to
+`nudgeDevices`, and neither control's state is published by that loop —
+both come from the static loop. The nudge woke a loop that republished
+an unchanged snapshot, so the entity stayed on its old value until the
+next hourly poll, which looks exactly like a working nudge. Now pinned
+per command kind by
+`TestEachCommandNudgesTheLoopThatPublishesItsState`.
+
+### F3 — why PoE wattage is still a stray topic
+
+The measurement offers the alternative reading: PoE wattage is better
+understood as a missing entity than as a stray topic, and adding the
+entity is a change with a real user benefit.
+
+It is, and it is still not this step's change. Adding a
+`port_<n>_power` sensor adds a config topic and an entity to every
+PoE-delivering port of every switch — additive on the wire, and exactly
+the kind of thing that must not share a step with a migration whose
+whole claim is byte-equality. It also needs a decision this step cannot
+make: whether a port that stops delivering power should have its sensor
+go to 0 or stop being published, which is the same question
+`publishPort` already answers one way for wattage and another for the
+PoE flag. **Step 7**, with the other three of F3's missing entities
+(`lan`, `wlan`, `vpn` subsystem health).
+
+The six unread topics stay published. Retiring one an installed base may
+already consume is an operator-contract decision; three prior phases
+declined to make it inside the migration and so does this one.
+
+### F8 — narrower than the measurement implies
+
+Measured against go-hamqtt after this document was written: the per-entity
+128/187 split **is** expressible in the shared model.
+`model.Availability` sits on `model.Description` and is resolved per
+entity by `Context.Availability`, so the split is `model.BridgeOnly()`
+beside the zero value, applied per component. `value_template` on an
+availability entry is supported.
+
+The only gap is spelling. `StdContext` emits a dedicated availability
+topic carrying `true`/`false` for `LevelSelf`; this bridge wants the
+object's own state topic with a template over the bare value. The route
+is overriding `Context.Availability`, an interface method that exists
+for this. **Nothing needs adding to the model**, so F8's step-3
+decision is narrower than §4 suggests: it is a `Context` override, not
+a choice between a `Layout` hack and changing 187 payloads.
+
+### Bytes moved
+
+Every figure below comes from running the **builders** at `origin/main`
+and at the branch tip and diffing their output key by key — not from
+diffing the regenerated fixtures, which are written by the code they
+guard. The harness is committed as
+`internal/coordinator/surface_dump_test.go` so every later step can
+repeat it.
+
+| Scenario | Topics added | Keys changed | Findings |
+| --- | ---: | ---: | --- |
+| `minimal.en` | 0 | 18 | F1 |
+| `minimal.de` | 0 | 18 | F1 |
+| `full.en` | 4 | 42 | F1, F2, F11 |
+| `full.de` | 4 | 42 | F1, F2, F11 |
+| `nonascii.de` | 4 | 42 | F1, F2, F11 |
+
+**12 topics added, 162 keys changed, 0 topics removed.** The complete
+list of what moves:
+
+- `payload_on`, `payload_off` and `value_template` on 33 binary-sensor
+  configs — F1;
+- `state_topic` removed from 18 button configs, `optimistic` removed
+  from 45 control configs — F2;
+- 12 new `unifi/<site>/device/<mac>/locate` state topics — F11.
+
+**No `unique_id` moves. No `device.identifiers` moves. No
+`default_entity_id` moves. No config topic is added, removed or
+renamed. No `qos` or `retain` flag moves. No topic is removed.** Nothing
+re-registers in either Home Assistant registry.
+
+All five digests were updated **by hand**, in the commits that moved the
+bytes, each naming its finding: F2 moved `full.*` and `nonascii.de`, F11
+moved the same three, F1 moved all five. `-update-surface-golden` still
+refuses to write them — it prints and fails, three times here, as
+designed. Census literals: 147 → 151 messages on the three `full`
+scenarios; the QoS 0 state count 305 → 317.
+
+### The release note step 7 owes
+
+F1's finding says the fix "belongs in the defect step with a release
+note". The fix is here; the note is not, because `changelog.md` and
+`addon/CHANGELOG.md` are release-scoped in this repository — every
+section is a shipped version, and `make release` reads the version from
+`internal/version/version.go`. Opening an `Unreleased` heading would
+put a section in those files that no tag matches. Step 7 bumps the
+version and writes the sections; this is the text it owes, so it is not
+lost between the two:
+
+- **Devices can now report being unreachable.** The `reachable`
+  connectivity sensor matched only the value `ONLINE` and nothing at
+  all on the nine other states a device can be in, so it turned on when
+  a device first appeared and never turned off again — while staying
+  available, so nothing indicated the reading was stale. The same
+  applied to each port's link sensor (which could not report `UNKNOWN`)
+  and to the site's WAN connectivity sensor. All three now report both
+  states. **Existing installations see these entities change value on
+  the first poll after the upgrade**, which for anything that was
+  actually offline is the first correct reading it has given.
+- **The Locate switch reflects the LED.** Its state topic was never
+  written, so the entity sat at `unknown`: a press worked and the
+  switch never moved. The LED state is now read back from the console.
+  A press also refreshes promptly again — as does an SSID toggle, which
+  had the same problem for the same reason.
+- **`MQTT_CLIENT_ID` (add-on: `mqtt_client_id`).** Two daemons on one
+  broker presented the same identifier and evicted each other in a
+  loop. Unset keeps exactly the identifier your installation presents
+  today, so there is nothing to do unless you run two.
+
+---
+
 ## Sequencing — the rest of phase 9
 
 Ordered so each step de-risks the next, following the shape phases 5–8

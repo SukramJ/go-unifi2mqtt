@@ -253,18 +253,42 @@ func TestEachCommandNudgesTheLoopThatPublishesItsState(t *testing.T) {
 		want chan struct{}
 		not  []chan struct{}
 	}{
-		{"restart", command{kind: cmdKindRestart}, h.c.nudgeDevices,
-			[]chan struct{}{h.c.nudgeStatic, h.c.nudgeClients}},
-		{"power_cycle", command{kind: cmdKindPowerCycle}, h.c.nudgeDevices,
-			[]chan struct{}{h.c.nudgeStatic, h.c.nudgeClients}},
-		{"locate", command{kind: cmdKindLocate}, h.c.nudgeStatic,
-			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeClients}},
-		{"wlan", command{kind: cmdKindWLAN}, h.c.nudgeStatic,
-			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeClients}},
-		{"block", command{kind: cmdKindBlock}, h.c.nudgeClients,
-			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeStatic}},
-		{"authorize", command{kind: cmdKindAuthorize}, h.c.nudgeClients,
-			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeStatic}},
+		{
+			"restart",
+			command{kind: cmdKindRestart},
+			h.c.nudgeDevices,
+			[]chan struct{}{h.c.nudgeStatic, h.c.nudgeClients},
+		},
+		{
+			"power_cycle",
+			command{kind: cmdKindPowerCycle},
+			h.c.nudgeDevices,
+			[]chan struct{}{h.c.nudgeStatic, h.c.nudgeClients},
+		},
+		{
+			"locate",
+			command{kind: cmdKindLocate},
+			h.c.nudgeStatic,
+			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeClients},
+		},
+		{
+			"wlan",
+			command{kind: cmdKindWLAN},
+			h.c.nudgeStatic,
+			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeClients},
+		},
+		{
+			"block",
+			command{kind: cmdKindBlock},
+			h.c.nudgeClients,
+			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeStatic},
+		},
+		{
+			"authorize",
+			command{kind: cmdKindAuthorize},
+			h.c.nudgeClients,
+			[]chan struct{}{h.c.nudgeDevices, h.c.nudgeStatic},
+		},
 	} {
 		drain()
 		h.c.scheduleRefresh(tc.cmd)

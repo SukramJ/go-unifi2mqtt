@@ -311,12 +311,16 @@ func TestClientIDDefaultsToTheHistoricalLiteral(t *testing.T) {
 		want string
 	}{
 		{"shipped default", base, nil, "unifi2mqtt-unifi"},
-		{"derived from MQTT_TOPIC", base + "MQTT_TOPIC: unifi-garage\n", nil,
-			"unifi2mqtt-unifi-garage"},
+		{
+			"derived from MQTT_TOPIC", base + "MQTT_TOPIC: unifi-garage\n", nil,
+			"unifi2mqtt-unifi-garage",
+		},
 		{"explicit key wins", base + "MQTT_CLIENT_ID: garage-bridge\n", nil, "garage-bridge"},
-		{"explicit key wins over MQTT_TOPIC",
+		{
+			"explicit key wins over MQTT_TOPIC",
 			base + "MQTT_TOPIC: unifi-garage\nMQTT_CLIENT_ID: garage-bridge\n", nil,
-			"garage-bridge"},
+			"garage-bridge",
+		},
 		{"environment override", base, MapEnv{"UNIFI_MQTT_CLIENT_ID": "from-env"}, "from-env"},
 		{"empty key falls back", base + `MQTT_CLIENT_ID: ""` + "\n", nil, "unifi2mqtt-unifi"},
 	} {
