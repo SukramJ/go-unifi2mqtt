@@ -342,3 +342,86 @@ func TestClearedConfigLeavesTheAnnouncedSet(t *testing.T) {
 		t.Errorf("%s is still claimed after being cleared", topic)
 	}
 }
+
+// TestOwnershipCannotSeparateTwoConsolesOnOneRoot measures the hard
+// case, and it is a **gate on step 6** rather than a defect fixed here.
+//
+// go-mtec2mqtt's F4 (its PR #54) established the pattern this bridge
+// will have to adopt: `IsOwnConfig` must unconditionally require the
+// payload's state topic to sit under this instance's own identity, and
+// must claim nothing before it has learned that identity. mtec's
+// earlier version gated the check on a flag, and under the shipped
+// default a staggered two-instance upgrade deleted the sibling's entire
+// fleet — neither instance could tell its own retained configs from the
+// other's. Its reviewer also faulted the test for asserting the
+// predicate without ever driving the sweep, and for fixturing the
+// sibling under a *different* MQTT root, which is the easy edge.
+//
+// So this test drives the real sweep, and fixtures the hard case: the
+// same MQTT root, the same site segment, another console.
+//
+// **The answer for this bridge is that no such identity exists.** A
+// state topic here is `<root>/<site>/…`. The root is MQTT_TOPIC, which
+// is what today's availability-topic check already keys on. The site
+// segment is `Site.Internal`, which is `default` on every UniFi console
+// out of the box. Two instances bridging two *different consoles* on
+// one broker with the shipped configuration therefore produce
+// byte-identical state topics, config topics and unique_ids for the
+// whole site plane — `unifi_site_default`, its seven health entities
+// and every SSID switch — and a state-topic ownership rule separates
+// them no better than the availability topic does.
+//
+// This test pins that as it is today. It is not a fix: inventing an
+// identity (the site UUID in `siteDeviceID`, or an INSTANCE_ID) is a
+// step-3 decision that re-registers every existing site entity.
+func TestOwnershipCannotSeparateTwoConsolesOnOneRoot(t *testing.T) {
+	t.Parallel()
+
+	h, sub := newReconcileHarness(t, hassConfig(t))
+	ctx := t.Context()
+
+	if err := h.c.refreshStatic(ctx); err != nil {
+		t.Fatalf("refreshStatic: %v", err)
+	}
+	if err := h.c.refreshDevices(ctx); err != nil {
+		t.Fatalf("refreshDevices: %v", err)
+	}
+
+	// A second console's SSID switch, published by a second instance of
+	// this daemon under the *same* MQTT root. Its unique_id is in our
+	// namespace, its availability topic is ours because the root is
+	// ours, and its state topic is under `unifi/default/` because the
+	// site segment is `default` on every console. There is nothing in
+	// it that is not also true of ours.
+	const sibling = "homeassistant/switch/unifi_site_default/wlan_other-console-ssid/config"
+	payload := []byte(`{"unique_id":"unifi_wlan_other-console-ssid_enabled",` +
+		`"state_topic":"unifi/default/wlan/other-console-ssid/enabled",` +
+		`"availability":[{"topic":"` + h.c.AvailabilityTopic() + `"}]}`)
+
+	if !h.c.hass.IsOwnConfig(payload) {
+		t.Fatal("setup: the sibling console's config is not claimed, so this " +
+			"test no longer measures the hard case")
+	}
+
+	h.broker.reset()
+	done := make(chan error, 1)
+	go func() { done <- h.c.reconcileOrphans(ctx) }()
+	sub.deliverRetained(t, h.c.hass.ConfigFilter(), map[string][]byte{sibling: payload})
+	if err := <-done; err != nil {
+		t.Fatalf("reconcileOrphans: %v", err)
+	}
+
+	// Today the sweep clears it: we do not announce that SSID, our
+	// ownership test says it is ours, so it is an orphan. That is the
+	// measured behaviour, and it is what gates step 6 — where the same
+	// inability means one console's *bundle* replaces the other
+	// console's whole site entity set on every poll.
+	payloadOut, cleared := h.broker.latest(sibling)
+	if !cleared || payloadOut != "" {
+		t.Errorf("the other console's SSID switch was left alone "+
+			"(payload %q, published %v). If that is now deliberate, this "+
+			"test has to say so and the step 6 gate in "+
+			"notes/adr0070-phase9-measurement.md has to be closed",
+			payloadOut, cleared)
+	}
+}

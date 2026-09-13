@@ -1137,7 +1137,7 @@ each, including the two places the measurement was wrong.
 | **F3** medium | **Left**, as go-mtec2mqtt and go-homeconnect2mqtt left theirs. Retiring a topic an installed base may already consume is an operator-contract decision, and adding the four missing entities is additive work that belongs after step 6. See below for why PoE wattage did not change that. |
 | **F4** high | **Decided: keep this bridge's own normalisers.** Recorded below so step 4 does not reopen it. |
 | **F5** high | **Recorded** as `hass.LegacyConfigTopicForm`, with a two-candidate test. The four config-topic composers are now one. |
-| **F6** high | **Half fixed:** `MQTT_CLIENT_ID`, defaulting to today's derived id. The cross-console `unifi_site_default` collision is **left** — re-keying it re-registers every existing site entity, which is a step-3 decision. |
+| **F6** high | **Half fixed:** `MQTT_CLIENT_ID`, defaulting to today's derived id. The cross-console `unifi_site_default` collision is **left**, and is now measured to be worse than the finding says — it is a live defect and a step-6 gate. See below. |
 | **F7** low | **Left.** A payload addition on every config; step 7, and not in the same step as anything else. |
 | **F8** medium | **Left**, and narrowed — see below. |
 | **F9** medium | **Already pinned** by `TestPublishQoSAndRetain`, which reads the value off the transport call. Nothing to fix; confirmed below. |
@@ -1317,6 +1317,64 @@ moved the same three, F1 moved all five. `-update-surface-golden` still
 refuses to write them — it prints and fails, three times here, as
 designed. Census literals: 147 → 151 messages on the three `full`
 scenarios; the QoS 0 state count 305 → 317.
+
+### F6 at step 6 — the ownership rule, and the identity this bridge does not have
+
+**Decided, after this document was written:** step 6 adopts
+go-mtec2mqtt's pattern (its PR #54, finding F4). `IsOwnConfig` must
+require the payload's **state topic** to sit under this instance's own
+identity, **unconditionally**, and must return false before it has
+learned that identity — ownership that cannot be proven is not claimed.
+mtec gated the equivalent check on a flag, and under the shipped default
+a staggered two-instance upgrade deleted the sibling's entire fleet:
+neither instance could tell its own retained configs from the other's.
+
+Applying that rule here runs into a wall, and it is better surfaced now
+than at the irreversible publish.
+
+**A state topic in this bridge is `<root>/<site>/…`.** The root is
+`MQTT_TOPIC`, which is exactly what today's availability-topic check
+already keys on — so the state-topic rule adds nothing there. The site
+segment is `Site.Internal`, and that is `default` on every UniFi console
+out of the box. **There is no third component.**
+
+So for two instances bridging two *different consoles* to one broker
+with the shipped configuration, the whole site plane —
+`unifi_site_default`, its seven health entities and every SSID switch —
+has byte-identical config topics, byte-identical `unique_id`s, an
+identical availability topic **and identical state topics**. No
+ownership rule expressible over today's strings separates them.
+
+That is not only a step-6 gate. It is a live defect, now pinned:
+`TestOwnershipCannotSeparateTwoConsolesOnOneRoot` drives the real sweep
+against the hard case — same root, same site segment, another console's
+SSID switch — and records that **the sweep clears it today**. One
+console's daemon deletes the other console's SSID switch from Home
+Assistant, because it does not announce that SSID and its ownership test
+says the config is its own. At step 6 the same inability is worse by the
+usual factor: a bundle is one retained topic per device, so one
+console's bundle replaces the other console's entire site entity set on
+every poll.
+
+It is deliberately **not** fixed here. Every candidate identity — the
+site UUID in `siteDeviceID`, an `INSTANCE_ID` — re-keys entities Home
+Assistant has already registered, which is a step-3 decision, and the
+brief for this step is to write the collision down rather than invent
+an identity for it.
+
+Two notes for whoever builds step 6, both from mtec's reviewer:
+
+- **Drive the sweep, do not only ask the predicate.** The `#52`-era test
+  there asserted `IsOwnConfig` and never called the sweep, which is why
+  the fleet deletion went unseen for a PR. This repository's
+  `TestReconcileClearsStaleConfigsOnly` does drive it — but see the next
+  point.
+- **Fixture the hard case.** mtec's report-only fixture separated the
+  sibling by a different MQTT root, the easy edge. So does this
+  repository's: `TestReconcileClearsStaleConfigsOnly`'s `sibling` uses
+  `unifi-garage/bridge/status`. The same-root, different-console case is
+  the one that matters, and it is now fixtured by
+  `TestOwnershipCannotSeparateTwoConsolesOnOneRoot`.
 
 ### The release note step 7 owes
 
