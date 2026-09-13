@@ -472,8 +472,9 @@ func TestHamqttRetractionReproducesEveryPublishedConfigTopic(t *testing.T) {
 }
 
 // TestHamqttBundleWouldBeInvisibleToItsOwnReconcile records the second
-// half of F5: this daemon's orphan sweep subscribes to a strictly
-// five-segment filter, and a device bundle is four segments.
+// half of F5: this daemon publishes in a strictly five-segment form
+// (hass.ConfigFilter states it), and a device bundle is four segments,
+// so the sweep could not rebuild its topic or match it to a claim.
 func TestHamqttBundleWouldBeInvisibleToItsOwnReconcile(t *testing.T) {
 	t.Parallel()
 

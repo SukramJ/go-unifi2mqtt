@@ -587,8 +587,9 @@ func hamqttDevice(info deviceInfo) *hamodel.Device {
 	return dev
 }
 
-// deviceAvailTemplate maps the ten model.DeviceState strings onto
-// online/offline. It is the literal the shipped builder writes.
+// deviceAvailTemplate maps every model.DeviceState string — the
+// vocabulary model.AllDeviceStates declares — onto online/offline. It
+// is the literal the shipped builder writes.
 const deviceAvailTemplate = "{{ 'online' if value == 'ONLINE' else 'offline' }}"
 
 // clientAvailTemplate is the client plane's equivalent.

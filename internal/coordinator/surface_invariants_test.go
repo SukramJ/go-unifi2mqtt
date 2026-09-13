@@ -263,10 +263,13 @@ func TestConfigTopicFormIsTheFiveSegmentNodeIDForm(t *testing.T) {
 	}
 }
 
-// TestConfigFilterMatchesEveryConfigTopic pins that the orphan
-// reconcile's own subscription sees everything this daemon writes — and
-// records that it is a five-segment filter, so a four-segment device
-// bundle would be invisible to it in both directions.
+// TestConfigFilterMatchesEveryConfigTopic pins that everything this
+// daemon writes is in the five-segment form hass.ConfigFilter states —
+// and records that a four-segment device bundle falls outside it, so it
+// would be invisible to the sweep's rebuild step in both directions.
+//
+// The sweep subscribes to the wider `<prefix>/#`, not to this filter;
+// see the note on hass.ConfigFilter.
 func TestConfigFilterMatchesEveryConfigTopic(t *testing.T) {
 	t.Parallel()
 

@@ -97,6 +97,29 @@ const (
 	PlatformDeviceTracker Platform = "device_tracker"
 )
 
+// allPlatforms is every [Platform] this daemon emits, and the single
+// source for the closed set [OwnsConfigTopic] judges a retained config
+// topic by.
+//
+// It exists because there were two spellings of these five. The const
+// block above is what the renderers write into a topic; plane.go's
+// publishedPlatforms was a second, hand-typed map of the same strings,
+// referenced by no test at all — while its *fixture* twin had already
+// been tied to [PublishedPlatforms] at PR #29. A platform that reached
+// one spelling and not the other becomes invisible to the sweep in both
+// directions, never retracted and never reported, and nothing on the
+// wire would say so.
+//
+// TestAllPlatformsCoversTheConstBlock parses this file and fails if a
+// Platform constant is declared without being listed here.
+var allPlatforms = []Platform{
+	PlatformSensor,
+	PlatformBinarySensor,
+	PlatformButton,
+	PlatformSwitch,
+	PlatformDeviceTracker,
+}
+
 // Entry is one discovery payload ready for publication.
 type Entry struct {
 	// ConfigTopic is the retained topic the payload goes to. Publishing
@@ -265,9 +288,9 @@ type spec struct {
 	// than two strings.
 	//
 	// Without one, a binary sensor can only match the values it names:
-	// a device state topic carrying ten model.DeviceState strings
-	// matches payload_on on exactly one of them and *nothing* on the
-	// other nine, so the entity can turn on and never off. A template
+	// a device state topic carrying every model.DeviceState string
+	// matches payload_on on exactly one of them and *nothing* on all
+	// the rest, so the entity can turn on and never off. A template
 	// that renders every input as one of the two payloads is the only
 	// shape that has no third outcome.
 	valueTemplate string
@@ -324,9 +347,10 @@ func deviceSpecs() []spec {
 			// are not states you can route traffic through.
 			//
 			// That has to be said with a template. The state topic
-			// carries ten model.DeviceState strings and not one of them
-			// is "OFF", so a bare payload_on: "ONLINE" matched the on
-			// side and nothing at all on the other nine values: the
+			// carries every model.DeviceState string — eleven of them,
+			// the vocabulary model.AllDeviceStates declares — and not
+			// one is "OFF", so a bare payload_on: "ONLINE" matched the
+			// on side and nothing at all on the other ten: the
 			// sensor turned on at the first ONLINE and could never
 			// report the device going away. It stayed *available* while
 			// doing it, because this entity is bridge-scoped on

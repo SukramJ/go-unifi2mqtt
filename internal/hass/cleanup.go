@@ -97,11 +97,31 @@ func (c Class) String() string {
 // ConfigFilter is the MQTT filter matching every discovery config topic
 // this daemon writes: <prefix>/<platform>/<object>/<key>/config.
 //
-// It spans the whole discovery prefix rather than just this daemon's
-// configs, because there is no wildcard that expresses "mine" — the
-// config topics this daemon writes are not distinguishable by shape
-// from any other integration's. Scoping is therefore done in code, in
-// [Discovery.OrphanConfigs].
+// # It is not subscribed to by anything, and that is deliberate
+//
+// The orphan sweep does *not* use this filter. It opens a go-hamqtt
+// snapshot window over `<prefix>/#` (see collectRetainedConfigs in the
+// coordinator), which is strictly wider — it also replays
+// `<prefix>/status` and any four-segment device bundle. Nothing in the
+// production path calls this function, so an audit that greps for
+// callers finds none, and CONCEPT.md described it as the subscription
+// until that was corrected.
+//
+// What it is instead is the one machine-readable statement of the
+// *form* this daemon publishes in: exactly five segments, ending in
+// `config`. Three tests hold the real renderers to it —
+// TestConfigFilterMatchesEveryConfigTopic here and in the coordinator's
+// surface invariants, and TestHamqttBundleWouldBeInvisibleToItsOwnReconcile,
+// which records the other half of measurement finding F5: a device
+// bundle is four segments and would fall outside this form entirely.
+// Retyping "<prefix>/+/+/+/config" in each of them would be a third and
+// fourth spelling of a shape the sweep's rebuild step
+// ([ConfigTopicFor]) also depends on, which is the kind of untied twin
+// this file already has a story about.
+//
+// So: keep it, do not subscribe to it, and if the published form ever
+// gains a fourth segment or a bundle, change it here and read what
+// fails.
 func (d *Discovery) ConfigFilter() string {
 	return d.baseTopic + "/+/+/+/config"
 }
