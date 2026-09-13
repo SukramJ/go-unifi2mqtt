@@ -454,6 +454,10 @@ func TestEveryStateTopicGoesThroughTheDedupGate(t *testing.T) {
 	for _, fn := range []func(context.Context) error{
 		h.c.refreshStatic, h.c.refreshDevices, h.c.refreshDeviceStats,
 		h.c.refreshClients, h.c.refreshHealth,
+		// `bridge/info` is published from the connect hook alone, so it
+		// would never repeat in a cycle-driven pass — and a publish site
+		// that went round the gate would be invisible. Driven directly.
+		h.c.publishBridgeInfo,
 	} {
 		if err := fn(ctx); err != nil {
 			t.Fatalf("second cycle: %v", err)
