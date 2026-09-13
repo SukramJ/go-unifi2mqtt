@@ -1,0 +1,2099 @@
+{
+  "scenario": "minimal.en",
+  "messages": [
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005301/reachable/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.gateway_reachable",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "device_class": "connectivity",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "Reachable",
+        "payload_on": "ONLINE",
+        "state_topic": "unifi/default/device/00005e005301/state",
+        "unique_id": "unifi_00005e005301_reachable"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005301/update_available/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.gateway_update_available",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "device_class": "update",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "Update available",
+        "payload_off": "OFF",
+        "payload_on": "ON",
+        "state_topic": "unifi/default/device/00005e005301/update_available",
+        "unique_id": "unifi_00005e005301_update_available"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.switch_garage_port_1_link",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "connectivity",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Port 1 link",
+        "payload_off": "DOWN",
+        "payload_on": "UP",
+        "state_topic": "unifi/default/device/00005e005302/port/1/state",
+        "unique_id": "unifi_00005e005302_port_1_link"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005302/port_1_poe/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.switch_garage_port_1_poe",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "power",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Port 1 PoE",
+        "payload_off": "OFF",
+        "payload_on": "ON",
+        "state_topic": "unifi/default/device/00005e005302/port/1/poe",
+        "unique_id": "unifi_00005e005302_port_1_poe"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005302/port_25_link/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.switch_garage_port_25_link",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "connectivity",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Port 25 link",
+        "payload_off": "DOWN",
+        "payload_on": "UP",
+        "state_topic": "unifi/default/device/00005e005302/port/25/state",
+        "unique_id": "unifi_00005e005302_port_25_link"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005302/reachable/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.switch_garage_reachable",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "connectivity",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Reachable",
+        "payload_on": "ONLINE",
+        "state_topic": "unifi/default/device/00005e005302/state",
+        "unique_id": "unifi_00005e005302_reachable"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005302/update_available/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.switch_garage_update_available",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "update",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Update available",
+        "payload_off": "OFF",
+        "payload_on": "ON",
+        "state_topic": "unifi/default/device/00005e005302/update_available",
+        "unique_id": "unifi_00005e005302_update_available"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005303/reachable/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.ap_reachable",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "device_class": "connectivity",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Reachable",
+        "payload_on": "ONLINE",
+        "state_topic": "unifi/default/device/00005e005303/state",
+        "unique_id": "unifi_00005e005303_reachable"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005303/update_available/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.ap_update_available",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "device_class": "update",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Update available",
+        "payload_off": "OFF",
+        "payload_on": "ON",
+        "state_topic": "unifi/default/device/00005e005303/update_available",
+        "unique_id": "unifi_00005e005303_update_available"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005304/reachable/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.old_ap_reachable",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "device_class": "connectivity",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "Reachable",
+        "payload_on": "ONLINE",
+        "state_topic": "unifi/default/device/00005e005304/state",
+        "unique_id": "unifi_00005e005304_reachable"
+      }
+    },
+    {
+      "topic": "homeassistant/binary_sensor/unifi_00005e005304/update_available/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "binary_sensor.old_ap_update_available",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "device_class": "update",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "Update available",
+        "payload_off": "OFF",
+        "payload_on": "ON",
+        "state_topic": "unifi/default/device/00005e005304/update_available",
+        "unique_id": "unifi_00005e005304_update_available"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005301/cpu_utilization/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005301/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.gateway_cpu_utilization",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:cpu-64-bit",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "CPU utilization",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005301/cpu_utilization",
+        "unique_id": "unifi_00005e005301_cpu_utilization",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005301/firmware/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.gateway_firmware",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:chip",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "Firmware",
+        "state_topic": "unifi/default/device/00005e005301/firmware",
+        "unique_id": "unifi_00005e005301_firmware"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005301/memory_utilization/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005301/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.gateway_memory_utilization",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:memory",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "Memory utilization",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005301/memory_utilization",
+        "unique_id": "unifi_00005e005301_memory_utilization",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005301/state/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.gateway_state",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "icon": "mdi:lan-connect",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "State",
+        "state_topic": "unifi/default/device/00005e005301/state",
+        "unique_id": "unifi_00005e005301_state"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005301/uplink_rx_bps/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005301/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.gateway_uplink_rx_bps",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "Uplink download",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005301/uplink_rx_bps",
+        "unique_id": "unifi_00005e005301_uplink_rx_bps",
+        "unit_of_measurement": "bit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005301/uplink_tx_bps/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005301/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.gateway_uplink_tx_bps",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "Uplink upload",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005301/uplink_tx_bps",
+        "unique_id": "unifi_00005e005301_uplink_tx_bps",
+        "unit_of_measurement": "bit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005301/uptime/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005301/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.gateway_uptime",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:01"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005301"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "sw_version": "4.3.6"
+        },
+        "device_class": "duration",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "name": "Uptime",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005301/uptime",
+        "unique_id": "unifi_00005e005301_uptime",
+        "unit_of_measurement": "s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/cpu_utilization/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_cpu_utilization",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:cpu-64-bit",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "CPU utilization",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005302/cpu_utilization",
+        "unique_id": "unifi_00005e005302_cpu_utilization",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/firmware/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_firmware",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:chip",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Firmware",
+        "state_topic": "unifi/default/device/00005e005302/firmware",
+        "unique_id": "unifi_00005e005302_firmware"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/memory_utilization/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_memory_utilization",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:memory",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Memory utilization",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005302/memory_utilization",
+        "unique_id": "unifi_00005e005302_memory_utilization",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/port_1_speed/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_port_1_speed",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Port 1 speed",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005302/port/1/speed",
+        "unique_id": "unifi_00005e005302_port_1_speed",
+        "unit_of_measurement": "Mbit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/port_25_speed/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_port_25_speed",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Port 25 speed",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005302/port/25/speed",
+        "unique_id": "unifi_00005e005302_port_25_speed",
+        "unit_of_measurement": "Mbit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/state/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_state",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "icon": "mdi:lan-connect",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "State",
+        "state_topic": "unifi/default/device/00005e005302/state",
+        "unique_id": "unifi_00005e005302_state"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/uplink_rx_bps/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_uplink_rx_bps",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Uplink download",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005302/uplink_rx_bps",
+        "unique_id": "unifi_00005e005302_uplink_rx_bps",
+        "unit_of_measurement": "bit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/uplink_tx_bps/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_uplink_tx_bps",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Uplink upload",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005302/uplink_tx_bps",
+        "unique_id": "unifi_00005e005302_uplink_tx_bps",
+        "unit_of_measurement": "bit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005302/uptime/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005302/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.switch_garage_uptime",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:02"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005302"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "sw_version": "7.0.25",
+          "via_device": "unifi_00005e005301"
+        },
+        "device_class": "duration",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "name": "Uptime",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005302/uptime",
+        "unique_id": "unifi_00005e005302_uptime",
+        "unit_of_measurement": "s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/cpu_utilization/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_cpu_utilization",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:cpu-64-bit",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "CPU utilization",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005303/cpu_utilization",
+        "unique_id": "unifi_00005e005303_cpu_utilization",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/firmware/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_firmware",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:chip",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Firmware",
+        "state_topic": "unifi/default/device/00005e005303/firmware",
+        "unique_id": "unifi_00005e005303_firmware"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/memory_utilization/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_memory_utilization",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:memory",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Memory utilization",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005303/memory_utilization",
+        "unique_id": "unifi_00005e005303_memory_utilization",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/radio_2g4_channel/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_radio_2g4_channel",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:wifi",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Radio 2.4 GHz channel",
+        "state_topic": "unifi/default/device/00005e005303/radio/2g4/channel",
+        "unique_id": "unifi_00005e005303_radio_2g4_channel"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/radio_2g4_tx_retries/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_radio_2g4_tx_retries",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Radio 2.4 GHz TX retries",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005303/radio/2g4/tx_retries",
+        "unique_id": "unifi_00005e005303_radio_2g4_tx_retries",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/radio_5g_channel/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_radio_5g_channel",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:wifi",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Radio 5 GHz channel",
+        "state_topic": "unifi/default/device/00005e005303/radio/5g/channel",
+        "unique_id": "unifi_00005e005303_radio_5g_channel"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/radio_5g_tx_retries/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_radio_5g_tx_retries",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Radio 5 GHz TX retries",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005303/radio/5g/tx_retries",
+        "unique_id": "unifi_00005e005303_radio_5g_tx_retries",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/state/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_state",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "icon": "mdi:lan-connect",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "State",
+        "state_topic": "unifi/default/device/00005e005303/state",
+        "unique_id": "unifi_00005e005303_state"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/uplink_rx_bps/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_uplink_rx_bps",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Uplink download",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005303/uplink_rx_bps",
+        "unique_id": "unifi_00005e005303_uplink_rx_bps",
+        "unit_of_measurement": "bit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/uplink_tx_bps/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_uplink_tx_bps",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Uplink upload",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005303/uplink_tx_bps",
+        "unique_id": "unifi_00005e005303_uplink_tx_bps",
+        "unit_of_measurement": "bit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005303/uptime/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005303/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.ap_uptime",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:03"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005303"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "U6-Pro",
+          "name": "AP",
+          "sw_version": "6.6.55",
+          "via_device": "unifi_00005e005302"
+        },
+        "device_class": "duration",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "name": "Uptime",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005303/uptime",
+        "unique_id": "unifi_00005e005303_uptime",
+        "unit_of_measurement": "s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005304/cpu_utilization/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005304/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.old_ap_cpu_utilization",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:cpu-64-bit",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "CPU utilization",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005304/cpu_utilization",
+        "unique_id": "unifi_00005e005304_cpu_utilization",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005304/firmware/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.old_ap_firmware",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:chip",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "Firmware",
+        "state_topic": "unifi/default/device/00005e005304/firmware",
+        "unique_id": "unifi_00005e005304_firmware"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005304/memory_utilization/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005304/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.old_ap_memory_utilization",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "entity_category": "diagnostic",
+        "icon": "mdi:memory",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "Memory utilization",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005304/memory_utilization",
+        "unique_id": "unifi_00005e005304_memory_utilization",
+        "unit_of_measurement": "%"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005304/state/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.old_ap_state",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "icon": "mdi:lan-connect",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "State",
+        "state_topic": "unifi/default/device/00005e005304/state",
+        "unique_id": "unifi_00005e005304_state"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005304/uplink_rx_bps/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005304/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.old_ap_uplink_rx_bps",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "Uplink download",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005304/uplink_rx_bps",
+        "unique_id": "unifi_00005e005304_uplink_rx_bps",
+        "unit_of_measurement": "bit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005304/uplink_tx_bps/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005304/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.old_ap_uplink_tx_bps",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "device_class": "data_rate",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "Uplink upload",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005304/uplink_tx_bps",
+        "unique_id": "unifi_00005e005304_uplink_tx_bps",
+        "unit_of_measurement": "bit/s"
+      }
+    },
+    {
+      "topic": "homeassistant/sensor/unifi_00005e005304/uptime/config",
+      "qos": 1,
+      "retain": true,
+      "json": {
+        "availability": [
+          {
+            "topic": "unifi/bridge/status"
+          },
+          {
+            "topic": "unifi/default/device/00005e005304/state",
+            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+          }
+        ],
+        "availability_mode": "all",
+        "default_entity_id": "sensor.old_ap_uptime",
+        "device": {
+          "connections": [
+            [
+              "mac",
+              "00:00:5e:00:53:04"
+            ]
+          ],
+          "identifiers": [
+            "unifi_00005e005304"
+          ],
+          "manufacturer": "Ubiquiti",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "sw_version": "5.43.56"
+        },
+        "device_class": "duration",
+        "entity_category": "diagnostic",
+        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "name": "Uptime",
+        "state_class": "measurement",
+        "state_topic": "unifi/default/device/00005e005304/uptime",
+        "unique_id": "unifi_00005e005304_uptime",
+        "unit_of_measurement": "s"
+      }
+    },
+    {
+      "topic": "unifi/bridge/info",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "application_version": "10.5.67",
+        "bridge_version": "\u003cbridge-version\u003e",
+        "host": "192.0.2.1",
+        "site": "default",
+        "site_id": "site-uuid"
+      }
+    },
+    {
+      "topic": "unifi/bridge/status",
+      "qos": 1,
+      "retain": true,
+      "text": "online"
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/attributes",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "adopted_at": "2025-01-02T03:04:05Z",
+        "ip": "192.0.2.1",
+        "mac": "00:00:5e:00:53:01",
+        "model": "UCG-Ultra",
+        "name": "Gateway",
+        "supported": true,
+        "type": "gateway"
+      }
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/cpu_utilization",
+      "qos": 0,
+      "retain": true,
+      "text": "12.5"
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/firmware",
+      "qos": 0,
+      "retain": true,
+      "text": "4.3.6"
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/memory_utilization",
+      "qos": 0,
+      "retain": true,
+      "text": "48.0"
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/state",
+      "qos": 0,
+      "retain": true,
+      "text": "ONLINE"
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/update_available",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/uplink_rx_bps",
+      "qos": 0,
+      "retain": true,
+      "text": "2097152"
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/uplink_tx_bps",
+      "qos": 0,
+      "retain": true,
+      "text": "1048576"
+    },
+    {
+      "topic": "unifi/default/device/00005e005301/uptime",
+      "qos": 0,
+      "retain": true,
+      "text": "864000"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/attributes",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "ip": "192.0.2.2",
+        "mac": "00:00:5e:00:53:02",
+        "model": "USW-Pro-24-PoE",
+        "name": "Switch Garage",
+        "ports": 2,
+        "supported": true,
+        "type": "switch",
+        "uplink_mac": "00:00:5e:00:53:01"
+      }
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/cpu_utilization",
+      "qos": 0,
+      "retain": true,
+      "text": "5.0"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/firmware",
+      "qos": 0,
+      "retain": true,
+      "text": "7.0.25"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/memory_utilization",
+      "qos": 0,
+      "retain": true,
+      "text": "30.0"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/port/1/poe",
+      "qos": 0,
+      "retain": true,
+      "text": "ON"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/port/1/poe/power_w",
+      "qos": 0,
+      "retain": true,
+      "text": "6.5"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/port/1/speed",
+      "qos": 0,
+      "retain": true,
+      "text": "1000"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/port/1/state",
+      "qos": 0,
+      "retain": true,
+      "text": "UP"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/port/25/speed",
+      "qos": 0,
+      "retain": true,
+      "text": "0"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/port/25/state",
+      "qos": 0,
+      "retain": true,
+      "text": "DOWN"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/state",
+      "qos": 0,
+      "retain": true,
+      "text": "ONLINE"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/update_available",
+      "qos": 0,
+      "retain": true,
+      "text": "ON"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/uplink_rx_bps",
+      "qos": 0,
+      "retain": true,
+      "text": "1024"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/uplink_tx_bps",
+      "qos": 0,
+      "retain": true,
+      "text": "512"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/uptime",
+      "qos": 0,
+      "retain": true,
+      "text": "3600"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/attributes",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "ip": "192.0.2.3",
+        "mac": "00:00:5e:00:53:03",
+        "model": "U6-Pro",
+        "name": "AP",
+        "radios": 2,
+        "supported": true,
+        "type": "access_point",
+        "uplink_mac": "00:00:5e:00:53:02"
+      }
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/cpu_utilization",
+      "qos": 0,
+      "retain": true,
+      "text": "9.8"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/firmware",
+      "qos": 0,
+      "retain": true,
+      "text": "6.6.55"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/memory_utilization",
+      "qos": 0,
+      "retain": true,
+      "text": "61.0"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/radio/2g4/channel",
+      "qos": 0,
+      "retain": true,
+      "text": "6"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/radio/2g4/tx_retries",
+      "qos": 0,
+      "retain": true,
+      "text": "0.4"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/radio/5g/channel",
+      "qos": 0,
+      "retain": true,
+      "text": "36"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/radio/5g/tx_retries",
+      "qos": 0,
+      "retain": true,
+      "text": "1.2"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/state",
+      "qos": 0,
+      "retain": true,
+      "text": "ONLINE"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/update_available",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/uplink_rx_bps",
+      "qos": 0,
+      "retain": true,
+      "text": "8192"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/uplink_tx_bps",
+      "qos": 0,
+      "retain": true,
+      "text": "4096"
+    },
+    {
+      "topic": "unifi/default/device/00005e005303/uptime",
+      "qos": 0,
+      "retain": true,
+      "text": "7200"
+    },
+    {
+      "topic": "unifi/default/device/00005e005304/attributes",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "mac": "00:00:5e:00:53:04",
+        "model": "UAP-AC-Pro",
+        "name": "Old AP",
+        "supported": false,
+        "type": "access_point"
+      }
+    },
+    {
+      "topic": "unifi/default/device/00005e005304/firmware",
+      "qos": 0,
+      "retain": true,
+      "text": "5.43.56"
+    },
+    {
+      "topic": "unifi/default/device/00005e005304/state",
+      "qos": 0,
+      "retain": true,
+      "text": "OFFLINE"
+    },
+    {
+      "topic": "unifi/default/device/00005e005304/update_available",
+      "qos": 0,
+      "retain": true,
+      "text": "ON"
+    },
+    {
+      "topic": "unifi/default/wlan/wlan-1/enabled",
+      "qos": 0,
+      "retain": true,
+      "text": "ON"
+    },
+    {
+      "topic": "unifi/default/wlan/wlan-1/name",
+      "qos": 0,
+      "retain": true,
+      "text": "HomeNet"
+    },
+    {
+      "topic": "unifi/default/wlan/wlan-2/enabled",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
+    },
+    {
+      "topic": "unifi/default/wlan/wlan-2/name",
+      "qos": 0,
+      "retain": true,
+      "text": "IoT"
+    }
+  ]
+}

@@ -1,0 +1,810 @@
+// SPDX-License-Identifier: MIT
+// Copyright (C) 2026 SukramJ
+
+package coordinator
+
+import (
+	"encoding/json"
+	"fmt"
+	"slices"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/SukramJ/go-unifi2mqtt/internal/config"
+	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
+)
+
+// Invariants over the published surface (ADR 0070 phase 9, step 0).
+//
+// Everything here rebuilds the surface from the real builders and reads
+// no testdata, so every one of these tests still fails immediately
+// after a golden regeneration. That is the whole point: a golden
+// produced by the code it guards cannot catch a builder that moved, and
+// the builder-against-builder checks below are what actually pin the
+// two independent topic vocabularies in this tree
+// (internal/hass's spec.stateSuffix strings against
+// internal/coordinator's key* constants).
+
+// --- helpers ---------------------------------------------------------
+
+// entityConfig is the slice of a discovery payload these tests read.
+type entityConfig struct {
+	Topic string
+
+	Name            string              `json:"name"`
+	UniqueID        string              `json:"unique_id"`
+	DefaultEntityID string              `json:"default_entity_id"`
+	StateTopic      string              `json:"state_topic"`
+	CommandTopic    string              `json:"command_topic"`
+	AttributesTopic string              `json:"json_attributes_topic"`
+	Availability    []availabilitySrc   `json:"availability"`
+	AvailMode       string              `json:"availability_mode"`
+	AvailTopic      string              `json:"availability_topic"`
+	Device          entityDevice        `json:"device"`
+	Raw             map[string]any      `json:"-"`
+	Extra           map[string]struct{} `json:"-"`
+}
+
+type availabilitySrc struct {
+	Topic         string `json:"topic"`
+	ValueTemplate string `json:"value_template"`
+}
+
+type entityDevice struct {
+	Identifiers []string `json:"identifiers"`
+	Name        string   `json:"name"`
+	ViaDevice   string   `json:"via_device"`
+}
+
+// surface is one scenario's messages, split into the two planes.
+type surface struct {
+	name string
+	msgs []recordedMsg
+	// configs are the discovery payloads, in topic order.
+	configs []entityConfig
+	// published is every topic the daemon actually wrote to.
+	published map[string]bool
+}
+
+func loadSurface(t *testing.T, sc surfaceScenario) surface {
+	t.Helper()
+	doc := buildSurface(t, sc)
+	s := surface{name: sc.name, msgs: doc.Messages, published: map[string]bool{}}
+	for _, m := range doc.Messages {
+		s.published[m.Topic] = true
+		if !isConfigTopic(m.Topic) || m.JSON == nil {
+			continue
+		}
+		raw, err := json.Marshal(m.JSON)
+		if err != nil {
+			t.Fatalf("re-encode %s: %v", m.Topic, err)
+		}
+		var cfg entityConfig
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			t.Fatalf("decode %s: %v", m.Topic, err)
+		}
+		cfg.Topic = m.Topic
+		cfg.Raw = m.JSON
+		s.configs = append(s.configs, cfg)
+	}
+	return s
+}
+
+// deviceIsOffline reports whether the entity's own device-level
+// availability source currently reads as not-online. The value comes
+// off the recorded surface, not off the fixture, so the rule is the one
+// Home Assistant applies.
+func (s surface) deviceIsOffline(cfg entityConfig) bool {
+	if len(cfg.Availability) < 2 {
+		return false
+	}
+	for _, m := range s.msgs {
+		if m.Topic != cfg.Availability[1].Topic || m.Text == nil {
+			continue
+		}
+		return *m.Text != "ONLINE" && *m.Text != "home"
+	}
+	return false
+}
+
+func isConfigTopic(topic string) bool {
+	return strings.HasPrefix(topic, "homeassistant/") && strings.HasSuffix(topic, "/config")
+}
+
+func allSurfaces(t *testing.T) []surface {
+	t.Helper()
+	out := make([]surface, 0, len(surfaceScenarios()))
+	for _, sc := range surfaceScenarios() {
+		out = append(out, loadSurface(t, sc))
+	}
+	return out
+}
+
+// --- the topic form --------------------------------------------------
+
+// TestConfigTopicForm pins the retained per-entity config topic shape.
+//
+// This is the single most consequential fact for step 6: a
+// publisher.SupersededTopics that renders a form this fleet is not on
+// retracts nothing, the device bundle goes out while every per-entity
+// config is still retained, and Home Assistant refuses it with one
+// WARNING line and no entities.
+func TestConfigTopicForm(t *testing.T) {
+	t.Parallel()
+
+	var total, nodeIsIdentifier, uidIsNodePlusKey int
+	var exceptions []string
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			total++
+			parts := strings.Split(cfg.Topic, "/")
+			if len(parts) != 5 {
+				t.Fatalf("%s: %s is not the five-segment form", s.name, cfg.Topic)
+			}
+			if parts[0] != "homeassistant" || parts[4] != "config" {
+				t.Fatalf("%s: unexpected config topic %s", s.name, cfg.Topic)
+			}
+			node, object := parts[2], parts[3]
+			if len(cfg.Device.Identifiers) != 1 {
+				t.Fatalf("%s: %s has %d device identifiers, want 1",
+					s.name, cfg.Topic, len(cfg.Device.Identifiers))
+			}
+			if node == cfg.Device.Identifiers[0] {
+				nodeIsIdentifier++
+			} else {
+				t.Errorf("%s: node id %q is not the device identifier %q",
+					s.name, node, cfg.Device.Identifiers[0])
+			}
+			if cfg.UniqueID == node+"_"+object {
+				uidIsNodePlusKey++
+			} else {
+				exceptions = append(exceptions, cfg.Topic+" -> "+cfg.UniqueID)
+			}
+		}
+	}
+
+	// Held as literals so a change is a declaration in review rather
+	// than a silently regenerated number.
+	const (
+		wantTotal      = 315
+		wantExceptions = 21
+	)
+	if total != wantTotal {
+		t.Errorf("config count = %d, want %d", total, wantTotal)
+	}
+	if nodeIsIdentifier != total {
+		t.Errorf("node id == device.identifiers[0] on %d of %d", nodeIsIdentifier, total)
+	}
+	if got := total - uidIsNodePlusKey; got != wantExceptions {
+		sort.Strings(exceptions)
+		t.Errorf("unique_id != <node_id>_<object_id> on %d configs, want %d:\n%s",
+			got, wantExceptions, strings.Join(exceptions, "\n"))
+	}
+}
+
+// TestConfigFilterMatchesEveryConfigTopic pins that the orphan
+// reconcile's own subscription sees everything this daemon writes — and
+// records that it is a five-segment filter, so a four-segment device
+// bundle would be invisible to it in both directions.
+func TestConfigFilterMatchesEveryConfigTopic(t *testing.T) {
+	t.Parallel()
+
+	filter := newSurfaceDiscovery(t).ConfigFilter()
+	if filter != "homeassistant/+/+/+/config" {
+		t.Fatalf("ConfigFilter = %q", filter)
+	}
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			if !matchFilter(filter, cfg.Topic) {
+				t.Errorf("%s: %s does not match %s", s.name, cfg.Topic, filter)
+			}
+		}
+	}
+	// A device bundle is four segments and therefore outside the filter.
+	if matchFilter(filter, "homeassistant/device/unifi_00005e005301/config") {
+		t.Error("the five-segment filter unexpectedly matches a device bundle")
+	}
+}
+
+// surfaceBaseConfig is the default operator config with discovery on.
+func surfaceBaseConfig(t *testing.T) *config.Config {
+	t.Helper()
+	cfg, err := config.Load(strings.NewReader(baseYAML), config.MapEnv{})
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	return cfg
+}
+
+// newSurfaceDiscovery builds the real discovery builder over the real
+// coordinator topic layout, so ConfigFilter is asked of the same object
+// production asks.
+func newSurfaceDiscovery(t *testing.T) *hass.Discovery {
+	t.Helper()
+	c := newHarness(t, surfaceBaseConfig(t)).c
+	return hass.New(c.DiscoveryConfig("homeassistant", "en"))
+}
+
+// matchFilter implements MQTT topic-filter matching for the two
+// wildcards, which is all these filters use.
+func matchFilter(filter, topic string) bool {
+	f := strings.Split(filter, "/")
+	p := strings.Split(topic, "/")
+	for i, seg := range f {
+		if seg == "#" {
+			return true
+		}
+		if i >= len(p) {
+			return false
+		}
+		if seg != "+" && seg != p[i] {
+			return false
+		}
+	}
+	return len(f) == len(p)
+}
+
+// --- identity --------------------------------------------------------
+
+// TestNoDuplicateEntityRegistryKeys counts the keys Home Assistant has
+// no migration path for.
+func TestNoDuplicateEntityRegistryKeys(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range allSurfaces(t) {
+		uid := map[string][]string{}
+		pair := map[string][]string{}
+		eid := map[string][]string{}
+		for _, cfg := range s.configs {
+			platform := strings.Split(cfg.Topic, "/")[1]
+			uid[cfg.UniqueID] = append(uid[cfg.UniqueID], cfg.Topic)
+			pair[platform+"|"+cfg.UniqueID] = append(pair[platform+"|"+cfg.UniqueID], cfg.Topic)
+			eid[cfg.DefaultEntityID] = append(eid[cfg.DefaultEntityID], cfg.Topic)
+		}
+		reportDuplicates(t, s.name, "unique_id", uid)
+		reportDuplicates(t, s.name, "(platform, unique_id)", pair)
+		reportDuplicates(t, s.name, "default_entity_id", eid)
+	}
+}
+
+func reportDuplicates(t *testing.T, scenario, what string, index map[string][]string) {
+	t.Helper()
+	for key, topics := range index {
+		if len(topics) > 1 {
+			sort.Strings(topics)
+			t.Errorf("%s: duplicate %s %q on:\n  %s",
+				scenario, what, key, strings.Join(topics, "\n  "))
+		}
+	}
+}
+
+// TestDeviceBlocksArePinned holds the device-registry keys as literals.
+// Home Assistant keys the device registry on `identifiers`, and there
+// is no migration path.
+func TestDeviceBlocksArePinned(t *testing.T) {
+	t.Parallel()
+
+	want := []string{
+		"unifi_00005e005301",
+		"unifi_00005e005302",
+		"unifi_00005e005303",
+		"unifi_00005e005304",
+		"unifi_client_00005e005311",
+		"unifi_client_00005e005312",
+		"unifi_client_00005e005313",
+		"unifi_site_default",
+	}
+	got := map[string]bool{}
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			got[cfg.Device.Identifiers[0]] = true
+		}
+	}
+	have := slices.Sorted(keysOf(got))
+	if !slices.Equal(have, want) {
+		t.Errorf("device identifiers =\n%#v\nwant\n%#v", have, want)
+	}
+}
+
+func keysOf(m map[string]bool) func(func(string) bool) {
+	return func(yield func(string) bool) {
+		for k := range m {
+			if !yield(k) {
+				return
+			}
+		}
+	}
+}
+
+// TestIdentityIsLanguageIndependent compares the two languages
+// directly. CONCEPT.md §6.2 states unique_id, default_entity_id and
+// every topic segment are English; this is the check of it.
+func TestIdentityIsLanguageIndependent(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{{"minimal.en", "minimal.de"}, {"full.en", "full.de"}}
+	byName := map[string]surface{}
+	for _, s := range allSurfaces(t) {
+		byName[s.name] = s
+	}
+	for _, p := range pairs {
+		en, de := byName[p[0]], byName[p[1]]
+		if len(en.configs) != len(de.configs) {
+			t.Fatalf("%s/%s: %d vs %d configs", p[0], p[1], len(en.configs), len(de.configs))
+		}
+		for i := range en.configs {
+			a, b := en.configs[i], de.configs[i]
+			if a.Topic != b.Topic {
+				t.Errorf("%s: config topic moves with language: %s vs %s", p[0], a.Topic, b.Topic)
+			}
+			if a.UniqueID != b.UniqueID {
+				t.Errorf("%s: unique_id moves with language: %s vs %s", a.Topic, a.UniqueID, b.UniqueID)
+			}
+			if a.DefaultEntityID != b.DefaultEntityID {
+				t.Errorf("%s: default_entity_id moves with language: %s vs %s",
+					a.Topic, a.DefaultEntityID, b.DefaultEntityID)
+			}
+			if a.StateTopic != b.StateTopic || a.CommandTopic != b.CommandTopic {
+				t.Errorf("%s: a topic moves with language", a.Topic)
+			}
+			if !slices.Equal(a.Device.Identifiers, b.Device.Identifiers) {
+				t.Errorf("%s: device.identifiers moves with language", a.Topic)
+			}
+		}
+	}
+}
+
+// --- availability ----------------------------------------------------
+
+// TestAvailabilityModelIsTwoLevel pins the model the migration must not
+// change by accident: a list of one or two sources with mode "all",
+// where the second level is the *device's own state topic* rather than
+// a per-device availability topic.
+//
+// This matters because go-hamqtt's zero model.Availability resolves to
+// {LevelBridge, LevelDevice} with mode "all", and its LevelDevice names
+// a dedicated `<root>/<uid>/availability` topic that this bridge never
+// writes. Taking the default would leave every entity that currently
+// has a second level permanently unavailable.
+func TestAvailabilityModelIsTwoLevel(t *testing.T) {
+	t.Parallel()
+
+	var oneLevel, twoLevel int
+	for _, s := range allSurfaces(t) {
+		bridge := ""
+		for topic := range s.published {
+			if strings.HasSuffix(topic, "/bridge/status") {
+				bridge = topic
+			}
+		}
+		if bridge == "" {
+			t.Fatalf("%s: no bridge status topic published", s.name)
+		}
+		for _, cfg := range s.configs {
+			if cfg.AvailTopic != "" {
+				t.Errorf("%s: uses the singular availability_topic form", cfg.Topic)
+			}
+			if cfg.AvailMode != "all" {
+				t.Errorf("%s: availability_mode = %q, want \"all\"", cfg.Topic, cfg.AvailMode)
+			}
+			if len(cfg.Availability) == 0 || cfg.Availability[0].Topic != bridge {
+				t.Fatalf("%s: first availability source is not the bridge topic", cfg.Topic)
+			}
+			if cfg.Availability[0].ValueTemplate != "" {
+				t.Errorf("%s: bridge availability carries a value_template", cfg.Topic)
+			}
+			switch len(cfg.Availability) {
+			case 1:
+				oneLevel++
+			case 2:
+				twoLevel++
+				second := cfg.Availability[1]
+				if !s.published[second.Topic] {
+					t.Errorf("%s: second availability source %q is published by nobody",
+						cfg.Topic, second.Topic)
+				}
+				if second.ValueTemplate == "" {
+					t.Errorf("%s: second availability source has no value_template", cfg.Topic)
+				}
+			default:
+				t.Errorf("%s: %d availability sources", cfg.Topic, len(cfg.Availability))
+			}
+		}
+	}
+
+	const (
+		wantOneLevel = 128
+		wantTwoLevel = 187
+	)
+	if oneLevel != wantOneLevel || twoLevel != wantTwoLevel {
+		t.Errorf("availability levels: one=%d two=%d, want one=%d two=%d",
+			oneLevel, twoLevel, wantOneLevel, wantTwoLevel)
+	}
+}
+
+// --- delivery --------------------------------------------------------
+
+// TestPublishQoSAndRetain reads the delivery guarantee off the
+// transport call, not off a constant.
+//
+// go-hamqtt's publisher.QoS zero value is QoSUnset and resolves to
+// QoS 1, so a Config left unset silently moves this bridge's state
+// plane from QoS 0 to QoS 1. Deliberate QoS 0 is the sentinel
+// publisher.QoSAtMostOnce (0x80).
+func TestPublishQoSAndRetain(t *testing.T) {
+	t.Parallel()
+
+	var configQoS1, stateQoS0, availQoS1, other int
+	for _, s := range allSurfaces(t) {
+		for _, m := range s.msgs {
+			switch {
+			case !m.Retain:
+				other++
+				t.Errorf("%s: %s published unretained", s.name, m.Topic)
+			case isConfigTopic(m.Topic):
+				if m.QoS != 1 {
+					t.Errorf("%s: config %s at QoS %d, want 1", s.name, m.Topic, m.QoS)
+				}
+				configQoS1++
+			case strings.HasSuffix(m.Topic, "/bridge/status"):
+				if m.QoS != 1 {
+					t.Errorf("%s: availability %s at QoS %d, want 1", s.name, m.Topic, m.QoS)
+				}
+				availQoS1++
+			default:
+				if m.QoS != 0 {
+					t.Errorf("%s: state %s at QoS %d, want 0", s.name, m.Topic, m.QoS)
+				}
+				stateQoS0++
+			}
+		}
+	}
+
+	const (
+		wantConfig = 315
+		wantState  = 305
+		wantAvail  = 5
+	)
+	if configQoS1 != wantConfig || stateQoS0 != wantState || availQoS1 != wantAvail || other != 0 {
+		t.Errorf("delivery census: config=%d state=%d availability=%d unretained=%d, "+
+			"want %d/%d/%d/0", configQoS1, stateQoS0, availQoS1, other,
+			wantConfig, wantState, wantAvail)
+	}
+}
+
+// --- builder against builder -----------------------------------------
+
+// knownAdvertisedButUnpublished lists the topics a discovery config
+// names that nothing in this daemon ever writes to.
+//
+// Every entry is a finding in notes/adr0070-phase9-measurement.md, not
+// an accepted shape: an entity pointing at a topic nobody writes sits
+// at "unknown" forever with nothing in any log. They are listed here so
+// the test can pin the *exact* set — a new one fails, and fixing one
+// fails until it is removed from this list.
+var knownAdvertisedButUnpublished = map[string]string{
+	"unifi/default/device/00005e005301/locate": "F: the device locate switch's state topic is written by nobody",
+	"unifi/default/device/00005e005302/locate": "F: the device locate switch's state topic is written by nobody",
+	"unifi/default/device/00005e005303/locate": "F: the device locate switch's state topic is written by nobody",
+	"unifi/default/device/00005e005304/locate": "F: the device locate switch's state topic is written by nobody",
+}
+
+// TestAdvertisedStateTopicsArePublished is the builder-against-builder
+// check: every state and attributes topic a discovery config names is
+// compared against the topics the publish path actually writes.
+//
+// The two sides are composed by two independent vocabularies —
+// internal/hass's spec.stateSuffix string literals and
+// internal/coordinator's key* constants — and nothing before this
+// compared them. A change to either alone leaves entities pointing at
+// topics nobody writes: permanently "unknown", nothing in the log.
+func TestAdvertisedStateTopicsArePublished(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			if s.deviceIsOffline(cfg) {
+				// A device the console reports as offline has no
+				// statistics sample by design (refreshDeviceStats skips
+				// it), so its statistics topics legitimately receive
+				// nothing — which is exactly what the entity's second
+				// availability level covers.
+				continue
+			}
+			for _, topic := range []string{cfg.StateTopic, cfg.AttributesTopic} {
+				if topic == "" || s.published[topic] {
+					continue
+				}
+				if _, known := knownAdvertisedButUnpublished[topic]; known {
+					continue
+				}
+				t.Errorf("%s: %s names %q, which nothing publishes",
+					s.name, cfg.Topic, topic)
+			}
+		}
+	}
+}
+
+// TestKnownUnpublishedTopicsAreStillAdvertised is the other half: an
+// entry in knownAdvertisedButUnpublished that stops being advertised —
+// because the finding was fixed, or because the entity was dropped —
+// must be deleted from the list rather than left behind to mask a
+// future one.
+func TestKnownUnpublishedTopicsAreStillAdvertised(t *testing.T) {
+	t.Parallel()
+
+	advertised := map[string]bool{}
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			advertised[cfg.StateTopic] = true
+			advertised[cfg.AttributesTopic] = true
+		}
+	}
+	for topic, why := range knownAdvertisedButUnpublished {
+		if !advertised[topic] {
+			t.Errorf("%q is no longer advertised; drop it from "+
+				"knownAdvertisedButUnpublished (%s)", topic, why)
+		}
+	}
+}
+
+// TestCommandTopicsAreSubscribed pins the third vocabulary: the command
+// suffixes internal/hass writes into a config as string literals
+// against the cmd* constants internal/coordinator subscribes and parses
+// on. They are two copies of the same six strings.
+func TestCommandTopicsAreSubscribed(t *testing.T) {
+	t.Parallel()
+
+	filters := []string{
+		"unifi/default/device/+/" + cmdRestart,
+		"unifi/default/device/+/" + cmdLocateSet,
+		"unifi/default/device/+/port/+/" + cmdPowerCycle,
+		"unifi/default/client/+/" + cmdBlockedSet,
+		"unifi/default/client/+/" + cmdAuthorize,
+		"unifi/default/wlan/+/" + cmdWLANEnabled,
+	}
+
+	var commands int
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			if cfg.CommandTopic == "" {
+				continue
+			}
+			commands++
+			matched := false
+			for _, f := range filters {
+				if matchFilter(f, cfg.CommandTopic) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				t.Errorf("%s: command topic %q matches no subscription",
+					cfg.Topic, cfg.CommandTopic)
+			}
+		}
+	}
+	const wantCommands = 45
+	if commands != wantCommands {
+		t.Errorf("command topics = %d, want %d", commands, wantCommands)
+	}
+}
+
+// --- the slug --------------------------------------------------------
+
+// librarySlug is go-hamqtt v0.32.0's topic.Slug, transcribed verbatim
+// so §3.3 of the measurement can be counted without taking the
+// dependency a step early. It is unreachable from any production path
+// and deletes itself when the migration lands.
+func librarySlug(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 4)
+	prevDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_', r == '-':
+			b.WriteRune(r)
+			prevDash = false
+		case r == 'ä':
+			b.WriteString("ae")
+			prevDash = false
+		case r == 'ö':
+			b.WriteString("oe")
+			prevDash = false
+		case r == 'ü':
+			b.WriteString("ue")
+			prevDash = false
+		case r == 'ß':
+			b.WriteString("ss")
+			prevDash = false
+		default:
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('_')
+				prevDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		return "x"
+	}
+	return out
+}
+
+// TestSlugAgreementOverTheRealCatalogue counts, over this bridge's own
+// catalogue and over the device names its users actually have, how
+// often go-hamqtt's topic.Slug would produce a different string than
+// internal/hass.slugify.
+//
+// The divergence reaches default_entity_id and nothing else here —
+// unique_id and device.identifiers are MAC-derived and ASCII — but
+// Home Assistant never renames a registered entity, so swapping the
+// function strands every entity on a non-ASCII-named device.
+func TestSlugAgreementOverTheRealCatalogue(t *testing.T) {
+	t.Parallel()
+
+	// The entity half of every id: the keys internal/hass turns into
+	// the second half of an entity-id seed.
+	keys := entityKeyCatalogue(t)
+	var keyDiverge int
+	for _, k := range keys {
+		if hassSlugProbe(k) != librarySlug(k) {
+			keyDiverge++
+			t.Logf("entity key %q: hass=%q library=%q", k, hassSlugProbe(k), librarySlug(k))
+		}
+	}
+
+	names := []string{
+		"Gateway", "Switch Garage", "AP", "UniFi Site Default",
+		"Büro-Gateway", "Switch Küche", "Außengerät", "Groß-NAS",
+		"Märkus' Händy", "Süd-WLAN", "Gäste", "EG-Wohnzimmer", "",
+	}
+	var nameDiverge int
+	for _, n := range names {
+		if hassSlugProbe(n) != librarySlug(n) {
+			nameDiverge++
+			t.Logf("device name %q: hass=%q library=%q", n, hassSlugProbe(n), librarySlug(n))
+		}
+	}
+
+	const (
+		wantKeys        = 35
+		wantKeyDiverge  = 2
+		wantNames       = 13
+		wantNameDiverge = 9
+	)
+	if len(keys) != wantKeys || keyDiverge != wantKeyDiverge {
+		t.Errorf("entity keys: %d probed, %d diverge; want %d, %d",
+			len(keys), keyDiverge, wantKeys, wantKeyDiverge)
+	}
+	if len(names) != wantNames || nameDiverge != wantNameDiverge {
+		t.Errorf("device names: %d probed, %d diverge; want %d, %d",
+			len(names), nameDiverge, wantNames, wantNameDiverge)
+	}
+}
+
+// hassSlugProbe reproduces internal/hass.slugify, which is unexported.
+// Kept beside librarySlug so the two are read together.
+func hassSlugProbe(s string) string {
+	r := strings.NewReplacer("ä", "a", "ö", "o", "ü", "u", "ß", "ss")
+	var b strings.Builder
+	last := true
+	for _, c := range r.Replace(strings.ToLower(s)) {
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
+			b.WriteRune(c)
+			last = false
+			continue
+		}
+		if !last {
+			b.WriteRune('_')
+			last = true
+		}
+	}
+	return strings.TrimSuffix(b.String(), "_")
+}
+
+// entityKeyCatalogue is every distinct entity key this daemon
+// publishes, derived from the config topics rather than transcribed.
+func entityKeyCatalogue(t *testing.T) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, s := range allSurfaces(t) {
+		for i := range s.configs {
+			seen[strings.Split(s.configs[i].Topic, "/")[3]] = true
+		}
+	}
+	return slices.Sorted(keysOf(seen))
+}
+
+// --- two instances ---------------------------------------------------
+
+// TestTwoDefaultInstancesCollideOnEveryString measures what two
+// default-configured daemons on one broker do to each other.
+func TestTwoDefaultInstancesCollideOnEveryString(t *testing.T) {
+	t.Parallel()
+
+	a := loadSurface(t, surfaceScenarios()[2]) // full.en
+	b := loadSurface(t, surfaceScenarios()[2])
+
+	shared := 0
+	for i := range a.configs {
+		if a.configs[i].Topic == b.configs[i].Topic &&
+			a.configs[i].UniqueID == b.configs[i].UniqueID {
+			shared++
+		}
+	}
+	if shared != len(a.configs) {
+		t.Errorf("two default instances share %d of %d config topics and unique_ids",
+			shared, len(a.configs))
+	}
+
+	// The second signal IsOwnConfig requires is the availability topic,
+	// which embeds MQTT_TOPIC — so an instance on a different root sees
+	// these configs as somebody else's and leaves them alone, while
+	// still overwriting every one of them.
+	other := loadSurfaceWithRoot(t, "unifi2")
+	for i := range a.configs {
+		if a.configs[i].Topic != other.configs[i].Topic {
+			t.Fatalf("changing MQTT_TOPIC moved a config topic: %s vs %s",
+				a.configs[i].Topic, other.configs[i].Topic)
+		}
+		if a.configs[i].UniqueID != other.configs[i].UniqueID {
+			t.Fatalf("changing MQTT_TOPIC moved a unique_id")
+		}
+		if a.configs[i].Availability[0].Topic == other.configs[i].Availability[0].Topic {
+			t.Fatalf("changing MQTT_TOPIC did not move the availability topic")
+		}
+	}
+}
+
+func loadSurfaceWithRoot(t *testing.T, root string) surface {
+	t.Helper()
+	sc := surfaceScenarios()[2]
+	sc.name = "full.en.root-" + root
+	sc.yaml = strings.Replace(sc.yaml, "MQTT_TOPIC: unifi\n", "MQTT_TOPIC: "+root+"\n", 1)
+	return loadSurface(t, sc)
+}
+
+// --- the census ------------------------------------------------------
+
+// TestSurfaceCensus holds the measured surface as Go literals, so a
+// change to it is a declaration in review rather than a regenerated
+// blob.
+func TestSurfaceCensus(t *testing.T) {
+	t.Parallel()
+
+	type census struct {
+		messages, configs int
+		platforms         string
+	}
+	want := map[string]census{
+		"minimal.en":  {92, 45, "binary_sensor=11 sensor=34"},
+		"minimal.de":  {92, 45, "binary_sensor=11 sensor=34"},
+		"full.en":     {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"full.de":     {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"nonascii.de": {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+	}
+	for _, s := range allSurfaces(t) {
+		counts := map[string]int{}
+		for _, cfg := range s.configs {
+			counts[strings.Split(cfg.Topic, "/")[1]]++
+		}
+		parts := make([]string, 0, len(counts))
+		for _, p := range slices.Sorted(keysOf(boolSet(counts))) {
+			parts = append(parts, fmt.Sprintf("%s=%d", p, counts[p]))
+		}
+		got := census{len(s.msgs), len(s.configs), strings.Join(parts, " ")}
+		if got != want[s.name] {
+			t.Errorf("%s census = %+v, want %+v", s.name, got, want[s.name])
+		}
+	}
+}
+
+func boolSet(m map[string]int) map[string]bool {
+	out := make(map[string]bool, len(m))
+	for k := range m {
+		out[k] = true
+	}
+	return out
+}
