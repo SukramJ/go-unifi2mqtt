@@ -300,7 +300,8 @@ For `full.en` — the richest installation measured — 147 retained messages on
 
 Of those, **6 state topics are read by no published entity** and **4
 advertised state topics are written by nobody** — see [F3](#f3) and
-[F1](#f1). The 39 command topics are advertised and subscribed but never
+[F1](#f1). The 15 command topics of `full.en` (45 across the five scenarios) are
+advertised and subscribed but never
 written by this daemon, which is correct: they are inbound.
 
 ### 2.6 Retain and QoS
@@ -323,8 +324,9 @@ next poll.
 
 That makes the migration trap sharper here than on the four predecessors:
 `publisher.QoS`'s zero value is `QoSUnset` and resolves to **QoS 1**. A
-`publisher.Config{}` left unset would silently move this bridge's 262 state
-publishes per cycle from QoS 0 to QoS 1 — and, unlike on daikin, a reviewer
+`publisher.Config{}` left unset would silently move this bridge's 71 state
+publishes per `full` cycle (305 across the five pinned scenarios) from QoS 0 to
+QoS 1 — and, unlike on daikin, a reviewer
 comparing against "the bridge publishes at QoS 1" would find that half right
 and stop looking. Deliberate QoS 0 is the sentinel
 `publisher.QoSAtMostOnce` (`0x80`) and has to be written explicitly in
@@ -625,7 +627,7 @@ testdata**, so every one of them still fails immediately after a regeneration:
 | `TestDeviceBlocksArePinned` | the eight `device.identifiers` as Go literals |
 | `TestIdentityIsLanguageIndependent` | `unique_id`, `default_entity_id`, every topic and `device.identifiers` compared en against de directly |
 | `TestAvailabilityModelIsTwoLevel` | the list form, mode `all`, the 128/187 split, and that every named topic is published ([F8](#f8)) |
-| `TestPublishQoSAndRetain` | configs at QoS 1, availability at QoS 1, 262 state publishes at QoS 0, all retained ([F9](#f9)) |
+| `TestPublishQoSAndRetain` | 315 configs at QoS 1, 5 availability at QoS 1, 305 state publishes at QoS 0, all retained ([F9](#f9)) |
 | `TestAdvertisedStateTopicsArePublished` | **builder against builder**: every advertised state/attributes topic is one the publish path writes ([F1](#f1), [F10](#f10)) |
 | `TestKnownUnpublishedTopicsAreStillAdvertised` | the allowlist's other half — an entry that stops being advertised must be deleted, not left to mask a future one |
 | `TestCommandTopicsAreSubscribed` | **builder against builder**: all 45 advertised command topics match one of the six subscribed filters ([F10](#f10)) |
@@ -979,8 +981,8 @@ Three things follow:
 <a name="f9"></a>
 ### F9 — QoS 0 becomes QoS 1 on migration unless spelled out, and this bridge's split hides it · **medium**
 
-§2.6. Discovery and availability are already QoS 1; the 262 state publishes per
-cycle are QoS 0. `publisher.QoS`'s zero value is `QoSUnset` and resolves to
+§2.6. Discovery and availability are already QoS 1; the 71 state publishes per
+`full` cycle — 305 across the five pinned scenarios — are QoS 0. `publisher.QoS`'s zero value is `QoSUnset` and resolves to
 **QoS 1**, so a `publisher.Config{}` left unset moves the state plane and
 leaves the two planes that were already QoS 1 untouched.
 
