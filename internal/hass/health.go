@@ -18,7 +18,14 @@ func healthSpecs() []spec {
 		{
 			platform: PlatformBinarySensor, key: "wan_connectivity",
 			nameKey: "wan_connectivity", stateSuffix: "wan/state",
-			deviceClass: "connectivity", payloadOn: "ok",
+			deviceClass: "connectivity",
+			// The same shape as the device "reachable" sensor, on a
+			// smaller surface: the subsystem status is "ok", "warning",
+			// "error" or "unknown", none of which is "OFF", so a bare
+			// payload_on: "ok" could turn the sensor on and never off.
+			valueTemplate: "{{ 'ON' if value == 'ok' else 'OFF' }}",
+			payloadOn:     payloadON,
+			payloadOff:    payloadOFF,
 		},
 		{
 			platform: PlatformSensor, key: "wan_ip", nameKey: "wan_ip",
@@ -82,6 +89,7 @@ func (d *Discovery) Health(siteName string) ([]Entry, error) {
 			Icon:                s.icon,
 			PayloadOn:           s.payloadOn,
 			PayloadOff:          s.payloadOff,
+			ValueTemplate:       s.valueTemplate,
 			JSONAttributesTopic: d.topics.HealthTopic("attributes"),
 			Availability: []availabilityEntry{
 				{Topic: d.topics.AvailabilityTopic()},

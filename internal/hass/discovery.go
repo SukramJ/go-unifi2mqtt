@@ -202,6 +202,17 @@ type spec struct {
 	icon        string
 	payloadOn   string
 	payloadOff  string
+	// valueTemplate maps the published value onto payloadOn/payloadOff
+	// for a binary sensor whose state topic carries something richer
+	// than two strings.
+	//
+	// Without one, a binary sensor can only match the values it names:
+	// a device state topic carrying ten model.DeviceState strings
+	// matches payload_on on exactly one of them and *nothing* on the
+	// other nine, so the entity can turn on and never off. A template
+	// that renders every input as one of the two payloads is the only
+	// shape that has no third outcome.
+	valueTemplate string
 	// deviceScoped marks entities whose availability must not depend on
 	// the device being online — the state sensor itself, above all.
 	bridgeAvailOnly bool
@@ -249,11 +260,23 @@ func deviceSpecs() []spec {
 		},
 		{
 			platform: PlatformBinarySensor, key: "reachable", stateSuffix: "state",
-			deviceClass: "connectivity", payloadOn: "ONLINE",
+			deviceClass: "connectivity",
 			// Anything that is not exactly ONLINE counts as unreachable,
 			// which is what an automation wants: ADOPTING and UPDATING
 			// are not states you can route traffic through.
-			payloadOff:      "",
+			//
+			// That has to be said with a template. The state topic
+			// carries ten model.DeviceState strings and not one of them
+			// is "OFF", so a bare payload_on: "ONLINE" matched the on
+			// side and nothing at all on the other nine values: the
+			// sensor turned on at the first ONLINE and could never
+			// report the device going away. It stayed *available* while
+			// doing it, because this entity is bridge-scoped on
+			// purpose, so nothing anywhere said the reading was stale.
+			valueTemplate: "{{ 'ON' if value == 'ONLINE' else 'OFF' }}",
+			payloadOn:     payloadON,
+			payloadOff:    payloadOFF,
+
 			bridgeAvailOnly: true,
 		},
 		{
@@ -303,8 +326,17 @@ func portSpecs(p *model.Port) []spec {
 			platform: PlatformBinarySensor, key: prefix + "link",
 			nameKey: "port_link", nameArg: idx,
 			stateSuffix: "port/" + idx + "/state",
-			deviceClass: "connectivity", payloadOn: "UP", payloadOff: "DOWN",
-			category: "diagnostic",
+			deviceClass: "connectivity",
+			// model.PortState is UP, DOWN *or* UNKNOWN, so payload_on
+			// "UP" / payload_off "DOWN" left the third value matching
+			// neither and the entity unable to report it — the same
+			// defect as the device "reachable" sensor, on a third
+			// surface. A port whose link state the console cannot
+			// report is not carrying traffic, so it reads as off.
+			valueTemplate: "{{ 'ON' if value == 'UP' else 'OFF' }}",
+			payloadOn:     payloadON,
+			payloadOff:    payloadOFF,
+			category:      "diagnostic",
 		},
 		{
 			platform: PlatformSensor, key: prefix + "speed",
@@ -374,6 +406,7 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 		Icon:                s.icon,
 		PayloadOn:           s.payloadOn,
 		PayloadOff:          s.payloadOff,
+		ValueTemplate:       s.valueTemplate,
 		JSONAttributesTopic: d.stateTopic(mac, "attributes"),
 		Availability:        d.availabilityFor(mac, s.bridgeAvailOnly),
 		AvailabilityMode:    "all",

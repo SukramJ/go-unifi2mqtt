@@ -520,9 +520,9 @@ func regenerateSurfaceGoldens(t *testing.T) {
 // Deliberately not written by -update-surface-golden. See
 // [regenerateSurfaceGoldens].
 var goldenDigests = map[string]string{
-	"minimal.en":  "69dd1e5f60dd22c6666f25ef5b0307e75d7a7a4d39499259fe5ae5e83e4da915",
-	"minimal.de":  "81ba397fb3f4d33201c92f67f2735908dbd554f458de99713f8098c9334f7b9f",
-	"full.en":     "babd48f86f3ea2f92fcb85ee6989e39e83b0b5d1e265a7eb7ac43d7179617638",
-	"full.de":     "7a4e9d40435a5c4303c0abc5f8fee934c08dd4b204b491c6315217c2f5bbd22f",
-	"nonascii.de": "b1363c13c193e9bac16c94a0eacff9d8b3e02a63b93db1d28627dad3c4fea601",
+	"minimal.en":  "fdb43d26c399e3d4e6ed19d51dc1f84345283bd664e669de67bc87f9154b2d04",
+	"minimal.de":  "78d3e6e661660ea6a535b4b6af673a5bcb145b4055716cbb95e90bf88f21d9ed",
+	"full.en":     "d0c36c486104ac500c5d937902c869fddd30936f771ef34c148f217f07144a53",
+	"full.de":     "386e79804dfecc752cba247eff70e516f19606b237233924b9c957bb8375e592",
+	"nonascii.de": "1e29fdc722d8c5fc7490af7f596a9bcf0bfbe482aa753810b32eb3d947902892",
 }
