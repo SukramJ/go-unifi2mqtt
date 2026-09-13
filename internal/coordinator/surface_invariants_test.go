@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	hatopic "github.com/SukramJ/go-hamqtt/topic"
+
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 )
@@ -727,44 +729,13 @@ func TestCommandTopicsAreSubscribed(t *testing.T) {
 
 // --- the slug --------------------------------------------------------
 
-// librarySlug is go-hamqtt v0.32.0's topic.Slug, transcribed verbatim
-// so §3.3 of the measurement can be counted without taking the
-// dependency a step early. It is unreachable from any production path
-// and deletes itself when the migration lands.
-func librarySlug(s string) string {
-	var b strings.Builder
-	b.Grow(len(s) + 4)
-	prevDash := false
-	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_', r == '-':
-			b.WriteRune(r)
-			prevDash = false
-		case r == 'ä':
-			b.WriteString("ae")
-			prevDash = false
-		case r == 'ö':
-			b.WriteString("oe")
-			prevDash = false
-		case r == 'ü':
-			b.WriteString("ue")
-			prevDash = false
-		case r == 'ß':
-			b.WriteString("ss")
-			prevDash = false
-		default:
-			if !prevDash && b.Len() > 0 {
-				b.WriteByte('_')
-				prevDash = true
-			}
-		}
-	}
-	out := strings.Trim(b.String(), "_")
-	if out == "" {
-		return "x"
-	}
-	return out
-}
+// librarySlug is go-hamqtt's topic.Slug.
+//
+// It was a verbatim transcription while the measurement could not take
+// the dependency; step 4 takes it, so this now calls the real function
+// and the count in §3.3 is measured against the library rather than
+// against a copy of it that could drift.
+func librarySlug(s string) string { return hatopic.Slug(s) }
 
 // TestSlugAgreementOverTheRealCatalogue counts, over this bridge's own
 // catalogue and over the device names its users actually have, how

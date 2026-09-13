@@ -680,3 +680,39 @@ func TestHamqttSitePlaneHasNoDeviceLevelSignal(t *testing.T) {
 		t.Errorf("the site availability slot renders %q; the premise above has changed", got)
 	}
 }
+
+// TestHamqttSlotPathsAreJoinedNotInterpreted asserts an inert thing
+// explicitly rather than leaving it as a blind spot.
+//
+// [hamodel.Slot.Path] is a list of segments, and [hamqttLayout] joins
+// it with "/" and hands the result to [Topics] as one key — so the
+// segmentation carries no meaning here at all: a path of one element
+// "port/1/poe" and a path of three render the same topic, and a
+// mutation replacing [splitSuffix] with a single-element slice changes
+// nothing. That is a property of this layout, not of layouts in
+// general: go-hamqtt's own topic.Default puts a bucket level between
+// the address and the path, where the two forms differ.
+//
+// Stated here so the equivalence is a recorded decision rather than an
+// untested branch — and asserted in both directions, so a layout that
+// started reading the segmentation fails.
+func TestHamqttSlotPathsAreJoinedNotInterpreted(t *testing.T) {
+	t.Parallel()
+
+	ours := hamqttLayout{topics: stubTopics{}}
+	split := hamodel.Slot{Scope: []string{scopeDevice}, Address: "00005e005302", Path: []string{"port", "1", "poe"}}
+	whole := hamodel.Slot{Scope: []string{scopeDevice}, Address: "00005e005302", Path: []string{"port/1/poe"}}
+	if ours.State(split) != ours.State(whole) {
+		t.Errorf("this layout reads the path segmentation: %q vs %q",
+			ours.State(split), ours.State(whole))
+	}
+	if got := ours.State(split); got != (stubTopics{}).DeviceTopic("00005e005302", "port/1/poe") {
+		t.Errorf("the joined path renders %q", got)
+	}
+	// The premise: segmentation is not meaningless everywhere.
+	def := hatopic.Default{Root: "unifi"}
+	if def.State(split) == def.State(whole) {
+		t.Error("topic.Default does not read the segmentation either; the inertness asserted " +
+			"here is a property of layouts in general and says nothing about this one")
+	}
+}

@@ -1497,6 +1497,332 @@ lost between the two:
 
 ---
 
+## Step 4 outcome — go-hamqtt reproduces the published surface
+
+**Added after step 2 and the sweep fix.** `github.com/SukramJ/go-hamqtt`
+v0.33.0 (with `go-ha-catalog` v0.2.1) is taken as a dependency for the
+first time and a **second, unwired rendering path** is built beside the
+shipped builders: the fleet as `model.Device` values carrying
+`model.Entity` values with descriptions and bindings, an own
+`topic.Layout`, and a `discovery.Context`. Nothing is published, no
+publish path, coordinator call site or MQTT bootstrap is touched, and
+**no golden and no digest moved** — all five SHA-256 literals in
+`surface_pin_test.go` are byte-identical to the ones step 2 pasted in.
+
+### The headline
+
+| | |
+| --- | ---: |
+| Pinned discovery configs compared | **315** across five scenarios |
+| Reproduced **byte for byte** | **279** |
+| Reproduced except for one key (`device.manufacturer: ""`) | **36** |
+| Not reproduced | **0** |
+| Rendered configs the bridge does not publish | **0** |
+| Payloads `discovery.ValidateBody` refuses | **0** |
+| Payloads with an advisory | **0** |
+| Bundles `discovery.Validate` refuses | **0** of 32 |
+
+The comparison reads the golden **files** and never the builders it
+replaces; `-update-surface-golden` is not reachable from any function
+in the new test file. Both sides are compared on canonical re-encoding
+(`encoding/json` sorts object keys), which is the same footing the pins
+themselves use.
+
+`TestHamqttInputsReproduceThePublishedConfigTopics` is what keeps it
+non-circular. The inputs are **re-derived** from a warmed coordinator
+— `refreshStatic`, then the real client filter over the real uplink
+index, then `controlOptions()` and `clientSignalEnabled()` — rather
+than intercepted, so a re-derivation that quietly differed would render
+a smaller entity set and let the byte comparison prove less than it
+claims. The same value is therefore fed to the **shipped** builders and
+the golden is required back, whole: 315 of 315.
+
+### What it took
+
+Five pieces, in `internal/hass/hamqtt.go` (production, unwired; the
+only callers are tests):
+
+1. **`hamqttLayout`**, a `topic.Layout` that composes no string of its
+   own — every topic comes back out of the same `Topics` contract the
+   shipped configs point at. F10 counted 22 composition sites, 18 of
+   which remain; a layout that re-formatted
+   `<root>/<site>/device/<mac>/<key>` would be the 23rd. go-hamqtt's own
+   `topic.Default` is unusable for three independent reasons, each
+   asserted rather than asserted-in-prose: it has a bucket level this
+   tree does not have, it keys devices on the device UID where this tree
+   uses the bare MAC, and its `Command` is always `State + "/set"` where
+   four of this bridge's six command suffixes are spelled differently.
+2. **`hamqttContext`**, `discovery.StdContext` with four methods
+   overridden — `NodeID`, `UniqueID`, `ObjectID`, `Availability`.
+3. **`hamqttEntity`**, carrying identity *seeds* rather than finished
+   strings, because the three identity strings are resolved at three
+   different moments (§F5 below).
+4. `discovery.RawEncoding` and a **zero `discovery.Origin`**, each
+   pinned by its own test. Both would be silent mass diffs: the zero
+   `Encoding` is `EnvelopeEncoding` and attaches
+   `value_template: {{ value_json.value }}` to all 297 state-reading
+   entities, and a named origin stamps an `origin` block on all 315.
+5. `RenderHamqtt` / `HamqttBundles`, which return and never publish.
+
+### F5 — settled, against running code
+
+`publisher.SupersededTopics`' default renders
+`<prefix>/<platform>/<bundle.NodeID>/<component key>/config`. Reading
+`publisher/publisher.go:678-685`, **`LegacyEntity.ObjectID` is the
+component's key inside the bundle** — `e.Key()` — and **not**
+`Context.ObjectID`, which only ever seeds `default_entity_id`
+(`discovery/render.go:363`). That resolves the tension the measurement
+left open: this bridge's entity-id seed and its topic segment differ on
+every entity, and they do not have to compete for one method.
+
+Measured over all 315 rendered components:
+
+- the bundle node id **is** `device.identifiers[0]` on 315 of 315;
+- the default five-segment form reproduces **315 of 315** published
+  config topics;
+- `LegacyTopicByUniqueID` reproduces **0 of 315**. `LegacyEntityTopics`
+  *replaces* the default rather than extending it, so naming it at
+  step 6 would turn a working retraction into none;
+- `unique_id != <node_id>_<component key>` on exactly **21**, so the
+  component key must be modelled as the object-id segment. Pinned per
+  kind: the client `ip`/`signal` sensors and every SSID switch.
+
+**What step 6 needs, precisely:** a bundle whose `NodeID` is
+`Device.Identity.IDs[0]` verbatim, and component keys that are the
+object-id segments — nothing more. `discovery.NodeID` (`topic.Slug` of
+the UID) already reproduces every identifier this bridge composes, so
+the override is a guard rather than a correction; both halves are
+asserted so the premise cannot rot in silence.
+
+Second half unchanged and re-confirmed: `ConfigFilter()` is
+`homeassistant/+/+/+/config` and every rendered bundle topic is four
+segments, so a bundle stays invisible to this daemon's own reconcile in
+both directions.
+
+### F4 — the composition, reproduced
+
+`Context.ObjectID` is overridden onto this package's own
+`entityIDSeed`, i.e. `collapseTokens(slugify(name) + "_" + slugify(key))`.
+The library's `discovery.ObjectID` is asserted **not** to produce the
+same answer for four probes spanning all three divergence classes, and
+the collapse half is asserted separately, since it is what no per-string
+normaliser reproduces even for ASCII.
+
+One entity does not take its seed from its device's name at all — the
+SSID switch seeds from the literal `"unifi_wlan"` and the SSID — and it
+has its own assertion.
+
+### F8 — a `Context` override, as step 2 predicted
+
+`Context.Availability` is overridden, and that is the whole of it. The
+levels and the mode still come from `model.Description.Availability`, so
+the **128/187 split is expressed as `model.BridgeOnly()` on the 128**
+and nothing else; only the `LevelDevice` entry is spelled differently —
+the object's own state topic plus this bridge's `value_template`, where
+`StdContext` would name a dedicated availability topic with no template.
+
+Two things were tightened while doing it. The template is now a property
+of the device kind and `BridgeOnly` is the **only** switch deciding
+whether the level renders — two switches saying the same thing is how a
+setting goes inert unnoticed. And the one weaker guard that remains (the
+site plane, which has no state topic to point at) is asserted directly
+rather than left as an untested branch.
+
+### F2 — confirmed fixed
+
+All 315 payloads pass `discovery.ValidateBody`: **0 blocking, 0
+advisory**. The 18 `button` refusals the measurement recorded — for
+`state_topic` and `optimistic` — are gone, and they were this
+repository's own struct shape, fixed at step 2. All 32 bundles pass
+`discovery.Validate` too, which is the check that gates step 6: a
+blocking result publishes nothing at all, so one bad component costs its
+device every entity it has.
+
+### `device_tracker` — the rendering half is settled
+
+Three of the 315 configs are `device_tracker`, a platform no other
+bridge in the programme publishes, and the measurement named "can a
+bundle carry a `device_tracker`" as an open live-HA question.
+
+Narrowed, as far as running code can:
+
+- go-hamqtt has a typed `discovery.DeviceTrackerFields` and renders all
+  three keys this bridge publishes (`source_type`, `payload_home`,
+  `payload_not_home`);
+- `go-ha-catalog` v0.2.1 carries a `device_tracker` schema with 27
+  declared keys and none required, and every key this bridge emits is
+  among them;
+- `discovery.ValidateBody` accepts all three bodies, and
+  `discovery.Validate` accepts **9 `device_tracker` components inside
+  client bundles** across the five scenarios — one per client per `full`
+  scenario, carried alongside that client's `ip` sensor, block switch
+  and authorize button, which is exactly the "components from two poll
+  loops with different readiness" shape §3.4 asked about.
+
+**What is left is the runtime half only**: whether Home Assistant
+itself accepts a `device_tracker` component inside a device bundle. No
+unit test can reach it; step 3b's throwaway bundle still owes the
+answer. The schema and the library no longer do.
+
+### F7 — the origin block is now a step-6 prerequisite, not a step-7 nicety
+
+The per-entity render passes a zero `discovery.Origin`, which is what
+keeps all 315 payloads free of an `origin` block they do not carry
+today. A **bundle** with the same zero origin is refused outright:
+`discovery.Validate` reports `origin.name is required on a device
+bundle` as blocking. Both halves are asserted, because they pull in
+opposite directions.
+
+So F7's sequencing inverts: the `origin` block cannot wait until step 7
+if step 6 publishes bundles. It is still a payload addition on every
+config and still must not share a step with anything else — it simply
+has to land *before* step 6 rather than after.
+
+### F14 (new) — the site device is announced under two different names
+
+Found by the rendering work, not by the measurement. `unifi_site_default`
+carries **two different `device` blocks**:
+
+| Announced by | `device.name` | Source |
+| --- | --- | --- |
+| the seven health entities | `UniFi Site Default` | `Site.Name`, via `Health(siteName)` |
+| every SSID switch | `UniFi Site default` | `Site.Internal`, via `WLANControl` |
+
+Per entity this is invisible: Home Assistant's device registry takes the
+last config to arrive, and the two differ only in one letter's case. **A
+device bundle carries exactly one `device` block**, so at step 6 one of
+the two names has to win visibly — and which one wins depends on the
+order components are collected in, which nothing states.
+
+It is pinned by `TestHamqttSiteDeviceIsAnnouncedUnderTwoNames`, with the
+expected pair as a Go literal, so a fix has to move the literal in the
+same commit. Not fixed here: changing either name moves retained bytes
+on nine configs in three of the five goldens, which is step 7's to do —
+and the right answer (`Site.Name` on both, since `Site.Internal` is the
+API's addressing token and not a display string) is an operator-visible
+rename.
+
+### F15 (new) — an empty `manufacturer` is not expressible through the model
+
+The 36 client configs of the three `full` scenarios publish
+`"manufacturer": ""`, because `clientDeviceInfo` sets the field to the
+empty string ("unknown for a network client") and this repository's
+`deviceInfo.Manufacturer` carries no `omitempty`.
+`discovery.DeviceInfo.Manufacturer` **does** carry `omitempty`, so the
+library renders the key absent.
+
+This is the only key of the 315 that is not reproduced, and it is
+counted, not waved at: the carve-out strips exactly
+`device.manufacturer`, exactly where the pinned value is the empty
+string, and requires everything else in the payload to be byte-equal —
+so a second divergence inside a carved-out payload still fails. Its
+size is a Go literal (`emptyManufacturerConfigs = 36`) and the whole
+device block is compared key by key with the one key removed.
+
+Reproducing it *is* possible — `discovery.Component.Extra["device"]`
+overrides the merged map wholesale — and was deliberately not done:
+that would replace exactly the part of the payload the experiment is
+supposed to be testing. **The library is right here.** Home Assistant
+reads an absent manufacturer and an empty one identically, and an
+absent key is the correct spelling. The fix belongs to this bridge at
+step 7: drop the key, which moves 36 retained payloads and must not
+share a step with a migration whose whole claim is an empty diff.
+
+### Mutation proof — 22 applied
+
+One at a time, on a committed tree, reverted with `git checkout --`
+between runs; each run against both affected packages. The column is
+**which tests failed**, because the useful number is how many mutations
+are caught by exactly one assertion.
+
+| # | Mutation | Failing tests |
+| ---: | --- | --- |
+| M1 | `Layout.Command` appends `/set` | 3 |
+| M2 | `Layout.Availability` names a dedicated `…/availability` topic | 4 |
+| M3 | `Context.ObjectID` → the library's `discovery.ObjectID` | 3 |
+| M4 | `Context.UniqueID` → the library's `discovery.UniqueID` | 4 |
+| **M5** | `Context.NodeID` → the library's `discovery.NodeID` | **1** — and no byte moves; see below |
+| M6 | `RawEncoding` → `EnvelopeEncoding` | 2 |
+| M7 | zero `Origin` → a named one | 2 |
+| M8 | `deviceAvailTemplate` compares against `online`, not `ONLINE` | **1** |
+| M9 | `model.BridgeOnly()` dropped from the 128 | 3 |
+| M10 | the client template used on the device plane | 2 |
+| M11 | the SSID switch seeds from its device name | 2 |
+| M12 | client sensor component key → the unique id's suffix (`client_ip`) | 3 |
+| M13 | SSID switch `uidBase` → the site device id | 2 |
+| M14 | `payload_press` `PRESS` → `press` | **1** |
+| M15 | `source_type` `router` → `gps` | 2 |
+| M16 | the device block drops `connections` | 2 |
+| M17 | the device block drops `via_device` | **1** |
+| M18 | the locate switch's category `config` → `diagnostic` | **1** |
+| **M19** | `splitSuffix` returns a single element | **0 — equivalent**, now asserted |
+| M20 | SSID switch component key loses its `wlan_` prefix | 3 |
+| **M21** | `slugify` maps `ü→ue`, **goldens regenerated** | 4, of which `TestPublishedSurfaceDigests` |
+| **M22** | `Manufacturer` `Ubiquiti` → `Ubiquity`, **goldens regenerated** | 6, **all** `TestPublishedSurfaceDigests` |
+
+Five mutations are caught by exactly one assertion (M8, M14, M17, M18 by
+the byte comparison alone; M5 by its own premise check), which is the
+measure that matters: the byte comparison is not a formality that would
+have passed anyway.
+
+**M5 is an equivalent mutation and is recorded as one.** `topic.Slug`
+reproduces every device identifier this bridge composes — they are
+already lower-case ASCII with `_` and `-` — so swapping the override for
+the library default moves **no published byte**. It is caught only by
+`TestHamqttNodeIDIsTheDeviceIdentifier`'s second half, which asserts
+that the two functions *differ* on an identifier that is not already
+slug-shaped. Without that half the override would be untested coverage.
+
+**M19 is genuinely equivalent.** The layout joins a slot's `Path` with
+`/` and hands the result to `Topics` as one key, so the segmentation
+carries no meaning at all — `["port","1","poe"]` and `["port/1/poe"]`
+render the same topic. Rather than leave it as an untested branch,
+`TestHamqttSlotPathsAreJoinedNotInterpreted` asserts the equivalence,
+*and* asserts that `topic.Default` does read the segmentation, so the
+statement is about this layout rather than about layouts in general.
+
+### The blind spot, named rather than claimed as coverage
+
+**M21 and M22 are the shape of it.** The rendering path deliberately
+reuses this package's own catalogue — `deviceSpecs`, `portSpecs`,
+`radioSpecs`, `healthSpecs`, `deviceInfo`, `clientDeviceInfo`,
+`entityIDSeed`, `Manufacturer` — because the experiment is about
+*rendering*, and a re-derived catalogue would be measuring the
+transcription instead. The cost is that a mutation of the shared
+catalogue moves **both** sides together: with the goldens regenerated,
+`TestHamqttReproducesThePublishedConfigs` passes under both M21 and M22.
+
+What catches those is `TestPublishedSurfaceDigests` — the five SHA-256
+literals held in Go, outside the fixtures, which `-update-surface-golden`
+deliberately refuses to write. M22 is caught by **nothing else at all**.
+That is the pin from step 0 doing exactly the job it was built for, and
+it is the reason this step regenerates nothing.
+
+The second blind spot is the obvious one: none of this proves Home
+Assistant accepts anything. Schema agreement is `go-ha-catalog`'s
+transcription of the schemas, not HA's own parser, and the bundle form
+has never met a running console. Step 3b and step 6 still owe that.
+
+### What this step deliberately does not do
+
+- **No golden regenerated, no digest touched.** The five literals are
+  byte-identical to step 2's.
+- **Nothing published.** `TestHamqttRenderPathPublishesNothing` drives
+  every entry point the new path has against a transport that fails the
+  test on contact.
+- **No publish path, coordinator call site or MQTT bootstrap changed.**
+  The new file is unwired; `go vet` and the linter see it, nothing else
+  does.
+- **F14 and F15 are recorded, not fixed.** Both move retained bytes, and
+  a migration step whose golden diff is empty is provable while one with
+  36 rows is not.
+- **F6 is untouched.** Two consoles on one broker still cannot be told
+  apart, every candidate identity re-registers existing entities, and
+  the deletion half is already defused. Nothing in this step's rendering
+  work changes that, and the bundle question stays separable.
+
+---
+
 ## Sequencing — the rest of phase 9
 
 Ordered so each step de-risks the next, following the shape phases 5–8
@@ -1547,15 +1873,23 @@ describes, against this repository's own working tree, with two exceptions,
 both in `surface_invariants_test.go` and both unreachable from any production
 path:
 
-- `librarySlug` — a verbatim transcription of go-hamqtt v0.32.0's `topic.Slug`
-  (`topic/topic.go`), kept there so §3.3 can be counted without taking the
-  dependency one step early. It deletes itself at step 4.
+- `librarySlug` — was a verbatim transcription of go-hamqtt v0.32.0's
+  `topic.Slug` (`topic/topic.go`), kept there so §3.3 could be counted without
+  taking the dependency one step early. **Step 4 takes the dependency and
+  replaces it with a call to the real `topic.Slug`**, which reproduces §3.3's
+  counts exactly — 2 of 35 entity keys and 9 of 13 device-name probes, on the
+  same three divergence classes — so the transcription was accurate and the
+  count is now measured against the library rather than against a copy of it
+  that could drift.
 - `hassSlugProbe` — a transcription of `internal/hass.slugify`, which is
   unexported, kept beside `librarySlug` so the two are read together.
 
 §6's validation was run out of tree, from a throwaway module depending on
 go-hamqtt v0.32.0, over the golden files rather than over live builder output,
-so nothing in this repository's `go.mod` moved for it.
+so nothing in this repository's `go.mod` moved for it. **Step 4 takes the
+dependency and runs it in tree**, over live rendered output rather than over the
+fixtures: 0 blocking and 0 advisory on all 315, confirming step 2's fix of the
+18 refused buttons.
 
 The fixtures are synthesised rather than captured, because
 `internal/unifi/integration/testdata/` holds *API responses*, not domain
