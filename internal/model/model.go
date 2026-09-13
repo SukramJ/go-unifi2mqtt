@@ -20,6 +20,7 @@ package model
 
 import (
 	"net/netip"
+	"slices"
 	"time"
 )
 
@@ -51,7 +52,16 @@ const (
 // through instead of failing the decode.
 type DeviceState string
 
-// Device states. The first ten are the spec's enum verbatim.
+// Device states. The first ten are the spec's enum verbatim; the
+// eleventh, [DeviceUnknown], is this project's catch-all.
+//
+// Anything that needs the *whole* vocabulary must read it from
+// [AllDeviceStates] rather than retyping it. A transcription of this
+// block went into a Home Assistant discovery test as ten values —
+// [DeviceGettingReady] was dropped — and that test existed to prove
+// the `reachable` sensor's value_template covers every value the state
+// topic can carry. A totality proof over an incomplete domain proves
+// nothing, and nothing said so.
 const (
 	DeviceOnline                DeviceState = "ONLINE"
 	DeviceOffline               DeviceState = "OFFLINE"
@@ -65,6 +75,36 @@ const (
 	DeviceIncorrectTopology     DeviceState = "U5G_INCORRECT_TOPOLOGY"
 	DeviceUnknown               DeviceState = "UNKNOWN"
 )
+
+// allDeviceStates is every value the device `state` topic can carry.
+//
+// TestAllDeviceStatesCoversTheConstBlock parses this file and fails if
+// a DeviceState constant is declared without being listed here, so a
+// twelfth value cannot be added to the enum and forgotten by its
+// consumers.
+var allDeviceStates = []DeviceState{
+	DeviceOnline,
+	DeviceOffline,
+	DevicePendingAdoption,
+	DeviceUpdating,
+	DeviceGettingReady,
+	DeviceAdopting,
+	DeviceDeleting,
+	DeviceConnectionInterrupted,
+	DeviceIsolated,
+	DeviceIncorrectTopology,
+	DeviceUnknown,
+}
+
+// AllDeviceStates returns every value a [DeviceState] can take, in
+// declaration order.
+//
+// It is the single source for consumers that must handle the complete
+// vocabulary — notably the `reachable` binary sensor, whose
+// value_template has to map the whole domain onto exactly two payloads
+// because Home Assistant silently ignores a state matching neither.
+// Callers get a copy; the enum is not theirs to edit.
+func AllDeviceStates() []DeviceState { return slices.Clone(allDeviceStates) }
 
 // IsOnline reports whether the device is in a state where its
 // statistics are meaningful. The statistics poll skips everything else

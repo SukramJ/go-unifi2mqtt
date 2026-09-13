@@ -598,11 +598,12 @@ func TestUnnamedDeviceGetsAFallbackName(t *testing.T) {
 // payload_off and does nothing at all with anything else. The device
 // "reachable" sensor named payload_on: "ONLINE" and no payload_off — an
 // empty string, dropped by omitempty, leaving Home Assistant's schema
-// default of "OFF" — while the topic carries ten model.DeviceState
-// strings, none of which is "OFF". So the sensor turned on at the first
-// ONLINE and could match nothing on OFFLINE, ADOPTING, UPDATING or the
-// other six: a connectivity sensor that reports a permanently reachable
-// device whatever the console says, and stays available while doing it.
+// default of "OFF" — while the topic carries every model.DeviceState
+// string, none of which is "OFF". So the sensor turned on at the first
+// ONLINE and could match nothing on OFFLINE, ADOPTING, UPDATING or any
+// of the rest: a connectivity sensor that reports a permanently
+// reachable device whatever the console says, and stays available while
+// doing it.
 //
 // The measurement could not settle whether Home Assistant leaves such
 // an entity latched or blanks it to "unknown". This test does not need
@@ -616,15 +617,26 @@ func TestEveryBinarySensorCanReportBothStates(t *testing.T) {
 	t.Parallel()
 
 	// The complete vocabulary each binary sensor's state topic carries,
-	// keyed by the entity key. Transcribed from the publishing side:
-	// model.DeviceState, model.PortState, boolPayload and the classic
-	// health status strings.
+	// keyed by the entity key.
+	//
+	// The device-state row is *derived* from model.AllDeviceStates
+	// rather than transcribed, and that is not tidiness. The
+	// transcription it replaces listed ten values while
+	// model.DeviceState declared eleven — model.DeviceGettingReady was
+	// missing, and integration.toDeviceState puts it on the wire. This
+	// test exists to prove the value_template maps the *whole* domain
+	// onto exactly two payloads, and it was proving that over a domain
+	// short by one, green only because the template's else branch
+	// happens to absorb the eleventh. A totality proof is worth exactly
+	// what its notion of the total is worth, so the total is now read
+	// from the declaration; model.TestAllDeviceStatesCoversTheConstBlock
+	// ties that declaration to the const block in turn.
+	//
+	// The other rows stay literal because their domains are two or
+	// three values declared next to the code that renders them; if any
+	// grows an enum of its own it should be derived the same way.
 	vocabulary := map[string][]string{
-		"reachable": {
-			"ONLINE", "OFFLINE", "PENDING_ADOPTION", "UPDATING", "ADOPTING",
-			"DELETING", "CONNECTION_INTERRUPTED", "ISOLATED",
-			"U5G_INCORRECT_TOPOLOGY", "UNKNOWN",
-		},
+		"reachable":        deviceStateVocabulary(),
 		"update_available": {"ON", "OFF"},
 		"port_link":        {"UP", "DOWN", "UNKNOWN"},
 		"port_poe":         {"ON", "OFF"},
@@ -707,4 +719,19 @@ func renderBinaryTemplate(tmpl, value string) string {
 		return on
 	}
 	return off
+}
+
+// deviceStateVocabulary is every string the device `state` topic can
+// carry, read from the model package's own declaration.
+//
+// A twelfth DeviceState therefore reaches this test automatically, and
+// a template that does not render it as payload_on or payload_off fails
+// here rather than shipping.
+func deviceStateVocabulary() []string {
+	states := model.AllDeviceStates()
+	out := make([]string, 0, len(states))
+	for _, s := range states {
+		out = append(out, string(s))
+	}
+	return out
 }

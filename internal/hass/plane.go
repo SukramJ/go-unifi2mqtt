@@ -32,20 +32,26 @@ import (
 // evidence is every entity being unavailable at once.
 func NewLayout(t Topics) hatopic.Layout { return hamqttLayout{topics: t} }
 
-// publishedPlatforms are the five Home Assistant platforms this daemon
-// emits, of the 32 the catalogue declares.
+// publishedPlatforms is the Home Assistant platforms this daemon emits,
+// of the 32 the catalogue declares, as a set for [OwnsConfigTopic].
 //
 // Held as a closed set because it is half of [OwnsConfigTopic]: a
 // retained config on a platform this daemon has never published cannot
 // be one of ours, whatever else its topic looks like, and a shared
 // discovery tree carries plenty of them.
-var publishedPlatforms = map[string]bool{
-	"binary_sensor":  true,
-	"button":         true,
-	"device_tracker": true,
-	"sensor":         true,
-	"switch":         true,
-}
+//
+// Derived from [allPlatforms] rather than retyped. It used to be a
+// second hand-written spelling of the same five strings, which is the
+// twin nothing compared: PR #29 tied the *fixture* spelling to
+// [PublishedPlatforms] and left this production-to-production pair
+// untied.
+var publishedPlatforms = func() map[string]bool {
+	m := make(map[string]bool, len(allPlatforms))
+	for _, p := range allPlatforms {
+		m[string(p)] = true
+	}
+	return m
+}()
 
 // PublishedPlatforms names the Home Assistant platforms this daemon
 // emits, sorted.

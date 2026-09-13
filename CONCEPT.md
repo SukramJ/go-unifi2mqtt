@@ -726,18 +726,60 @@ grace period every presence automation flaps. An `AWAY_TIMEOUT` below
   version under a different key, by a device unplugged while the daemon was
   stopped, or by a filter that used to match more clients, stays retained on
   the broker: HA recreates the entity on every start and it sits `unavailable`
-  forever with nothing to explain it. So on start the daemon subscribes to
-  `<HASS_BASE_TOPIC>/+/+/+/config`, collects what the broker replays, and
-  clears what it owns but no longer publishes. `HASS_CLEANUP: false` disables
-  it.
+  forever with nothing to explain it. So on start the daemon opens a snapshot
+  window on `<HASS_BASE_TOPIC>/#`, collects what the broker replays, and clears
+  what it *claimed* but no longer publishes. `HASS_CLEANUP: false` disables it.
 
-  **Ownership needs two signals to agree** — the `unique_id` must be in the
-  `unifi_` namespace *and* the payload must name this bridge's availability
-  topic, which embeds `MQTT_TOPIC`. Neither alone is enough: another
-  integration could use a colliding id, and a second instance of this daemon
-  bridging another console to the same broker uses the same id namespace. With
-  only the id check the two instances would delete each other's entities on
-  every start.
+  **Ownership is recorded, not inferred.** The sweep does not ask the payload
+  whose entity it is. It may clear a retained config only if *this process*
+  published that exact topic since it started — `hass.Claims{Published,
+  Announced}`, where `Published` is every config topic the broker accepted and
+  `Announced` the subset still claimed as a live entity. `Published` only ever
+  grows: a retraction does not un-claim, which is what lets a retraction that
+  did not stick be retried. A config this process never published is **not ours
+  to delete, whatever it looks like.**
+
+  This is not belt-and-braces caution; it is the correction of a measured
+  defect. The rule this section used to state — that ownership needs the
+  `unifi_` id namespace *and* this bridge's availability topic to agree — was
+  removed in PR #24 because it does not separate two instances of this daemon.
+  A state topic here is `<root>/<site>/…`; the root is `MQTT_TOPIC`, which is
+  exactly what the availability check already reads, and the site segment is
+  `default` on every UniFi console out of the box. Two consoles bridged to one
+  broker with the shipped configuration publish byte-identical config topics,
+  `unique_id`s, availability topics and state topics for the whole site plane.
+  `TestOwnershipCannotSeparateTwoConsolesOnOneRoot` drove it: one console's
+  daemon deleted the other console's SSID switch out of Home Assistant. **An
+  operator who read the old rule as a protection was reading a description of
+  the mechanism that deleted their entities.**
+
+  The payload shape test survives, but only as a *narrowing* half, never as a
+  verdict: `Discovery.IsOwnConfig` keeps another integration's configs out of
+  the sweep's judgement entirely, and confirms that what is retained under a
+  claimed topic is still a config of ours rather than something another writer
+  put on top of it. It compares the availability topic for **exact equality**,
+  not by prefix, so an instance rooted at `unifi/kitchen` is not claimed by one
+  rooted at `unifi`. It must never again decide a retraction on its own.
+
+  **The cost is stated, not hidden.** A config genuinely left behind by an
+  *earlier run of this daemon* — an older topic shape, a device unplugged while
+  the daemon was stopped — was also not published by *this* process, so it is
+  no longer cleared either. It is unreachable to the sweep and reported instead:
+
+  - `coordinator.reconcile_unclaimed` (Info) — this daemon's shape, not
+    claimed by this process, and the class that would have published it **has**
+    reported. An operator who runs no second console can clear these by hand,
+    one empty retained publish each; the log line says so.
+  - `coordinator.reconcile_unclaimed_unready` (Warn, since PR #29) — the same
+    shape with the opposite provenance: the class that would have published it
+    has **not** reported in this run, so its absence from `Announced` may mean
+    only that its source is down. With the classic layer failing, every
+    site-health config this daemon publishes lands here. These are named as
+    explicitly **not** safe to clear — otherwise a three-minute console outage
+    becomes a fleet deleted by hand.
+
+  A stale entity an operator can see and delete is a better outcome than a
+  neighbour's fleet deleted silently, which is what the alternative did.
 
   **The sweep is gated per class** (device / client / site / WLAN) on that
   class's source having reported. An empty announced set means "not polled

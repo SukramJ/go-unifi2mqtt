@@ -63,8 +63,12 @@ func TestEveryEntryCarriesTheBridgeAvailabilityTopic(t *testing.T) {
 	}
 }
 
-// Every config topic has to match the filter the reconcile subscribes
-// to; one that does not is never read back and can never be cleared.
+// Every config topic this daemon writes has to match [ConfigFilter] —
+// the five-segment form, ending in `config`. The sweep's window is the
+// wider `<prefix>/#`, so a topic failing this is still *seen*; what it
+// falls out of is the shape ConfigTopicFor can rebuild, which is how
+// the claim list is keyed. One that does not match is never matched
+// back to a claim and can never be cleared.
 func TestConfigFilterMatchesEveryConfigTopic(t *testing.T) {
 	t.Parallel()
 
@@ -318,5 +322,113 @@ func TestAnUnpublishedConfigIsNeverAnOrphan(t *testing.T) {
 	}
 	if len(unclaimed) != 1 || unclaimed[0] != topic {
 		t.Errorf("unclaimed = %v, want [%s] — it must at least be reported", unclaimed, topic)
+	}
+}
+
+// nestedTopics is a second instance of this daemon whose MQTT_TOPIC is
+// nested *under* the first one's: root "unifi/kitchen" against
+// stubTopics' "unifi".
+//
+// This is not a hypothetical shape. A review of go-homeconnect2mqtt
+// measured exactly it: its ownership predicate asked whether a payload's
+// topic sat under the instance's own MQTT root, and an instance rooted
+// at `homeconnect` therefore claimed every component of one rooted at
+// `homeconnect/kitchen`, because "homeconnect/kitchen/…" starts with
+// "homeconnect/". Driven over the real catalogue, 687 of 687 configs
+// were accepted and 510 live components tombstoned.
+type nestedTopics struct{}
+
+func (nestedTopics) DeviceTopic(mac model.MAC, key string) string {
+	return "unifi/kitchen/default/device/" + mac.String() + "/" + key
+}
+
+func (nestedTopics) ClientTopic(key, valueKey string) string {
+	return "unifi/kitchen/default/client/" + key + "/" + valueKey
+}
+func (nestedTopics) HealthTopic(key string) string { return "unifi/kitchen/default/health/" + key }
+func (nestedTopics) WLANTopic(id, key string) string {
+	return "unifi/kitchen/default/wlan/" + id + "/" + key
+}
+func (nestedTopics) AvailabilityTopic() string { return "unifi/kitchen/bridge/status" }
+
+// TestIsOwnConfigComparesTheAvailabilityTopicExactlyNotByPrefix pins
+// that this bridge is immune to the nested-sibling-root defeat above.
+//
+// Two things protect it and they are not the same thing. The load-
+// bearing one is that ownership here is *recorded*: the sweep may only
+// retract a topic in Claims.Published, so a nested sibling's configs are
+// never candidates whatever they look like. But IsOwnConfig survives as
+// the shape half, and a shape half written as "does this payload's
+// availability topic sit under my root" would answer *true* for every
+// config of the nested instance — the outer root is a prefix of the
+// inner one. Exact equality is what keeps the shape half from being the
+// homeconnect predicate in a different package.
+//
+// The second assertion is the point of the test: it demonstrates that
+// the prefix form would have accepted these very payloads, so a future
+// reader cannot conclude the exactness is incidental.
+func TestIsOwnConfigComparesTheAvailabilityTopicExactlyNotByPrefix(t *testing.T) {
+	t.Parallel()
+
+	outer := newTestDiscovery(LangEN)
+	inner := New(Config{
+		BaseTopic: "homeassistant", Topics: nestedTopics{},
+		Site: "default", SiteName: "Default", Language: LangEN,
+	})
+
+	innerEntries, err := inner.Health()
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	wlan, err := inner.WLANControl(&model.WLAN{ID: "w1", Name: "HomeNet", Enabled: true})
+	if err != nil {
+		t.Fatalf("WLANControl: %v", err)
+	}
+	innerEntries = append(innerEntries, wlan)
+	if len(innerEntries) == 0 {
+		t.Fatal("the nested instance rendered nothing")
+	}
+
+	outerRootPrefix := stubTopics{}.AvailabilityTopic()
+	outerRootPrefix = outerRootPrefix[:strings.Index(outerRootPrefix, "/")+1] // "unifi/"
+
+	prefixWouldAccept := 0
+	for _, e := range innerEntries {
+		if outer.IsOwnConfig(e.Payload) {
+			t.Errorf("%s: the outer instance claims a config published by the "+
+				"instance rooted at unifi/kitchen; the availability-topic check "+
+				"has stopped being an exact comparison", e.ConfigTopic)
+		}
+		var cfg ownership
+		if err := json.Unmarshal(e.Payload, &cfg); err != nil {
+			t.Fatalf("%s: %v", e.ConfigTopic, err)
+		}
+		if len(cfg.Availability) == 0 {
+			t.Fatalf("%s: no availability entry to compare", e.ConfigTopic)
+		}
+		for _, a := range cfg.Availability {
+			if strings.HasPrefix(a.Topic, outerRootPrefix) {
+				prefixWouldAccept++
+				break
+			}
+		}
+		// The id namespace is shared, so it cannot separate them either.
+		if !strings.HasPrefix(cfg.UniqueID, idPrefix+"_") {
+			t.Errorf("%s: unique_id %q left the shared namespace; this test no "+
+				"longer probes the case it was written for", e.ConfigTopic, cfg.UniqueID)
+		}
+	}
+
+	if prefixWouldAccept != len(innerEntries) {
+		t.Errorf("a root-prefix predicate would have accepted %d of %d nested configs; "+
+			"this test only proves exactness matters if the prefix form accepts them all",
+			prefixWouldAccept, len(innerEntries))
+	}
+
+	// The outer instance's own configs must still read as its own.
+	for _, e := range allEntries(t) {
+		if !outer.IsOwnConfig(e.Payload) {
+			t.Errorf("%s: the outer instance no longer recognises its own config", e.ConfigTopic)
+		}
 	}
 }

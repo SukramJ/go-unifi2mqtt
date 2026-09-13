@@ -129,3 +129,38 @@ changing, and the sweep would then read it back as an orphan.
   survivors.
 - `changelog.md`. The 1.2.0 section was cut at #28 and this repo opens a
   section at release time rather than carrying an "Unreleased" heading.
+
+## The release note the next version owes
+
+Same reason as `notes/adr0070-phase9-measurement.md`'s "The release note
+step 7 owes": the changelog files are release-scoped here, so the text
+is parked rather than lost. `changelog.md` and `addon/CHANGELOG.md` are
+kept identical, so whichever release opens next takes both lines.
+
+- **A second log line about leftover discovery configs** (#29). The
+  daemon already reported configs it will not clear as
+  `coordinator.reconcile_unclaimed`, with the advice that an operator
+  who runs no second console can clear them by hand. That advice was
+  unconditional, and a source that failed to complete a first cycle —
+  an unreachable console, rotated credentials, a controller upgrade —
+  put the daemon's *own live* configs on that list. There is now a
+  second line, `coordinator.reconcile_unclaimed_unready` (a warning),
+  for configs whose source has not reported in this run, naming the
+  silent classes and saying explicitly that these are **not** safe to
+  clear. Nothing about the sweep's behaviour changed; what changed is
+  which of the two things an operator is told.
+- **`CONCEPT.md` §6.5 described a protection that does not exist**
+  (this PR). It stated ownership of a retained discovery config as a
+  two-signal payload test — the `unifi_` id namespace plus this
+  bridge's availability topic — and told the reader that rule is what
+  stops two UniFi consoles on one broker from deleting each other's
+  entities. That rule was removed in #24 precisely because it does
+  *not* separate two consoles; driven, one console's daemon deleted the
+  other's SSID switch out of Home Assistant. An operator who read §6.5
+  and concluded they were safe to run two consoles was reading a
+  description of the mechanism that deletes their entities. §6.5 now
+  describes the claim list that actually ships, and states its cost:
+  genuine leftovers from an older topic shape are reported, never
+  cleared. No behaviour changed in this PR — the *documentation* was
+  the defect. Operators who made a two-console decision on the strength
+  of §6.5 should re-read it.
