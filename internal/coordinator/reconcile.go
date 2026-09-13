@@ -278,6 +278,16 @@ func (c *Coordinator) collectRetainedConfigs(ctx context.Context) (map[string][]
 	res, err := rt.Sweep(ctx, hapub.SweepRequest{
 		// Look, never touch. The retraction below is this daemon's own,
 		// over a list this daemon narrowed.
+		//
+		// [hapub.SweepRequest.SelfClaimed] — go-hamqtt v0.34.0, modelled
+		// on this bridge's claim list — is deliberately NOT set. It
+		// would narrow the sweep to topics this process published,
+		// which is the same narrowing the retraction already applies
+		// one layer down; what it would additionally remove is the
+		// *report*. The unclaimed topics are precisely what this window
+		// exists to surface as coordinator.reconcile_unclaimed, with
+		// the remedy an operator can act on, so here the guard's cost
+		// is the sweep's purpose.
 		ReportOnly: true,
 		Window:     c.reconcileWindow,
 		Owns:       hass.OwnsConfigTopic,

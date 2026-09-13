@@ -202,12 +202,34 @@ etc. — no special test runner beyond `go test`.
 - **Never interpolate console values as HTML.** A device named
   `<img onerror=…>` is a legal UniFi name. The UI builds text nodes
   only, and a test rejects `innerHTML` outright.
-- **Orphan cleanup needs two ownership signals, not one.** The startup
-  reconcile clears retained discovery configs by `unique_id` prefix
-  **and** the bridge availability topic in the payload. Dropping either
-  check compiles and passes a naive test: the id alone makes two
-  instances of this daemon on one broker delete each other's entities,
-  because they share the `unifi_` namespace.
+- **Ownership of a retained config is recorded, not inferred.** The
+  startup reconcile may retract a discovery config only if **this
+  process published that exact topic since it started** — a grow-only
+  claim list (`hass.Claims`), which a retraction does not undo. The
+  payload check (`unique_id` prefix **and** the bridge availability
+  topic) survives as the *shape* half and is documented as never again
+  sufficient on its own: two UniFi consoles bridged to one broker emit
+  byte-identical config topics, `unique_id`s, availability topics **and**
+  state topics for the whole site plane, so no predicate over a payload
+  can separate them and "looks like mine" deletes the neighbour's
+  entities. The stated cost is that a config left by an *earlier run*
+  is no longer cleared either; it is logged once as
+  `coordinator.reconcile_unclaimed` with the remedy.
+- **Discovery is per-entity, and that is a decision with a condition
+  attached.** One retained config per entity at
+  `homeassistant/<platform>/<node_id>/<object_id>/config` — *not* a
+  device bundle. ADR 0070 phase 9 measured, built and proved the bundle
+  path (`RenderHamqtt`/`HamqttBundles` render it and are byte-equal to
+  what ships) and then declined to publish it: a bundle is one retained
+  topic per device, so two consoles that cannot be told apart would
+  replace each other's *whole entity set* rather than overwrite it key
+  by key. It becomes available when this bridge has an identity that
+  distinguishes two consoles without re-registering entities Home
+  Assistant has already registered. Read
+  `notes/adr0070-phase9-measurement.md`'s closing section before
+  reopening it — the retraction form and the new identity pull in
+  opposite directions, and getting it wrong publishes a fleet with no
+  entities and no error.
 - **Never sweep a class whose source has not reported.** An empty
   announced set means "not polled yet", not "gone".
   `internal/coordinator/reconcile.go` gates per class and treats a

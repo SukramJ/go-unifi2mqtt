@@ -1,6 +1,9 @@
 # ADR 0070 phase 9 — measurement for go-unifi2mqtt
 
-- Status: measurement, not a decision
+- Status: **closed**. Sections 1-6 and findings F1-F18 are the measurement,
+  which took no decision; the closing section *Step 7 outcome* records the
+  decision phase 9 ended on, the condition for revisiting it, and every
+  finding's disposition.
 - Date: 2026-09-13
 - Subject: [ADR 0070](https://github.com/SukramJ/openccu-loom/blob/main/docs/adr/0070-shared-ha-discovery-model-module.md)
   and its rollout table, row *"9 | `go-unifi2mqtt` (1537) | Proves hardware
@@ -2376,10 +2379,232 @@ defence. They are exactly where they were.
 
 ---
 
+## Step 7 outcome — phase 9 closes, and it closes on the per-entity form
+
+**This is the decision the document said it was not taking.** Steps 0, 1, 2,
+4, 4b and 5 are shipped (PRs #21–#27). **Step 6 — the device bundle — is
+deliberately not taken**, and this section records why, what it would take to
+revisit, and where every finding ended up, so that nobody has to re-derive any
+of it.
+
+### The decision
+
+go-unifi2mqtt stays on the **per-entity discovery form**:
+`homeassistant/<platform>/<node_id>/<object_id>/config`, one retained config
+per entity, 315 across the five pinned scenarios. `Runtime.PublishBundle` is
+still never called, `discovery.Bundle` is still never constructed on a
+publishing path, and `hass.LegacyConfigTopicForms()` still states the form
+this fleet is on for a step 6 that may never happen.
+
+Everything phase 9 built around the bundle stays: the pins, the digests, the
+library planes, the rendering path and the bundle validation are all still
+exercised by the test suite. What is not done is the one irreversible publish.
+
+### Why — two consoles on one broker have no distinguishing string
+
+This is [F6](#f6), measured rather than argued, and it is the whole of the
+reason.
+
+`Site.Internal` — the API's `internalReference` — is `default` on every UniFi
+console out of the box. It is the only site-scoped string this bridge has, and
+it is in the site device's identity. So for two daemons bridging two different
+consoles to one broker with the shipped configuration:
+
+| String | Two consoles, shipped config |
+| --- | --- |
+| config topic | byte-identical |
+| `unique_id` | byte-identical |
+| `device.identifiers` | byte-identical |
+| node id (the topic's fourth segment) | byte-identical |
+| `default_entity_id` | byte-identical |
+| state topics | byte-identical |
+| availability topic | byte-identical unless `MQTT_TOPIC` differs |
+
+`TestTwoDefaultInstancesCollideOnEveryString` measures the escape hatch and
+finds it does not reach discovery: changing `MQTT_TOPIC` moves the
+availability topic and **only** the availability topic.
+
+And **every candidate identity that would separate them re-registers entities
+that already exist.** Home Assistant keys its entity registry on `unique_id`
+and its device registry on `device.identifiers`, and it has no migration path
+for either: a changed key is a new entity, and the old one stays behind as an
+orphan with the user's automations, dashboards, history and area assignment
+still pointing at it. The site UUID in `siteDeviceID`, an `INSTANCE_ID`
+folded into the identifier, a console serial — each one re-keys the site
+device, its seven health entities and every SSID switch on every installation
+that has them, to fix a collision that only two-console installations have.
+
+### Why a bundle makes that worse rather than merely different
+
+Today the collision is an **overwrite, entity by entity**. Two consoles write
+the same 75 retained configs; the last writer wins per topic, the entities
+exist, and the damage is confined to whichever values differ.
+
+A device bundle is **one retained topic per device carrying that device's
+entire component set**. Two consoles publishing one bundle topic replace each
+other's *whole entity set* on every poll, not one key of it. A staggered
+upgrade — one instance upgraded, one not — is worse again, and go-mtec2mqtt's
+reviewer proved that shape deletes the sibling's entire fleet.
+
+The live half of that was already defused. [PR #24](https://github.com/SukramJ/go-unifi2mqtt/pull/24)
+replaced the ownership *predicate* with an ownership *record*: the sweep may
+retract only a config topic **this process published since it started**, which
+no sibling can forge and no payload can be made to carry. So one console's
+daemon can no longer delete the other console's entities, in any topic form.
+
+**What remains is therefore a trade, not a defect** — and it is the trade this
+decision declines:
+
+| | per-entity (today) | device bundle (step 6) |
+| --- | --- | --- |
+| retained topics | 315 | one per device |
+| atomicity | none — a device's entities arrive one config at a time | one publish, all or nothing |
+| two consoles, shipped config | overwrite **per entity** | replace **the whole device** |
+| a staggered upgrade | per-entity overwrite | the sibling's fleet replaced |
+| a refused payload | costs one entity | costs the device **every** entity |
+
+The bundle's wins are real and they are not worth that. This bridge's fleet is
+315 configs, not 9996; the retained-topic count is not a problem anybody has,
+and atomicity buys nothing an hourly poll cannot re-assert.
+
+### The condition under which step 6 becomes possible
+
+So this is a decision **with notice**, not one that has to be re-derived in
+two years. Step 6 becomes available when, and only when, this bridge has:
+
+> **an identity that distinguishes two consoles, without re-registering any
+> entity Home Assistant has already registered.**
+
+Concretely, that means a string with all four of these properties, and the
+fourth is the one every candidate so far has failed:
+
+1. **Per console.** Distinct for two consoles on one broker. `Site.Internal`
+   is not: it is `default` on both.
+2. **Stable.** Unchanged across daemon restarts, console reboots, firmware
+   upgrades and a site rename — a rotating identity re-registers on its own
+   schedule.
+3. **Known before the first publish**, because the bundle topic carries it and
+   there is no second chance at a retained topic.
+4. **Outside both registry keys.** It may enter the bundle's `node_id` — the
+   topic's third segment, which Home Assistant does **not** key anything on —
+   but it may not enter `unique_id` or `device.identifiers`.
+
+Property 4 is what makes this possible in principle, and it collides head-on
+with [F5](#f5), which is the part a future reader must not miss:
+
+- `publisher.SupersededTopics` derives the retraction topics from the
+  **bundle's** `NodeID`, and this fleet's retained configs are keyed on the
+  *old* node id — `device.identifiers[0]`, measured at 315 of 315. A bundle
+  keyed on a new per-console node id therefore retracts **nothing**: the
+  per-entity configs stay retained, Home Assistant refuses the bundle with one
+  `WARNING [mqtt.entity] Received a conflicting MQTT discovery message`, and
+  the result is no entities and no error anywhere on the wire.
+- The escape exists and has to be taken deliberately: a custom
+  `publisher.LegacyTopicFunc` in `hass.LegacyConfigTopicForms()` can render
+  the **old** five-segment topic while the bundle is keyed on the new node id,
+  because `publisher.LegacyEntity.Component` carries the whole component and
+  therefore `device.identifiers[0]`. That decouples the retraction form from
+  the bundle's node id, which is the single technical fact a step 6 with a new
+  identity turns on.
+- `Config.LegacyEntityTopics` **replaces** the default rather than extending
+  it, so whoever writes that form must keep the existing one in the slice
+  beside it.
+
+Two further things such a step would owe, both already scoped by this
+document: `IsOwnConfig` and `Discovery.ConfigFilter()` must recognise the
+four-segment bundle topic in **both** directions ([F5](#f5), second half), and
+the `device_tracker`-inside-a-bundle question (step 3b) still needs a live
+Home Assistant, because three of the 315 configs are trackers and no unit test
+settles whether HA accepts that platform as a bundle component.
+
+An `INSTANCE_ID` that is **empty by default** remains the cheapest candidate:
+empty is exactly today's behaviour, so it re-registers nothing on any
+installation that does not set it, and an operator who runs two consoles opts
+in knowingly. It was not added here because a config key with no consumer is a
+promise, and the consumer is step 6.
+
+### Every finding's disposition
+
+F1–F18, each ending in one of three states: **fixed**, **left with a reason**,
+or **open with what it would take**. Nothing is left implicit.
+
+| Finding | Severity | Where | Disposition |
+| --- | --- | --- | --- |
+| **F1** — `reachable` latched on and never off | high | #23 | **Fixed.** A `value_template` maps each sensor's whole state vocabulary onto `payload_on`/`payload_off`. **Three** sensors, not the two measured: `port_link` was found by the regression test, which asserts over each sensor's real vocabulary rather than over the presence of two keys. |
+| **F2** — 18 button payloads refused by `discovery.Validate` | high | #23 | **Fixed.** `omitempty` on `state_topic`, `Optimistic` became a `*bool` nothing sets, and the one explicit `StateTopic: ""` is gone. |
+| **F3** — six published state topics no entity reads | medium | — | **Open, additive, and no longer gated.** The four missing entities (PoE wattage per port, `lan`/`wlan`/`vpn` subsystem health) are additive work; retiring the six unread topics is an operator-contract decision three prior phases declined to make inside a migration. Phase 9 is over, so neither is blocked any more — but the PoE sensor still owes the decision `publishPort` already answers two ways: whether a port that stops delivering power reads 0 or stops being published. |
+| **F4** — the entity-id slug is not `topic.Slug` | high | #23 | **Decided: keep this bridge's own normalisers**, and step 4 reproduced the composition `collapseTokens(slugify(name) + "_" + slugify(key))` rather than replacing it. `ä→a` is what Home Assistant's own `slugify` does; swapping it would strand every German device's entity id. Closed. |
+| **F5** — the bundle's node id must match the retained form | high | #25, #27 | **Settled and stated.** Five-segment, node-id-bearing, 315 of 315; `hass.LegacyConfigTopicForms()` states it explicitly rather than relying on the library default. Dormant, not closed: it is the finding a future step 6 turns on, and the section above says how. |
+| **F6** — two consoles cannot be told apart | high | #23, #24, **this PR** | **Half fixed, half decided.** `MQTT_CLIENT_ID` (defaulting to today's derived id) stops two daemons evicting each other from the broker; #24 stopped one console's daemon deleting the other's entities. The identity half is **open by decision** — it is the reason step 6 is not taken, with the revisit condition recorded above. |
+| **F7** — no `origin` block | low | #26 | **Fixed.** `"origin": {"name": "go-unifi2mqtt"}` on all 315. Name only: `sw_version` is stamped at link time, and every release would otherwise rewrite 315 retained payloads. |
+| **F8** — `LevelDevice` names a topic this bridge does not publish | medium | #25 | **Settled as a `Context` override**, which is what that interface method exists for; nothing needed adding to the shared model, and the per-entity 128/187 split is expressible as `model.BridgeOnly()` per component. go-hamqtt v0.34.0's `discovery.CheckAvailability` was weighed against it in this PR and declined — `TestAvailabilityModelIsTwoLevel` already asserts the same property over the *published* payloads, and the F8 mutation is caught by five assertions. |
+| **F9** — QoS 0 becomes QoS 1 unless spelled out | medium | #27 | **Fixed by being stated.** `StateQoS` = `QoSAtMostOnce` (the `0x80` sentinel), `AvailabilityQoS` and `CommandQoS` = 1, each read off a recorded transport call rather than off a constant. This PR adds the fourth: `PulseQoS`, the one field in `publisher` whose default is QoS 0 rather than 1. |
+| **F10** — 22 topic-composition sites | medium | #23 | **Left, and pinned instead of converged.** Four config-topic composers became one; **18 remain**, mostly one composer per family plus a second copy of the suffix *names*, held together builder-against-builder by `TestAdvertisedStateTopicsArePublished` and `TestCommandTopicsAreSubscribed`. Converging them further is refactoring with no user-visible result and a real chance of moving a byte. |
+| **F11** — the Locate switch's state topic was written by nobody | medium | #23 | **Fixed.** The LED is read back from `/stat/device` and published — and the fix exposed a second instance of the same drift, `scheduleRefresh` nudging a loop that publishes neither locate nor WLAN, now pinned per command kind. |
+| **F12** — `collapseTokens` can collide two entity-id seeds | low | — | **Left.** Zero collisions in the measured fleet, and a collision costs only the *second* entity's preferred id: the `unique_id`s differ, so Home Assistant appends a discriminator rather than merging. `TestNoDuplicateEntityRegistryKeys` asserts zero today. |
+| **F13** — `ClientID`'s doc comment described behaviour it did not have | low | #23 | **Fixed** with F6; it was the same defect in prose. |
+| **F14** — the site device announced under two names | high (gates step 6) | #26 | **Fixed.** `Site.Name` wins on both paths, with a fallback to `Site.Internal` on a console that reports no display name. No registry key reads the display name, so nothing re-registers. |
+| **F15** — `"manufacturer": ""` on 36 client configs | medium | #26 | **Fixed.** The key is omitted rather than empty, which is the spelling that says *unknown*; step 4's carve-out was deleted with the fix, so the byte-equality proof is 315 of 315 with no exceptions. |
+| **F16** — the reconnect gate was open and nobody walked through it | high | #27 | **Fixed.** `rediscoverOnReconnect` re-opens the two one-shot latches and nudges the static loop, with the sweep's readiness signal split from the announce latch so re-opening one cannot un-ready the other. |
+| **F17** — birth and death went behind the circuit breaker | high | #27 | **Fixed.** The bridge availability marker publishes through the raw client, everything else through the breaker — driven against a deliberately tripped publisher, which is the state a reconnect actually finds. |
+| **F18** — `AvailabilityConfig.QoS` has no construction site | informational | #27 | **Recorded, not an omission.** This daemon builds no `hapub.AvailabilityPublisher`: its bridge level is the one retained marker `Runtime` owns, and its device level is not a dedicated availability topic at all but the object's own state topic read through a `value_template` ([F8](#f8)) — which the state plane already writes, and where a second writer would fight it. go-daikin2mqtt recorded the same absence at its own step 5 for a different structural reason. It is written down so a later reader does not go looking for a fourth stated QoS and conclude it was forgotten. |
+
+### What step 7 itself shipped
+
+- **The `origin` block did not wait for this step.** It moved to 4b (#26)
+  because a bundle with a zero origin is refused outright; step 7's list in the
+  sequencing table is one item shorter than it was written.
+- **The operator-facing text**, which #23, #26 and #27 all deferred here
+  because `changelog.md` and `addon/CHANGELOG.md` are release-scoped in this
+  repository — every section is a shipped version, and `make release` reads
+  the version from `internal/version/version.go`, so an `Unreleased` heading
+  would be a section no tag matches. Version **1.2.0**, mirrored into both
+  changelog files, with the four files `CLAUDE.md` names moved together.
+- **go-hamqtt v0.34.0** (go-mqtt was already at v1.5.1, the current release).
+  One of its four new guards is adopted — `StateConfig.PulseQoS`, stated
+  because it is the one field in `publisher` whose default is QoS 0 rather
+  than QoS 1. Three are declined with the argument recorded beside the code
+  each would have touched: `CheckAvailability` (already asserted on the
+  stronger side, see F8), `QoSFromWire` (this bridge has no operator QoS knob
+  to convert) and `SweepRequest.SelfClaimed` (it would suppress exactly the
+  `coordinator.reconcile_unclaimed` report #24 made the remedy path — its cost
+  is this sweep's purpose).
+- **No published byte moved.** The five goldens and all five SHA-256 digests
+  are byte-identical to #26's. `-update-surface-golden` was not run.
+
+### What is left standing after phase 9
+
+Nothing here blocks anything; this is the list so it does not have to be
+rebuilt from the findings table.
+
+- **[F3](#f3)** — four additive entities and six unread topics. A contract
+  decision plus a small feature, both now unblocked.
+- **[F6](#f6)'s identity half** — the condition above.
+- **[F10](#f10)** — 18 composition sites, pinned rather than converged.
+- **[F12](#f12)** — a theoretical entity-id seed collision, asserted at zero.
+- **Step 3b's live-HA questions** — only `device_tracker`-in-a-bundle is still
+  open, and only step 6 needs it. F1's latch-or-blank question was made
+  unreachable by its own fix.
+- **The bundle machinery itself** — `HamqttBundles`, `RenderHamqtt`, the
+  validation and the byte-equality proof are all still compiled, still run and
+  still green. They are the thing a future step 6 resumes from rather than
+  rebuilds, and the reason to keep them is that they cost one test run and
+  they hold the shape of a decision that has a condition attached to it.
+
+---
+
 ## Sequencing — the rest of phase 9
 
 Ordered so each step de-risks the next, following the shape phases 5–8
 converged on.
+
+> **Written before any of it happened, and kept as written.** What
+> actually shipped: steps 0, 1, 2, 4, 4b and 5 as described (PRs #21–#27),
+> with F7's `origin` block moved from step 7 to 4b. **Step 6 was not
+> taken** — see the *Step 7 outcome* section above for the decision and
+> the condition under which it becomes possible. Step 3's three questions
+> were all answered: (a) keep this bridge's normalisers, (b) a `Context`
+> override, (c) no re-keying and no `INSTANCE_ID`.
 
 | Step | Work | Why here |
 | ---: | --- | --- |

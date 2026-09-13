@@ -605,6 +605,19 @@ func TestHamqttBundlesValidate(t *testing.T) {
 		bundles, components, trackers)
 }
 
+// go-hamqtt v0.34.0's discovery.CheckBundleAvailability was weighed
+// here and declined. It states, in the library's vocabulary, that no
+// component may list an availability topic the consumer does not
+// publish — measurement F8's trap, and the fix for two bridges in the
+// fan-out that shipped a greyed-out fleet. This repository already
+// asserts the same property, on the stronger side: TestAvailabilityModelIsTwoLevel
+// requires every second availability source of every *published*
+// config to be a topic the daemon wrote, and carries the 128/187 split
+// as a literal. Written and mutation-tested rather than argued: the
+// F8 mutation (hamqttLayout.Availability returning a dedicated
+// "<uid>/availability" topic) is caught by five assertions, four of
+// which predate any use of the new call, and the sixth added nothing.
+
 // TestHamqttBundlesWithoutAnOriginAreRefused pins why the per-entity
 // render passes a zero origin and the bundle form cannot.
 //

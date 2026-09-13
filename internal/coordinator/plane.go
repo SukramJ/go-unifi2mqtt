@@ -47,6 +47,14 @@ import (
 // availability topic at all but the object's own state topic read
 // through a `value_template` (measurement F8) — which the state plane
 // already writes. A second writer there would fight it.
+//
+// [hapub.QoSFromWire] (go-hamqtt v0.34.0) has nothing to convert here.
+// It exists because `QoS(cfg.MQTT.QoS)` reads correctly and is wrong
+// for exactly one input — 0 is [hapub.QoSUnset], which every
+// constructor resolves to QoS 1. This bridge exposes no operator knob
+// for QoS at all: the three values below are compile-time constants,
+// each stated as a sentinel and each read off a recorded transport
+// call by TestEveryPlanePublishReachesTheWireAtTheStatedQoS.
 const (
 	// StateQoS is every entity state, attributes and `bridge/info`
 	// publish: QoS 0, retained. Preservation, not endorsement — the
@@ -63,6 +71,17 @@ const (
 	// in transit is a button press that did nothing, with nothing
 	// anywhere to explain it.
 	CommandQoS = hapub.QoSAtLeastOnce
+	// PulseQoS is [hapub.StateConfig.PulseQoS]. This daemon never calls
+	// [hapub.StatePublisher.Pulse] — it has no event plane — so the
+	// field is inert, and it is stated anyway because it is the one
+	// field in that package whose default is QoS 0 rather than QoS 1:
+	// a plane that states StateQoS and leaves this one alone is saying
+	// nothing about its pulses, and go-hamqtt v0.34.0 says so out loud
+	// at construction (`publisher.state.pulse_qos_unstated`). Equal to
+	// StateQoS by intent, not by coincidence: if this bridge ever grows
+	// a pulse it belongs on the same guarantee as every other state
+	// publish.
+	PulseQoS = StateQoS
 )
 
 // RuntimeConfig is the one [hapub.Config] this daemon builds.
@@ -106,6 +125,7 @@ func (c *Coordinator) RuntimeConfig(log *slog.Logger) hapub.Config {
 func newStatePlane(tr hapub.Transport, filters []string, log *slog.Logger) *hapub.StatePublisher {
 	return hapub.NewStatePublisher(tr, hapub.StateConfig{
 		QoS:            StateQoS,
+		PulseQoS:       PulseQoS,
 		Encoding:       discovery.RawEncoding,
 		CommandFilters: filters,
 		Logger:         log,
