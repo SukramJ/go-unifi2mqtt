@@ -949,9 +949,12 @@ empty by default (additive, and empty is today's behaviour).
 `grep -rn '"origin"' --include='*.go' internal` → no hits. Shared with all six
 bridges (ADR 0070 §2.2, *"Not one of the six sets the `origin` block"*).
 go-hamqtt makes it mandatory (`origin.name` missing is a blocking validation
-issue), so the migration supplies it for free at step 4 — and it is a payload
-addition on all 315 configs, which means it must not land in the same step as
-anything else.
+issue) — and it is a payload addition on all 315 configs, which means it must
+not land in the same step as anything else.
+
+**Resequenced at step 4 and fixed at step 4b**: a *bundle* with a zero origin
+is refused outright, so this is a prerequisite for step 6 rather than a
+step-7 nicety. See the step 4b outcome.
 
 <a name="f8"></a>
 ### F8 — the library's `LevelDevice` names a topic this bridge does not publish · **medium**
@@ -1494,6 +1497,22 @@ lost between the two:
   broker presented the same identifier and evicted each other in a
   loop. Unset keeps exactly the identifier your installation presents
   today, so there is nothing to do unless you run two.
+- **The site device has one name.** The synthetic "UniFi Site" device
+  was announced under two spellings — `UniFi Site <site name>` by the
+  health sensors and `UniFi Site <internal reference>` by the SSID
+  switches — which Home Assistant resolved by whichever config arrived
+  last. Both now use the site's display name. **On most installations
+  this changes nothing visible**, because the two differed only in one
+  letter's case and the health sensors already wrote last; on a console
+  whose display name differs from its internal reference, the device is
+  renamed to the display name. Nothing re-registers: the device and
+  entity registry keys never used the name.
+- **Discovery payloads name their origin.** Every config now carries an
+  `origin` block identifying `go-unifi2mqtt` as the integration that
+  announced it, which Home Assistant shows on the device page. It is
+  additive and keys nothing. Client devices also stop reporting an
+  empty manufacturer, and report none instead — which is what Home
+  Assistant already displayed.
 
 ---
 
@@ -1823,6 +1842,204 @@ has never met a running console. Step 3b and step 6 still owe that.
 
 ---
 
+## Step 4b outcome — the three payload prerequisites, before the bundle
+
+**Added after step 4, before the plane migration.** Step 4 discovered
+that three payload changes scheduled for step 7 are in fact
+prerequisites for step 6. They move retained bytes, so they go in their
+own step: a migration step whose golden diff is empty is provable,
+while one that mixes "the library renders this differently" with "we
+meant to change this" is not.
+
+### F7 — the `origin` block, and why it is blocking
+
+A device bundle with a zero origin is refused outright —
+`discovery.Validate` reports `origin.name is required on a device
+bundle` as **blocking**, and a blocking result publishes nothing at
+all. Not one bad key on one entity: **the device gets no entities**. So
+the block cannot follow the bundle switch, it has to precede it.
+
+Every discovery config now carries `"origin": {"name":
+"go-unifi2mqtt"}` — on all 315, including the ones no bundle will
+carry, because a key present on some configs and absent on others makes
+the migration diff unreadable.
+
+**Name only**, following go-zendure2mqtt's phase-5 precedent verbatim.
+`discovery.Origin` also carries `sw_version` and `support_url`, and
+this bridge's own version is the obvious candidate for the first — but
+it is stamped at link time, so the retained payloads' bytes would then
+depend on how the binary was linked, the pinned surface would depend on
+it too, and every release would rewrite 315 retained payloads for no
+operator-visible gain. The build banner already says the version, once,
+at boot.
+
+### F15 — the empty `manufacturer`, dropped
+
+`deviceInfo.Manufacturer` gains `omitempty` and `clientDeviceInfo`
+stops setting it to `""`. Step 4 established the library was right:
+`discovery.DeviceInfo.Manufacturer` is `omitempty`, Home Assistant
+reads an absent key and an empty string identically, and absent is the
+spelling that says *unknown* rather than *the empty string*.
+
+Step 4's carve-out was temporary by construction and is **deleted with
+the fix**, not left contradicting reality:
+`emptyManufacturerConfigs`, `withoutEmptyManufacturer` and
+`TestHamqttCannotRenderAnEmptyManufacturer` are all gone.
+`TestHamqttReproducesThePublishedConfigs` is now **315 of 315
+byte-equal with no exceptions at all**, and
+`TestClientDeviceBlockOmitsTheManufacturer` requires the whole client
+device block — not just the one key — to be byte-equal between the two
+paths, so a fix that dropped more than the key fails.
+
+### F14 — one site name: `Site.Name` wins
+
+`unifi_site_default` carried two `device` blocks: `UniFi Site Default`
+on its seven health entities (`Site.Name`, via `Health`) and `UniFi
+Site default` on every SSID switch (`Site.Internal`, via
+`WLANControl`). Per entity that is invisible last-write-wins in Home
+Assistant's device registry. A bundle carries exactly **one** device
+block, so at step 6 one of the two would have won **by collection
+order** — a coin flip over which name a user sees.
+
+**`Site.Name` wins.** `Site.Internal` is the API's addressing token
+(`internalReference`, e.g. `default`) and was never a display string.
+Both paths now read one `Discovery.siteDeviceInfo`, and the
+coordinator passes `Site.Name` in as `hass.Config.SiteName`, with a
+fallback to `Site.Internal` when the console reports no display name —
+which is what the SSID switches used unconditionally before, so a
+nameless console does not regress.
+
+**What a user sees change:** the SSID switches' half. On a default
+console the site device was already shown as `UniFi Site Default`
+(the health plane wrote last in practice, and the two differ only in
+one letter's case); after this, both halves say `UniFi Site Default`
+deterministically. On a console whose `Site.Name` and `Site.Internal`
+differ by more than case, the device name settles on `Site.Name`.
+
+**No identity moves.** Checked explicitly, because the finding's own
+brief asked: `unique_id` is `unifi_site_<Site.Internal>_<key>` on the
+health plane and `unifi_wlan_<id>_enabled` on the switches, and
+`device.identifiers` is `siteDeviceID(Site.Internal)` on both — none of
+the three reads the display name. `default_entity_id` *does* seed from
+the device name on the health plane (`entityIDSeed(info.Name, key)`) —
+but the health plane already used `Site.Name`, so it does not move; the
+SSID switches seed from the literal `"unifi_wlan"` and the SSID, not
+from their device name. The measured diff confirms it: **no
+`default_entity_id` key moved.** Nothing re-registers in either
+registry.
+
+### Bytes moved
+
+From running the **builders** at `origin/main` and at the branch tip
+and diffing their output key by key, through the
+`internal/coordinator/surface_dump_test.go` harness step 2 committed —
+not from diffing the regenerated fixtures.
+
+| Scenario | Topics added | Topics removed | Keys changed | Findings |
+| --- | ---: | ---: | ---: | --- |
+| `minimal.en` | 0 | 0 | 45 | F7 |
+| `minimal.de` | 0 | 0 | 45 | F7 |
+| `full.en` | 0 | 0 | 89 | F7, F14, F15 |
+| `full.de` | 0 | 0 | 89 | F7, F14, F15 |
+| `nonascii.de` | 0 | 0 | 89 | F7, F14, F15 |
+
+**0 topics added, 0 removed, 357 keys changed.** The complete list:
+
+- 315 `origin` blocks added, one per discovery config — F7;
+- 36 `device.manufacturer: ""` keys removed, on the client configs of
+  the three `full` scenarios — F15;
+- 6 `device.name` values changed, on the two SSID switches of each
+  `full` scenario — F14.
+
+**No `unique_id` moves. No `device.identifiers` moves. No
+`default_entity_id` moves. No config topic is added, removed or
+renamed. No `qos` or `retain` flag moves.** The two `minimal`
+scenarios announce neither clients nor SSIDs, which is why they move on
+F7 alone. The census literals do not move: no message count changed.
+
+All five digests were updated **by hand**, in the commit that moved the
+bytes, with a comment naming which finding moved which literal.
+`-update-surface-golden` still refuses to write them — it prints and
+fails.
+
+### The proof still holds
+
+`discovery.Validate` accepts **315 of 315** payloads with **0 blocking
+and 0 advisory**, and all **32 bundles** with **315 components,
+9 of them `device_tracker`**. `TestHamqttBundlesWithoutAnOriginAreRefused`
+is unchanged and still asserts the blocking half, so the reason F7
+landed here cannot rot.
+`TestHamqttPerEntityPayloadsCarryNoOrigin` is **inverted**, to
+`TestHamqttPerEntityPayloadsCarryTheOrigin`, which pins the exact block
+(`name` and nothing else) on all 315 — the old assertion would
+otherwise now be asserting the opposite of the truth.
+`TestHamqttSiteDeviceIsAnnouncedUnderTwoNames` is inverted the same
+way, and its Go literal moved in the same commit, as step 4 required.
+
+### Mutation proof — 16 applied
+
+One at a time, on a committed tree, reverted with `git checkout --`
+between runs; each run against both affected packages.
+
+| # | Mutation | Failing tests |
+| ---: | --- | --- |
+| M1 | `OriginName` `go-unifi2mqtt` → `go-unify2mqtt` | 5 |
+| M2 | `origin` gains a `sw_version` | 4 |
+| M3 | the `origin` dropped from the health plane only | 4 |
+| M4 | `WLANControl` reads `Site.Internal` again | 5 |
+| M5 | `siteDeviceInfo` reads `Site.Internal` for both planes | 6 |
+| M6 | the `SiteName` fallback condition inverted | 6 |
+| M7 | `omitempty` removed from `deviceInfo.Manufacturer` | 5 |
+| M8 | the manufacturer dropped from *every* device block | 6 |
+| M9 | M1 **with the goldens regenerated** | 2 |
+| M10 | `Ubiquiti` → `Ubiquity`, **goldens regenerated** | **1 — `TestPublishedSurfaceDigests` alone** |
+| M11 | M5 **with the goldens regenerated** | 3 |
+| M12 | the render path passes a zero `Origin` again | 2 |
+| M13 | the render path's WLAN group reverts to `Site.Internal` | 2 |
+| M14 | client device blocks gain `Manufacturer` | 6 |
+| M15 | the coordinator passes `Site.Internal` as `SiteName` | 6 |
+| **M16** | **the `SiteName` fallback removed** | **0 — a real gap, now closed** |
+
+**M16 was a genuine hole, not an equivalent.** No pinned scenario has
+an empty `Site.Name`, so the branch that keeps a nameless console's
+site device from being called `UniFi Site ` survived every assertion in
+the tree. It is now covered by
+`TestSiteNameFallsBackToTheAddressingToken`, added in its own commit,
+and re-running M16 against it fails exactly that test. Nothing else in
+this step is recorded as equivalent: every other mutation is caught.
+
+### The blind spot, re-checked after the change
+
+Unchanged and re-measured. **M10 is the shape of it**: the rendering
+path deliberately reuses this package's own catalogue, so a mutation of
+a shared constant moves **both sides** of the byte comparison together.
+With the goldens regenerated, `TestHamqttReproducesThePublishedConfigs`
+passes under `Ubiquiti → Ubiquity` and **only the five SHA-256
+literals catch it** — the same result step 4 recorded as M22, so the
+last line of defence is still exactly where it was.
+
+The three new invariants **narrow** it for the three findings this step
+owns, because they hold their expectations as Go literals outside the
+catalogue: M9 (the origin name mutated *and* the goldens regenerated)
+is caught by `TestEveryConfigCarriesTheOrigin`, and M11 by both name
+assertions. That is a reduction in the blind spot, not its removal:
+anything outside F7/F14/F15's three literals still falls to the digests
+alone.
+
+### What this step deliberately does not do
+
+- **Nothing is migrated.** No publish path moves onto go-hamqtt; the
+  render path is still unwired and `TestHamqttRenderPathPublishesNothing`
+  still holds. Step 5 (the planes) stays byte-neutral after this.
+- **The settled things stay settled.** The five-segment
+  `LegacyConfigTopicForm`, this bridge's own normalisers (F4), the
+  sweep's claim over only its own publishes (#24) and F6's
+  decided-nothing are all untouched.
+- **F3, F12 and F13's contract questions are untouched.** They are not
+  payload prerequisites.
+
+---
+
 ## Sequencing — the rest of phase 9
 
 Ordered so each step de-risks the next, following the shape phases 5–8
@@ -1838,7 +2055,8 @@ converged on.
 | 4 | **Model the fleet as `model.Entity` and render bundles, publishing nothing.** The device graph as `via_device`/parent identity; ports, radios and SSIDs as the dynamic component sets the rollout table nominates; the per-entity 128/187 availability split as per-component `Availability`. Compare the rendered per-component output **against the golden files, not against the builder it replaces**. Neither pin regenerated. | This is where a `Layout`, `Context`, node-id or availability mismatch surfaces, at zero risk — and it is the part ADR 0070 nominates unifi to prove. |
 | 5 | Adopt the library on the **state and command** planes, discovery still per-entity from the old path. Spell `publisher.QoSAtMostOnce` on the state plane and leave discovery and availability at QoS 1 (F9). | The state plane has no registry keys to orphan; it is the cheap half, and it is where F9's split trap lives. |
 | 6 | **Switch discovery to the device bundle.** `PublishBundle` + `SupersededTopics(prefix, bundle)` with the **default** five-segment form (F5) and a bundle `NodeID` byte-equal to `device.identifiers[0]`; teach `IsOwnConfig` and `ConfigFilter` to recognise a four-segment bundle in both directions. Verify against a live HA that no `Received a conflicting MQTT discovery message` warning appears. | The one step no unit test can prove. Everything above exists to make it a small diff. |
-| 7 | Apply the step-3 decisions, add the `origin` block (F7), the four missing entities of F3 if that is the call, `changelog.md` + `addon/CHANGELOG.md`, version bump across the spots `CLAUDE.md` names. | Operator-visible last. |
+| **4b** | **The three payload prerequisites, in their own PR: F7's `origin` block, F15's empty `manufacturer`, F14's second site name.** Goldens regenerated, digests updated by hand, step 4's carve-out deleted. | All three move retained bytes and all three gate step 6 — a bundle with a zero origin publishes *nothing*. Step 5 has to be byte-neutral, so these cannot share a step with it. |
+| 7 | Apply the step-3 decisions, the four missing entities of F3 if that is the call, `changelog.md` + `addon/CHANGELOG.md`, version bump across the spots `CLAUDE.md` names. (F7 moved to 4b.) | Operator-visible last. |
 
 ### What I would not do
 
