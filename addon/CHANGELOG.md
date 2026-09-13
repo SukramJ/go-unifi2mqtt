@@ -1,3 +1,145 @@
+# Version 1.2.0 (2026-09-13)
+
+The release that comes out of a full measurement of everything this
+bridge puts on an MQTT broker: every discovery payload, every topic,
+every identity string, pinned byte for byte and then corrected. Four
+entities that were reporting something untrue now report the truth, two
+failures that only showed up after a broker restart are gone, and the
+discovery payloads gained an `origin` block.
+
+**Nothing re-registers.** No `unique_id`, no device identifier and no
+entity_id seed moved in this release, so every entity keeps its
+history, its area, its name and every automation pointing at it.
+
+## Devices, ports and the WAN can now report being *not* reachable
+
+The `reachable` connectivity sensor matched the value `ONLINE` and
+nothing at all on the nine other states a UniFi device can be in
+(`OFFLINE`, `UPDATING`, `ADOPTING`, `ISOLATED`, …). A Home Assistant
+binary sensor ignores a payload that matches neither of its two
+configured values, so the sensor turned *on* when a device first
+appeared and never turned off again — while staying *available*, so
+nothing indicated the reading was stale. A connectivity sensor that
+reported every device permanently reachable, whatever the console said.
+
+The same shape affected each port's link sensor (which could not report
+a link the console cannot read) and the site's WAN connectivity sensor.
+
+All three now report both states. **Existing installations will see
+these entities change value on the first poll after the upgrade** —
+which, for anything that was actually offline, is the first correct
+reading they have given.
+
+## The Locate switch reflects the LED
+
+Its state topic was never written by anything, so the entity sat at
+`unknown` forever: a press worked, the LED came on, and the switch did
+not move. The LED state is now read back from the console and
+published.
+
+A press also refreshes promptly again, as does an SSID toggle — both
+were waking a poll loop that does not publish their state, so the
+entity kept its old value until the next hourly poll.
+
+## Two bridges on one broker: `MQTT_CLIENT_ID`
+
+Two daemons with the shipped configuration both presented the client
+identifier `unifi2mqtt-unifi`, and MQTT requires a broker to disconnect
+the existing session when a second client presents the same identifier.
+They evicted each other in a loop, neither published reliably, and
+nothing in either log said why.
+
+`MQTT_CLIENT_ID` (add-on: `mqtt_client_id`) sets it explicitly. Leaving
+it unset keeps exactly the identifier your installation presents today,
+so there is nothing to do unless you run two.
+
+## Stale-config cleanup only removes what this run published
+
+The startup cleanup used to remove any retained discovery config that
+*looked* like one of ours. Two UniFi consoles bridged to one broker
+publish byte-identical config topics, unique ids, availability topics
+and state topics for the whole site plane, so on such a setup "looks
+like mine" meant one console's bridge deleting the other console's
+entities out of Home Assistant — silently, because Home Assistant says
+nothing when entities disappear with their retained configs.
+
+The rule is now ownership by record: a config is removed only if **this
+run of the daemon published that exact topic**. The cost is stated
+rather than hidden — a config genuinely left behind by an *earlier*
+run, for example from a device you removed while the bridge was not
+running, is no longer removed either, because from the broker it is
+indistinguishable from a second console's live entity. Those are listed
+in the log once, as `coordinator.reconcile_unclaimed` with the full
+topic, and an operator who knows there is no second console can clear
+each with one empty retained publish. `HASS_CLEANUP: false` still turns
+the whole sweep off.
+
+## Discovery payloads name their origin, and the site device has one name
+
+Every discovery config now carries an `origin` block identifying
+`go-unifi2mqtt` as the integration that announced it, which Home
+Assistant shows on the device page. It is additive and keys nothing.
+
+The synthetic "UniFi Site" device was announced under two spellings —
+`UniFi Site <site name>` by the health sensors and
+`UniFi Site <internal reference>` by the SSID switches — which Home
+Assistant resolved by whichever config happened to arrive last. Both
+now use the site's display name. **On most installations this changes
+nothing visible**, because the two differed only in one letter's case
+and the health sensors already wrote last; on a console whose display
+name differs from its internal reference, the site device is renamed to
+the display name. The registry keys never used the name, so nothing
+re-registers.
+
+Client devices also stop reporting an empty manufacturer and report
+none instead — which is what Home Assistant already displayed.
+
+## Two failures that only appeared after the broker came back
+
+Both are invisible until the thing they fix happens, and both left the
+fleet in a state nothing reported:
+
+- **A broker that comes back without its retained store** — a restart
+  without persistence, or a failover to a fresh node — now gets every
+  class of discovery config again. Client and site-health configs were
+  announced once per daemon run and would not have come back at all
+  until the daemon itself was restarted; device and SSID configs would
+  have come back on the hourly cycle.
+- **The bridge availability marker is no longer lost to the circuit
+  breaker.** A connection drop is exactly what trips the breaker, and
+  the first thing a reconnected daemon does is announce itself online —
+  which the tripped breaker refused. The retained marker stayed at the
+  `offline` the Last Will had just written, and **every entity sat
+  unavailable** while the daemon was demonstrably connected and
+  publishing. Birth and death now bypass the breaker; everything else
+  still goes through it.
+
+## Under the hood
+
+- `object_id` is no longer published. Home Assistant's MQTT discovery
+  schemas drop keys a platform does not declare, and `object_id` is
+  accepted by 0 of the 32 platforms on 2026.9; `default_entity_id`,
+  which every payload already carried alongside it, is the seed that is
+  actually read. The device Locate switch's seed also named the wrong
+  domain (`button.…` on a `switch` entity) and is corrected — on a new
+  installation it now gets the entity id it asks for.
+- Eighteen button payloads carried two keys the button schema does not
+  declare (`state_topic`, `optimistic`). Home Assistant dropped them on
+  arrival and the buttons worked, so nothing visible changes; they are
+  gone because a payload should say what it means.
+- The state, command and birth/availability planes now publish through
+  the shared `go-hamqtt` library, with the delivery guarantee stated
+  explicitly rather than inherited: discovery and availability at
+  QoS 1, state at QoS 0, exactly as before. `go-hamqtt` moves to 0.34.0
+  and `go-mqtt` is at 1.5.1.
+- Discovery stays **one retained config per entity**. Home Assistant
+  also accepts a single "device bundle" config per device; that form
+  was measured, built, proved byte-equal and then deliberately not
+  published, because two UniFi consoles that cannot be told apart would
+  replace each other's whole entity set instead of overwriting it entity
+  by entity. The full reasoning is in the repository, in
+  `notes/adr0070-phase9-measurement.md`.
+
 # Version 1.1.0 (2026-08-16)
 
 A dependency release: the MQTT client library go-mqtt moves from 1.2.0

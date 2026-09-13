@@ -172,6 +172,14 @@ configs are logged as `coordinator.reconcile_unclaimed` with their
 topics, for an operator to clear with one empty retained publish each.
 `HASS_CLEANUP: false` disables the sweep entirely.
 
+One retained config per entity is a deliberate choice, not a leftover:
+Home Assistant also accepts a single "device bundle" config per device,
+and this bridge measured that form, built it and declined to publish it
+— two consoles that cannot be told apart would replace each other's
+whole entity set instead of overwriting it entity by entity. The
+reasoning, and the condition under which that could change, is in
+[`notes/adr0070-phase9-measurement.md`](notes/adr0070-phase9-measurement.md).
+
 State topics are retained, command topics are not. **Retained commands
 are ignored on purpose**: a stale `mosquitto_pub -r` would otherwise
 power-cycle a port every time the daemon starts.
