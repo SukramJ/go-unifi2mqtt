@@ -653,6 +653,68 @@ func TestTheSweepWindowIsTheWholeDiscoveryPrefix(t *testing.T) {
 	}
 }
 
+// The snapshot window collects only this daemon's own topic shape, and
+// nothing else the discovery tree carries.
+//
+// This is the half the retraction test cannot see. The claim list is
+// what decides a retraction, so widening [hass.OwnsConfigTopic] to
+// everything retracts nothing extra — and therefore moves no assertion
+// about what was cleared. What it does move is what this daemon reads,
+// remembers and names in its `reconcile_unclaimed` log line, and what
+// [hass.ConfigTopicFor] is asked to rebuild: for a form that carries no
+// node id it would rebuild a topic that belongs to nobody.
+func TestTheSweepWindowCollectsOnlyThisDaemonsOwnShape(t *testing.T) {
+	t.Parallel()
+
+	h, sub := newReconcileHarness(t, hassConfig(t))
+	t.Cleanup(h.c.Close)
+	h.c.reconcileWindow = 200 * time.Millisecond
+
+	tree := map[string][]byte{
+		"homeassistant/sensor/unifi_00005e005301/state/config":  ownConfig(h.c, "unifi_00005e005301_state"),
+		"homeassistant/switch/unifi_site_default/wlan_a/config": ownConfig(h.c, "unifi_wlan_a_enabled"),
+		"homeassistant/sensor/zigbee2mqtt_bridge/state/config":  []byte(`{"unique_id":"z"}`),
+		"homeassistant/binary_sensor/tasmota_ABC/status/config": []byte(`{"unique_id":"t"}`),
+		"homeassistant/device/unifi_00005e005301/config":        ownConfig(h.c, "unifi_00005e005301_state"),
+		"homeassistant/sensor/unifi_00005e005301_state/config":  ownConfig(h.c, "unifi_00005e005301_state"),
+		"homeassistant/climate/unifi_00005e005301/therm/config": ownConfig(h.c, "unifi_00005e005301_therm"),
+		"homeassistant/status":                                  []byte("online"),
+	}
+	want := []string{
+		"homeassistant/sensor/unifi_00005e005301/state/config",
+		"homeassistant/switch/unifi_site_default/wlan_a/config",
+	}
+
+	type result struct {
+		got map[string][]byte
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		got, err := h.c.collectRetainedConfigs(t.Context())
+		done <- result{got, err}
+	}()
+	sub.deliverRetained(t, sweepWindow(h.c), tree)
+
+	res := <-done
+	if res.err != nil {
+		t.Fatalf("collectRetainedConfigs: %v", res.err)
+	}
+	got := mapKeys(toSet(res.got))
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("the window collected %v, want %v", got, want)
+	}
+}
+
+func toSet(m map[string][]byte) map[string]bool {
+	out := make(map[string]bool, len(m))
+	for k := range m {
+		out[k] = true
+	}
+	return out
+}
+
 // What a report-only pass offers, claims and would retract, over a
 // hostile retained tree — with a distinct reason for every survivor.
 //
