@@ -7,4 +7,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/SukramJ/go-mqtt v1.5.1
+require (
+	github.com/SukramJ/go-ha-catalog v0.2.1
+	github.com/SukramJ/go-hamqtt v0.33.0
+	github.com/SukramJ/go-mqtt v1.5.1
+)
