@@ -146,10 +146,11 @@ func (d *Discovery) IsOwnConfig(payload []byte) bool {
 // evidence — see the note at the head of this file for why nothing in
 // the payload can supply the rest.
 type Claims struct {
-	// Published is every config topic this process has published since
-	// it started. It only ever grows: a topic this process announced and
-	// later retracted stays claimed, which is precisely what lets a
-	// retraction that did not stick be retried.
+	// Published is every config topic this process has *successfully*
+	// published since it started — what the broker accepted, never what
+	// was merely attempted. It only ever grows: a topic this process
+	// announced and later retracted stays claimed, which is precisely
+	// what lets a retraction that did not stick be retried.
 	Published map[string]bool
 	// Announced is the subset still claimed as a live entity. A topic in
 	// Published but not in Announced is one this process published and
@@ -158,7 +159,7 @@ type Claims struct {
 }
 
 // OrphanConfigs sorts the retained discovery configs into the ones this
-// daemon may clear and the ones it may only talk about.
+// daemon may clear and the two kinds it may only talk about.
 //
 // orphans are retractable: this process published that exact topic
 // since it started, it no longer announces it, the payload still has
@@ -167,20 +168,30 @@ type Claims struct {
 // console on the same root — a config this process never published is
 // not ours to delete, however much it looks like ours.
 //
-// unclaimed are the configs that carry this daemon's shape and were not
-// published by this process: a leftover from an earlier run whose
-// catalogue differed, or a sibling console's live entity. The two are
-// indistinguishable — that is the finding — so neither is touched and
-// the caller reports them instead.
+// unclaimed are the configs that carry this daemon's shape, were not
+// published by this process, and whose class *has* reported: a leftover
+// from an earlier run whose catalogue differed, or a sibling console's
+// live entity. The two are indistinguishable — that is the finding — so
+// neither is touched and the caller reports them, with the advice that
+// an operator who runs no second console can clear them by hand.
+//
+// unready are the same shape with the opposite provenance: their class
+// has *not* reported in this run, so the reason they are missing from
+// Announced may simply be that their source never answered. Handing an
+// operator the same "safe to clear" advice for these is how a
+// three-minute console outage turns into a fleet deleted by hand — with
+// the classic layer down, none of the site-health configs is in
+// Published and every one of them looks exactly like an orphan of an
+// earlier run. They are reported separately, and as *not* clearable.
 //
 // ready reports which classes have completed a successful cycle. A
-// class that is not ready is skipped entirely: its absence from
+// class that is not ready never yields an orphan: its absence from
 // Announced means "not polled yet", not "gone".
 func (d *Discovery) OrphanConfigs(
 	retained map[string][]byte,
 	claims Claims,
 	ready map[Class]bool,
-) (orphans, unclaimed []string) {
+) (orphans, unclaimed, unready []string) {
 	for topic, payload := range retained {
 		if len(payload) == 0 || claims.Announced[topic] {
 			continue // already cleared, or still a current entity
@@ -188,19 +199,28 @@ func (d *Discovery) OrphanConfigs(
 		if !d.IsOwnConfig(payload) {
 			continue // another integration's entity — never touch it
 		}
-		if !claims.Published[topic] {
-			unclaimed = append(unclaimed, topic)
-			continue // not ours to delete: see the head of this file
-		}
 		cfg, _ := parseOwnership(payload)
-		if !ready[ClassOf(cfg.UniqueID)] {
+		sourceReported := ready[ClassOf(cfg.UniqueID)]
+		if !claims.Published[topic] {
+			// Not ours to delete either way — see the head of this file —
+			// but which of the two lists it lands in decides what the
+			// operator is told to do about it.
+			if sourceReported {
+				unclaimed = append(unclaimed, topic)
+			} else {
+				unready = append(unready, topic)
+			}
+			continue
+		}
+		if !sourceReported {
 			continue // its source has not reported yet
 		}
 		orphans = append(orphans, topic)
 	}
 	slices.Sort(orphans)
 	slices.Sort(unclaimed)
-	return orphans, unclaimed
+	slices.Sort(unready)
+	return orphans, unclaimed, unready
 }
 
 // ClassOf classifies one of this project's unique_ids.

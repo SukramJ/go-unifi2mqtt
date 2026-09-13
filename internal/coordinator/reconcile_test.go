@@ -5,6 +5,7 @@ package coordinator
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -567,5 +568,179 @@ func TestAStaggeredUpgradeDoesNotDeleteTheSiblingsFleet(t *testing.T) {
 		t.Errorf("a staggered upgrade retracted %d of %d topics (%v) — "+
 			"that is the not-yet-upgraded sibling instance's fleet",
 			len(cleared), len(fleet), cleared)
+	}
+}
+
+// newReconcileHarnessLogging is [newReconcileHarness] with the log
+// under the test's control. The residual this design accepts — a config
+// an earlier run left behind, which this process may not clear — is
+// mitigated by exactly one thing, the line it is reported on, so the
+// line is a subject for assertions rather than a side effect.
+func newReconcileHarnessLogging(
+	t *testing.T,
+	cfg *config.Config,
+) (*harness, *fakeSubscriber, *logCapture) {
+	t.Helper()
+
+	logs := &logCapture{}
+	h := newHarnessLogging(t, cfg, nil, slog.New(logs))
+	sub := &fakeSubscriber{}
+	h.c.SetSubscriber(sub)
+	h.c.reconcileTimeout = 100 * time.Millisecond
+	h.c.reconcileWindow = 250 * time.Millisecond
+	return h, sub, logs
+}
+
+// runSweepOver drives one full reconcile pass against a retained tree.
+func runSweepOver(t *testing.T, h *harness, sub *fakeSubscriber, tree map[string][]byte) {
+	t.Helper()
+
+	done := make(chan error, 1)
+	go func() { done <- h.c.reconcileOrphans(t.Context()) }()
+	sub.deliverRetained(t, sweepWindow(h.c), tree)
+	if err := <-done; err != nil {
+		t.Fatalf("reconcileOrphans: %v", err)
+	}
+}
+
+// The residual's only mitigation, pinned.
+//
+// Phase 9 step 3 narrowed the sweep to what this process published and
+// paid for it with a stale config an operator now has to clear by hand.
+// The whole of what makes that trade honest is one log line: emitted,
+// at a level the shipped logger actually prints, naming the topics. All
+// three of those are asserted here because all three were mutated away
+// without a single test noticing — including the demotion to Debug,
+// which logCapture cannot see on its own since it answers Enabled for
+// every level.
+func TestUnclaimedConfigsAreReportedAtInfoWithTheirTopics(t *testing.T) {
+	t.Parallel()
+
+	h, sub, logs := newReconcileHarnessLogging(t, hassConfig(t))
+	t.Cleanup(h.c.Close)
+	ctx := t.Context()
+
+	if err := h.c.refreshStatic(ctx); err != nil {
+		t.Fatalf("refreshStatic: %v", err)
+	}
+	if err := h.c.refreshDevices(ctx); err != nil {
+		t.Fatalf("refreshDevices: %v", err)
+	}
+
+	// Every source this configuration enables has reported, so the topic
+	// below is unclaimed rather than unready: this process did not
+	// publish it and the class that would have is up to date.
+	const leftover = "homeassistant/switch/unifi_site_default/wlan_other-console/config"
+	if !allReady(h.c.readyClasses()) {
+		t.Fatalf("test setup: not every class is ready: %v", classNames(h.c.readyClasses()))
+	}
+	runSweepOver(t, h, sub, map[string][]byte{
+		leftover: ownConfig(h.c, "unifi_wlan_other-console_enabled"),
+	})
+
+	rec, ok := logs.find("coordinator.reconcile_unclaimed")
+	if !ok {
+		t.Fatalf("a config this process may not clear was not reported at all; "+
+			"the operator has no way to learn it exists. Logged: %v", logs.lines)
+	}
+	if rec.level < slog.LevelInfo {
+		t.Errorf("the report is logged at %v; the daemon's own default level is Info "+
+			"(main.go), so below that it is invisible to every operator who has not "+
+			"turned on debug logging", rec.level)
+	}
+	if !strings.Contains(rec.text, leftover) {
+		t.Errorf("the report does not name the topic: %q. A count alone tells an "+
+			"operator that something is stale and not which retained message to clear",
+			rec.text)
+	}
+}
+
+// A config whose source never reported is not safe to clear, and the
+// line an operator reads must not say that it is.
+//
+// This is the finding that put an operator in a position to delete
+// their own entities. Readiness gated the retraction but not the
+// report, so a classic layer that failed for three minutes had every
+// one of this daemon's own site-health configs printed under "clear
+// them by publishing an empty retained payload to each" — advice that
+// deletes a live entity and its history out of Home Assistant.
+func TestASilentSourcesConfigsAreNotReportedAsSafeToClear(t *testing.T) {
+	t.Parallel()
+
+	cfg := hassConfig(t)
+	cfg.ClassicEnable = true // site health has a source, and it never answers
+	h, sub, logs := newReconcileHarnessLogging(t, cfg)
+	t.Cleanup(h.c.Close)
+	ctx := t.Context()
+
+	if err := h.c.refreshStatic(ctx); err != nil {
+		t.Fatalf("refreshStatic: %v", err)
+	}
+	if err := h.c.refreshDevices(ctx); err != nil {
+		t.Fatalf("refreshDevices: %v", err)
+	}
+	if h.c.readyClasses()[hass.ClassSite] {
+		t.Fatal("test setup: site health is ready although the classic layer never answered")
+	}
+
+	// A site-health config of exactly this daemon's own shape. With the
+	// classic layer down it is not in Published, not in Announced, and
+	// indistinguishable from an earlier run's leftover.
+	const health = "homeassistant/sensor/unifi_site_default/wan_status/config"
+	runSweepOver(t, h, sub, map[string][]byte{
+		health: ownConfig(h.c, "unifi_site_default_wan_status"),
+	})
+
+	if rec, ok := logs.find("coordinator.reconcile_unclaimed"); ok && strings.Contains(rec.text, health) {
+		t.Errorf("a config whose source never reported was reported as clearable: %q\n"+
+			"An operator following that line deletes this daemon's own live entities.", rec.text)
+	}
+	rec, ok := logs.find("coordinator.reconcile_unclaimed_unready")
+	if !ok {
+		t.Fatalf("the config was not reported at all. Logged: %v", logs.lines)
+	}
+	if !strings.Contains(rec.text, health) {
+		t.Errorf("the unready report does not name the topic: %q", rec.text)
+	}
+	if rec.level < slog.LevelWarn {
+		t.Errorf("the unready report is logged at %v, want at least Warn: it is the line "+
+			"that countermands the clearable one", rec.level)
+	}
+	if !strings.Contains(rec.text, "site") {
+		t.Errorf("the unready report does not name the silent class: %q. "+
+			"Without it an operator cannot tell which source to fix.", rec.text)
+	}
+}
+
+// awaitReady's timeout branch reports what is actually ready, not
+// everything.
+//
+// The dangerous direction is the one with no gate behind it: the
+// happy-path readiness checks are driven several times over, while the
+// branch taken after three minutes of a console that never answered had
+// nothing pinning it at all. Returning "everything ready" there would
+// mean a silent source's configs are treated as orphans of a source
+// that reported — which is the whole of finding 2's mechanism.
+func TestAwaitReadyReportsOnlyWhatReportedWhenItTimesOut(t *testing.T) {
+	t.Parallel()
+
+	cfg := hassConfig(t)
+	cfg.ClassicEnable = true
+	h := newHarness(t, cfg)
+	h.c.reconcileTimeout = 50 * time.Millisecond
+
+	h.c.readyDevices.Store(true)
+	h.c.readyStatic.Store(true)
+
+	ready, timedOut := h.c.awaitReady(t.Context())
+	if !timedOut {
+		t.Fatal("awaitReady returned without timing out although the classic layer never answered")
+	}
+	if ready[hass.ClassSite] {
+		t.Error("the timeout reported site health as ready; its source never answered, " +
+			"and treating it as ready is what lets a silent source's configs be judged")
+	}
+	if !ready[hass.ClassDevice] || !ready[hass.ClassWLAN] {
+		t.Errorf("the timeout dropped a class that did report: %v", classNames(ready))
 	}
 }

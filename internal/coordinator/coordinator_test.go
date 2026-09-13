@@ -374,6 +374,14 @@ func newHarness(t *testing.T, cfg *config.Config) *harness {
 
 func newHarnessWith(t *testing.T, cfg *config.Config, caps Capabilities) *harness {
 	t.Helper()
+	return newHarnessLogging(t, cfg, caps, slog.New(slog.DiscardHandler))
+}
+
+// newHarnessLogging is newHarnessWith with the daemon's logger under
+// the test's control, for the assertions whose subject is the log line
+// itself rather than a published message.
+func newHarnessLogging(t *testing.T, cfg *config.Config, caps Capabilities, log *slog.Logger) *harness {
+	t.Helper()
 	if cfg == nil {
 		cfg = testConfig()
 	}
@@ -410,7 +418,7 @@ func newHarnessWith(t *testing.T, cfg *config.Config, caps Capabilities) *harnes
 		MQTT:         broker,
 		Capabilities: caps,
 		Info:         model.ControllerInfo{ApplicationVersion: "10.5.67"},
-		Logger:       slog.New(slog.DiscardHandler),
+		Logger:       log,
 		Now:          clock.now,
 	})
 	return &harness{c: c, broker: broker, src: src, clock: clock}

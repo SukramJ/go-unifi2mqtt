@@ -128,6 +128,17 @@ func (c *Coordinator) forgetDiscovery(ctx context.Context, mac model.MAC) {
 // The grace period exists because HA publishes "online" before its MQTT
 // integration is ready to process discovery; announcing immediately
 // means the payloads are dropped (CONCEPT.md §6.5).
+//
+// This subscription is the one exception to the disjointness the six
+// command filters are held to, and it stopped being disjoint at phase 9
+// step 5 rather than being written that way: the orphan sweep's
+// snapshot window is `<prefix>/#`, which contains `<prefix>/status`, so
+// for the few seconds the window is open a retained "online" arrives
+// twice. It is benign and bounded — c.rediscover is buffered-1 with
+// drop-on-full, so the worst case is one extra re-announce, and the
+// window is torn down again — but it is an overlap, and a reader who
+// takes "every subscription is disjoint" from the command filters would
+// be wrong here.
 func (c *Coordinator) watchHomeAssistant(ctx context.Context, sub Subscriber) error {
 	if c.hass == nil || sub == nil {
 		return nil

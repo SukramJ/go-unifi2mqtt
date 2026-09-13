@@ -190,19 +190,38 @@ integration is configured, and the log shows a successful broker
 connect. After a Home Assistant restart the add-on re-announces
 everything automatically.
 
-**An entity is stuck `unavailable` and nothing publishes to it** — it is
-a leftover discovery config from an earlier run. The add-on does **not**
-remove it: it cannot tell that config apart from a live entity of a
-second UniFi console bridged to the same broker, so it names it in the
-log instead, as `coordinator.reconcile_unclaimed`, with the full topic.
+**An entity is stuck `unavailable` and nothing publishes to it** — it may
+be a leftover discovery config from an earlier run. The add-on does
+**not** remove it: it cannot tell that config apart from a live entity of
+a second UniFi console bridged to the same broker, so it names it in the
+log instead, with the full topic.
 
-If you do not run a second console against this broker and MQTT topic
-root, those topics are safe to clear yourself — one empty retained
-publish per topic deletes the entity:
+Which log line it appears in decides what you may do about it, and the
+difference matters:
 
-```sh
-mosquitto_pub -h <broker> -r -n -t 'homeassistant/sensor/unifi_.../state/config'
-```
+- `coordinator.reconcile_unclaimed` — the source that would announce
+  this entity **did** report on this run, and it still did not claim the
+  topic. If you do not run a second console against this broker and MQTT
+  topic root, these are safe to clear yourself. One empty retained
+  publish per topic deletes the entity:
+
+  ```sh
+  mosquitto_pub -h <broker> -r -n -t 'homeassistant/sensor/unifi_.../state/config'
+  ```
+
+- `coordinator.reconcile_unclaimed_unready` (a warning) — the source
+  that would announce these **has not reported on this run**: a console
+  that was unreachable at start-up, rotated credentials, a controller
+  mid-upgrade. **Do not clear these.** They may be this add-on's own live
+  entities, whose source simply never answered; deleting them deletes
+  the entity and its history out of Home Assistant, and it comes back
+  only once the source recovers. The line names the silent classes as
+  `silent_classes`. Fix the source, restart, and read the run where every
+  source reported.
+
+A related line, `coordinator.reconcile_partial`, says that not every
+source reported within three minutes of start-up — the same condition,
+seen from the other side.
 
 Configs this run published itself and then gave up are still cleared
 automatically, once the poll they belong to has reported.
