@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	hapub "github.com/SukramJ/go-hamqtt/publisher"
+	hagomqtt "github.com/SukramJ/go-hamqtt/publisher/gomqtt"
 	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
@@ -49,25 +51,48 @@ type Publisher interface {
 // It is safe for concurrent use: several poll loops publish at once.
 type publisher struct {
 	out Publisher
-	log *slog.Logger
-	now func() time.Time
+	// state is the go-hamqtt state plane: the dedup gate, the retained
+	// publish and the index a removed device's topics are dropped from,
+	// all at [StateQoS]. ADR 0070 phase 9 step 5 moved every state
+	// publish onto it; the discovery configs below still go out through
+	// `out` directly, in the per-entity form, and the bundle is step 6.
+	state *hapub.StatePublisher
+	log   *slog.Logger
+	now   func() time.Time
 
 	// forceEvery is how often the next publish of every topic bypasses
 	// change detection. Zero disables forced republishing.
 	forceEvery time.Duration
 
 	mu sync.Mutex
-	// last holds what was most recently sent per topic: the payload
-	// change detection compares against, plus when it went out.
+	// lastConfig holds the discovery config payload last sent per topic.
+	// The state plane's equivalent lives inside [hapub.StatePublisher];
+	// this half stays here until step 6 moves discovery too.
+	lastConfig map[string]entry
+	// sentAt is when each state topic last actually went out, and it is
+	// the whole of what this type still owns on the state plane.
 	//
-	// The timestamp is per topic rather than a single global deadline on
-	// purpose. A global one would be consumed by whichever publish
-	// happened to run first after it expired, and every other topic in
-	// that cycle would still be suppressed — turning "republish
-	// everything every 10 minutes" into "republish one topic every 10
-	// minutes". Per-topic ages also spread the forced traffic out
-	// instead of bunching it into one burst.
-	last map[string]entry
+	// The library's dedup gate has no notion of age, and the forced
+	// periodic republish needs one: a subscriber that missed a message,
+	// or one that does not use retained values, would otherwise stay
+	// permanently stale (CONCEPT.md §8.3). The timestamp is per topic
+	// rather than a single global deadline on purpose. A global one
+	// would be consumed by whichever publish happened to run first after
+	// it expired, and every other topic in that cycle would still be
+	// suppressed — turning "republish everything every 10 minutes" into
+	// "republish one topic every 10 minutes". Per-topic ages also spread
+	// the forced traffic out instead of bunching it into one burst.
+	sentAt map[string]time.Time
+	// emptied is the state topics whose last publish carried no bytes.
+	//
+	// An empty retained payload is a retraction, so it goes out through
+	// [hapub.StatePublisher.Evict] — which has no dedup gate, by design,
+	// because eviction is normally a one-shot. Here it is not: an absent
+	// client publishes an empty `ip` and an empty `signal` on every poll
+	// for as long as it stays away, and before this step change
+	// detection suppressed the repeats. This set is what keeps that
+	// true, for a fleet where "away" is the steady state of most of it.
+	emptied map[string]bool
 	// configs is the set of discovery config topics currently announced.
 	//
 	// Separate from last because the two answer different questions.
@@ -99,79 +124,117 @@ type entry struct {
 	at      time.Time
 }
 
-func newPublisher(out Publisher, forceEvery time.Duration, now func() time.Time, log *slog.Logger) *publisher {
-	return &publisher{
+// statePlaneTransport is the publish-only [hapub.Transport] the state
+// plane rides.
+//
+// It resolves [publisher.out] per call rather than capturing it,
+// because [Coordinator.SetPublisher] wires the real one in after
+// construction — the MQTT client cannot exist until the Last Will does,
+// and the will is the discovery runtime's own statement.
+// [hapub.StatePublisher] never subscribes, so the subscribe half is not
+// supplied.
+type statePlaneTransport struct{ p *publisher }
+
+func (t statePlaneTransport) Publish(
+	ctx context.Context,
+	topic string,
+	payload []byte,
+	qos mqtt.QoS,
+	retain bool,
+	opts ...mqtt.PublishOption,
+) error {
+	if t.p.out == nil {
+		return ErrNoPublisher
+	}
+	return t.p.out.Publish(ctx, topic, payload, qos, retain, opts...)
+}
+
+func newPublisher(
+	out Publisher,
+	commandFilters []string,
+	forceEvery time.Duration,
+	now func() time.Time,
+	log *slog.Logger,
+) *publisher {
+	p := &publisher{
 		out:        out,
 		log:        log,
 		now:        now,
 		forceEvery: forceEvery,
-		last:       make(map[string]entry),
+		lastConfig: make(map[string]entry),
+		sentAt:     make(map[string]time.Time),
+		emptied:    make(map[string]bool),
 		configs:    make(map[string]bool),
 		published:  make(map[string]bool),
 	}
+	p.state = newStatePlane(hagomqtt.Split(statePlaneTransport{p}, nil), commandFilters, log)
+	return p
 }
 
 // publish sends payload to topic unless an identical payload was
 // already sent and no forced republish is due.
 //
-// Errors are returned rather than logged here: the caller knows whether
-// a failed publish should abort its poll (it should not) or be counted.
+// The comparison is [hapub.StatePublisher]'s hash-dedup gate; what this
+// method adds is the age check the library has no notion of, and the
+// empty-payload branch. Errors are returned rather than logged here:
+// the caller knows whether a failed publish should abort its poll (it
+// should not) or be counted.
 func (p *publisher) publish(ctx context.Context, topic, payload string) error {
-	if p.out == nil {
+	if p.state == nil {
 		return ErrNoPublisher
 	}
-
-	body := []byte(payload)
 	now := p.now()
 
 	p.mu.Lock()
-	prev, known := p.last[topic]
-	skip := known && bytes.Equal(prev.payload, body) && !p.staleLocked(prev, now)
-	if skip {
+	at, known := p.sentAt[topic]
+	stale := known && p.staleLocked(at, now)
+	wasEmpty := p.emptied[topic]
+	p.mu.Unlock()
+
+	// An empty retained payload deletes the value rather than writing
+	// one, which the library refuses through Publish and says on purpose
+	// through Evict. The bytes on the wire are identical either way.
+	if payload == "" {
+		if wasEmpty && !stale {
+			return nil
+		}
+		if err := p.state.Evict(ctx, topic); err != nil {
+			return err
+		}
+		p.mu.Lock()
+		p.sentAt[topic] = now
+		p.emptied[topic] = true
 		p.mu.Unlock()
 		return nil
 	}
-	p.mu.Unlock()
 
-	// Publish outside the lock: a QoS 1 publish blocks until PUBACK, and
-	// holding the mutex across that would serialise every poll loop
-	// behind the slowest broker round-trip.
-	if err := p.out.Publish(ctx, topic, body, mqtt.QoS0, true); err != nil {
+	// Forgetting is how an age check is expressed against a gate that
+	// only knows payloads: the next publish then goes out because the
+	// gate has nothing to compare against, not because anything changed.
+	if stale {
+		p.state.Forget(topic)
+	}
+	written, err := p.state.Publish(ctx, topic, []byte(payload))
+	if err != nil {
 		return err
 	}
-
+	if !written {
+		return nil
+	}
 	p.mu.Lock()
-	p.last[topic] = entry{payload: body, at: now}
+	p.sentAt[topic] = now
+	delete(p.emptied, topic)
 	p.mu.Unlock()
 	return nil
 }
 
 // staleLocked reports whether an unchanged topic is old enough to be
 // republished anyway. Must be called with the mutex held.
-func (p *publisher) staleLocked(e entry, now time.Time) bool {
+func (p *publisher) staleLocked(at, now time.Time) bool {
 	if p.forceEvery <= 0 {
 		return false
 	}
-	return !now.Before(e.at.Add(p.forceEvery))
-}
-
-// publishRaw sends a payload bypassing change detection entirely, for
-// the availability topics that must land on every (re)connect even when
-// their value did not change.
-func (p *publisher) publishRaw(ctx context.Context, topic, payload string, qos mqtt.QoS) error {
-	if p.out == nil {
-		return ErrNoPublisher
-	}
-
-	body := []byte(payload)
-	if err := p.out.Publish(ctx, topic, body, qos, true); err != nil {
-		return err
-	}
-
-	p.mu.Lock()
-	p.last[topic] = entry{payload: body, at: p.now()}
-	p.mu.Unlock()
-	return nil
+	return !now.Before(at.Add(p.forceEvery))
 }
 
 // publishConfig sends a Home Assistant discovery config.
@@ -205,8 +268,8 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 		// ever put that topic on the broker", which is what entitles the
 		// sweep to retract it later.
 		p.published[topic] = true
-		prev, known := p.last[topic]
-		skip := known && bytes.Equal(prev.payload, payload) && !p.staleLocked(prev, now)
+		prev, known := p.lastConfig[topic]
+		skip := known && bytes.Equal(prev.payload, payload) && !p.staleLocked(prev.at, now)
 		p.mu.Unlock()
 		if skip {
 			return nil
@@ -224,7 +287,7 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 	}
 
 	p.mu.Lock()
-	p.last[topic] = entry{payload: payload, at: now}
+	p.lastConfig[topic] = entry{payload: payload, at: now}
 	p.mu.Unlock()
 	return nil
 }
@@ -257,20 +320,33 @@ func (p *publisher) claims() hass.Claims {
 // publish its full state again instead of being suppressed by change
 // detection against a stale memory.
 func (p *publisher) forget(prefix string) []string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	var dropped []string
-	for topic := range p.last {
+	if p.state != nil {
+		for _, topic := range p.state.Published() {
+			if strings.HasPrefix(topic, prefix) {
+				dropped = append(dropped, topic)
+			}
+		}
+		p.state.Forget(dropped...)
+	}
+
+	p.mu.Lock()
+	for topic := range p.sentAt {
 		if strings.HasPrefix(topic, prefix) {
-			dropped = append(dropped, topic)
+			delete(p.sentAt, topic)
+			delete(p.emptied, topic)
 		}
 	}
-	for _, topic := range dropped {
-		delete(p.last, topic)
+	for topic := range p.lastConfig {
+		if strings.HasPrefix(topic, prefix) {
+			dropped = append(dropped, topic)
+			delete(p.lastConfig, topic)
+		}
 	}
+	p.mu.Unlock()
+
 	slices.Sort(dropped)
-	return dropped
+	return slices.Compact(dropped)
 }
 
 // clear drops all remembered payloads, forcing the next poll to
@@ -279,15 +355,29 @@ func (p *publisher) forget(prefix string) []string {
 // would otherwise never receive the values change detection is
 // suppressing.
 func (p *publisher) clear() {
+	if p.state != nil {
+		// Reset opens the gate and keeps the index, which is what a
+		// reconnect needs: forgetting the fleet as well would leave
+		// [publisher.forget] and the eviction path with no worklist.
+		p.state.Reset()
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	clear(p.last)
+	clear(p.lastConfig)
+	clear(p.sentAt)
+	clear(p.emptied)
 }
 
 // knownTopics returns the topics with a remembered payload, sorted.
 // Used by tests and by the orphan sweep.
 func (p *publisher) knownTopics() []string {
+	var out []string
+	if p.state != nil {
+		out = append(out, p.state.Published()...)
+	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	return slices.Sorted(maps.Keys(p.last))
+	out = append(out, slices.Collect(maps.Keys(p.lastConfig))...)
+	p.mu.Unlock()
+	slices.Sort(out)
+	return slices.Compact(out)
 }

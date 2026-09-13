@@ -265,7 +265,7 @@ func (c *Coordinator) DiscoveryConfig(baseTopic, language string) hass.Config {
 // them without it would create entities whose topics never receive a
 // value, leaving them unavailable forever (CONCEPT.md §3.3).
 func (c *Coordinator) publishHealthDiscovery(ctx context.Context) error {
-	if c.hass == nil || c.healthAnnounced.Load() {
+	if c.hass == nil || c.healthDiscovered.Load() {
 		return nil
 	}
 	entries, err := c.hass.Health()
@@ -277,6 +277,9 @@ func (c *Coordinator) publishHealthDiscovery(ctx context.Context) error {
 			return err
 		}
 	}
+	c.healthDiscovered.Store(true)
+	// Only ever moves forward: this is the sweep's ClassSite readiness
+	// signal, not the announce latch above.
 	c.healthAnnounced.Store(true)
 	c.log.Info("coordinator.health_discovery_announced", slog.Int("entities", len(entries)))
 	return nil

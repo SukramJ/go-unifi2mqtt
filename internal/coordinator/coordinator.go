@@ -34,6 +34,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	hapub "github.com/SukramJ/go-hamqtt/publisher"
 	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
@@ -160,8 +161,11 @@ type Coordinator struct {
 	// read loop to the goroutine that re-announces discovery. Buffered
 	// with room for one: several births in a row need one re-announce.
 	rediscover chan struct{}
-	// healthAnnounced guards the one-shot site-health discovery, which
-	// waits until the classic layer has actually answered.
+	// healthAnnounced records that the site-health entities have been
+	// announced at least once in this process, which is the orphan
+	// sweep's ClassSite readiness signal. It only ever moves forward —
+	// the announce latch that a reconnect re-opens is
+	// [Coordinator.healthDiscovered].
 	healthAnnounced atomic.Bool
 
 	// readyDevices, readyStatic and readyClients record that a loop has
@@ -189,6 +193,49 @@ type Coordinator struct {
 	// for those republishes a snapshot the device loop never refreshed,
 	// which looks like a working nudge and is not one.
 	nudgeStatic chan struct{}
+
+	// --- the go-hamqtt planes (ADR 0070 phase 9, step 5) ---
+
+	// direct is the publisher the bridge availability marker goes out
+	// through, deliberately not the circuit breaker the rest of the
+	// traffic rides. Nil means "the same one as everything else", which
+	// is what every test wants and what a daemon without a breaker
+	// would have. See [planePublisher.Publish].
+	direct Publisher
+	// newRuntime rebuilds the discovery runtime. It is a factory rather
+	// than an instance because everything a [hapub.Runtime] remembers —
+	// what it superseded, declared and announced — is a statement about
+	// one *broker connection*, while the object would otherwise live for
+	// the process. A QoS 0 retraction to a dying socket returns nil (that
+	// only means Write+Flush returned), the memo records it done, and an
+	// in-process retry after the reconnect re-sends zero retractions and
+	// publishes anyway — which at step 6 is one device bundle landing in
+	// a tree still holding every per-entity config, refused by Home
+	// Assistant with a single `WARNING [mqtt.entity] Received a
+	// conflicting MQTT discovery message` and no entities. go-mtec2mqtt
+	// shipped that shape. Rebuilding here makes it unavailable to the
+	// step that would pay for it.
+	//
+	// The sweep's ownership evidence deliberately does NOT live in the
+	// runtime — it is [publisher.published], which survives the swap —
+	// so the rebuild cannot weaken the claim gate. See reconcile.go.
+	newRuntime func() *hapub.Runtime
+	// haRuntime is the current one. Never store the result of ha()
+	// across a call that can block on the broker: a reconnect swaps it
+	// underneath, and acting on the old one is the defect the swap
+	// exists to remove.
+	haRuntime atomic.Pointer[hapub.Runtime]
+	// router subscribes the command tree. Nil until Run wires it.
+	router *hapub.CommandRouter
+	// healthDiscovered is the one-shot latch for the site-health configs,
+	// and it is deliberately NOT healthAnnounced: that one is the sweep's
+	// readiness signal and must only ever move forward, while this one is
+	// cleared on every (re)connect so a broker that came back without its
+	// retained store gets the health configs again.
+	healthDiscovered atomic.Bool
+	// clientsDiscovered records which clients' configs have been
+	// announced, for the same reason and with the same reset.
+	clientsDiscovered map[string]bool
 }
 
 // New builds a Coordinator from deps.
@@ -209,35 +256,74 @@ func New(d Deps) *Coordinator {
 
 	topics := newTopicBuilder(d.Cfg.MQTTTopic, d.Site.Internal)
 	c := &Coordinator{
-		cfg:              d.Cfg,
-		site:             d.Site,
-		src:              d.Source,
-		caps:             caps,
-		store:            d.Store,
-		info:             d.Info,
-		sub:              d.Subscriber,
-		log:              log,
-		now:              now,
-		topics:           topics,
-		pub:              newPublisher(d.MQTT, d.Cfg.ForceRepublishDuration(), now, log),
-		details:          make(map[model.MAC]model.Device),
-		seen:             make(map[model.MAC]bool),
-		announced:        make(map[model.MAC][]string),
-		announcedClients: make(map[string][]string),
-		clients:          make(map[string]clientState),
-		deviceIDToMAC:    make(map[string]model.MAC),
-		rediscover:       make(chan struct{}, 1),
-		commands:         make(chan command, commandQueueSize),
-		nudgeDevices:     make(chan struct{}, 1),
-		nudgeClients:     make(chan struct{}, 1),
-		nudgeStatic:      make(chan struct{}, 1),
-		reconcileTimeout: defaultReconcileTimeout,
-		reconcileWindow:  defaultReconcileWindow,
+		cfg:               d.Cfg,
+		site:              d.Site,
+		src:               d.Source,
+		caps:              caps,
+		store:             d.Store,
+		info:              d.Info,
+		sub:               d.Subscriber,
+		log:               log,
+		now:               now,
+		topics:            topics,
+		pub:               newPublisher(d.MQTT, commandFilters(topics), d.Cfg.ForceRepublishDuration(), now, log),
+		details:           make(map[model.MAC]model.Device),
+		seen:              make(map[model.MAC]bool),
+		announced:         make(map[model.MAC][]string),
+		announcedClients:  make(map[string][]string),
+		clients:           make(map[string]clientState),
+		deviceIDToMAC:     make(map[string]model.MAC),
+		rediscover:        make(chan struct{}, 1),
+		commands:          make(chan command, commandQueueSize),
+		nudgeDevices:      make(chan struct{}, 1),
+		nudgeClients:      make(chan struct{}, 1),
+		nudgeStatic:       make(chan struct{}, 1),
+		reconcileTimeout:  defaultReconcileTimeout,
+		reconcileWindow:   defaultReconcileWindow,
+		clientsDiscovered: make(map[string]bool),
 	}
 	if d.Cfg.HASSEnable {
 		c.hass = hass.New(c.DiscoveryConfig(d.Cfg.HASSBaseTopic, d.Cfg.Language))
 	}
+
+	// The planes are built here, before any MQTT client exists, because
+	// the Last Will is part of CONNECT and the will is the runtime's own
+	// statement: main reads [Coordinator.Will] to build the client it
+	// will later hand back through SetPublisher/SetSubscriber. The
+	// transport resolves both of those per call, so nothing is captured
+	// before it is wired.
+	tr := c.planeTransport()
+	c.newRuntime = func() *hapub.Runtime { return hapub.New(tr, c.RuntimeConfig(log)) }
+	c.haRuntime.Store(c.newRuntime())
 	return c
+}
+
+// ha is the current discovery runtime. See [Coordinator.newRuntime] for
+// why it may not be stored across a broker call.
+func (c *Coordinator) ha() *hapub.Runtime { return c.haRuntime.Load() }
+
+// Will is the Last Will the MQTT client must be configured with for
+// this daemon's availability policy to mean anything.
+//
+// Returned as the runtime's own value rather than composed here: the
+// will topic, the birth, the death and the `availability` list of all
+// 315 discovery configs are then one string by construction. Two
+// sibling bridges in this programme configure a will whose topic no
+// published entity references, so the broker dutifully writes "offline"
+// on a crash and every entity stays available forever, showing the last
+// value it ever saw.
+func (c *Coordinator) Will() (hapub.Will, error) { return c.ha().Will() }
+
+// SetDirectPublisher names the publisher the bridge availability marker
+// goes out through, around whatever decoration the ordinary one
+// carries. Call before Run; see [planePublisher.Publish] for why.
+func (c *Coordinator) SetDirectPublisher(p Publisher) { c.direct = p }
+
+// Close releases the current runtime's replay worker.
+func (c *Coordinator) Close() {
+	if rt := c.ha(); rt != nil {
+		rt.Close()
+	}
 }
 
 // SetPublisher swaps in the outbound publisher after construction.
@@ -269,15 +355,70 @@ func (c *Coordinator) AvailabilityTopic() string { return c.topics.bridge(status
 // value against a stale memory would leave that broker permanently
 // empty.
 func (c *Coordinator) OnConnect(ctx context.Context) {
-	c.pub.clear()
+	c.resetPlanes()
 	if c.store != nil {
 		c.store.SetMQTTConnected(true)
 	}
-	if err := c.pub.publishRaw(ctx, c.AvailabilityTopic(), payloadOnline, mqtt.QoS1); err != nil {
+	if err := c.ha().AnnounceOnline(ctx); err != nil {
 		c.log.Warn("coordinator.availability_publish_failed", slog.String("err", err.Error()))
 	}
 	if err := c.publishBridgeInfo(ctx); err != nil {
 		c.log.Warn("coordinator.bridge_info_failed", slog.String("err", err.Error()))
+	}
+	c.rediscoverOnReconnect()
+}
+
+// resetPlanes puts every per-connection memo back to what a fresh
+// process would have.
+//
+// The dedup gates open ([publisher.clear] and, under it,
+// [hapub.StatePublisher.Reset]) and the discovery runtime is rebuilt
+// rather than reset, for the reason written on [Coordinator.newRuntime].
+// What is deliberately *not* touched is the claim list the sweep reads:
+// it is a statement about this process, not about this connection, and
+// clearing it would turn a reconnect into "this daemon published
+// nothing" — which is the one input that would make the sweep dangerous.
+func (c *Coordinator) resetPlanes() {
+	c.pub.clear()
+	if c.newRuntime == nil {
+		return
+	}
+	fresh := c.newRuntime()
+	if fresh == nil {
+		c.log.Error("coordinator.ha_runtime_reset_failed",
+			slog.String("hint", "the runtime factory returned nil; "+
+				"the discovery plane keeps the previous connection's memo"))
+		return
+	}
+	if old := c.haRuntime.Swap(fresh); old != nil {
+		old.Close()
+	}
+}
+
+// rediscoverOnReconnect re-opens the one-shot discovery latches and
+// pulls the static loop forward.
+//
+// Opening the dedup gate is only half of a reconnect, and the half that
+// does nothing on its own. A broker that came back without its retained
+// store — a restart without persistence, a failover to a fresh node —
+// holds no discovery configs, and this daemon announces three of its
+// four classes *once*: client configs on a client's first sighting and
+// the site-health configs on the classic layer's first answer, neither
+// of which happens again while the daemon runs. Those entities would
+// never come back. The device and SSID configs would, but only on the
+// static loop's own hour-long cadence, which is why this also nudges it.
+//
+// go-homeconnect2mqtt measured exactly this at its own step 5: the gate
+// was open on the new connection and nothing walked through it, because
+// no hook fired on a *broker* reconnect.
+func (c *Coordinator) rediscoverOnReconnect() {
+	c.healthDiscovered.Store(false)
+	c.mu.Lock()
+	clear(c.clientsDiscovered)
+	c.mu.Unlock()
+	select {
+	case c.nudgeStatic <- struct{}{}:
+	default: // one pending refresh is enough
 	}
 }
 
@@ -286,7 +427,7 @@ func (c *Coordinator) OnConnect(ctx context.Context) {
 // will, so without this the availability topic would stay "online"
 // after an orderly stop.
 func (c *Coordinator) AnnounceOffline(ctx context.Context) {
-	if err := c.pub.publishRaw(ctx, c.AvailabilityTopic(), payloadOffline, mqtt.QoS1); err != nil {
+	if err := c.ha().AnnounceOffline(ctx); err != nil {
 		c.log.Warn("coordinator.availability_publish_failed", slog.String("err", err.Error()))
 	}
 }
@@ -683,7 +824,7 @@ func (c *Coordinator) publishBridgeInfo(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.pub.publishRaw(ctx, c.topics.bridge(infoKey), string(payload), mqtt.QoS0)
+	return c.pub.publish(ctx, c.topics.bridge(infoKey), string(payload))
 }
 
 // publishError surfaces a non-fatal loop failure on the bridge error

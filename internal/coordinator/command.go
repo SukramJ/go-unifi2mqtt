@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	hapub "github.com/SukramJ/go-hamqtt/publisher"
 	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
@@ -94,19 +95,47 @@ func (k commandKind) String() string {
 	}
 }
 
-// subscribeCommands wires the inbound topics.
+// ErrNoSubscriber is returned by the planes' transport when no inbound
+// MQTT client has been wired in.
+//
+// Reported rather than ignored: the sweep's snapshot window and the
+// command router both need a subscription, and a silent no-op there is
+// a daemon that accepts no commands and clears no orphans while looking
+// perfectly healthy.
+var ErrNoSubscriber = errors.New("coordinator: no MQTT subscriber configured")
+
+// commandFilters is the inbound topic tree, as topic filters.
 //
 // One wildcard subscription per shape rather than one per object: a
 // site with 120 clients would otherwise need 120 subscriptions, and
 // each new client would need another at runtime.
-func (c *Coordinator) subscribeCommands(ctx context.Context) error {
-	if !c.cfg.Controls.Enable || c.sub == nil {
-		return nil
-	}
+//
+// The six are pairwise disjoint, and that is a property this daemon
+// depends on rather than a coincidence. A broker sends one PUBLISH copy
+// per matching subscription (MQTT 3.1.1 §4.7.3 / 5.0 §3.3.4 permit it
+// and both Mosquitto and EMQX do it), and a client that decides
+// delivery by re-matching each arriving copy against its whole filter
+// list then runs every matching handler for every copy — so two
+// overlapping filters power-cycle a port twice per press, with nothing
+// in any log. Disjointness is not asserted in prose here: every filter
+// is registered on a [hapub.CommandRouter], whose Handle refuses an
+// ambiguous pair outright, and TestSubscriptionFiltersCannotOverlap
+// drives that refusal against a deliberately overlapping seventh so the
+// pass cannot be vacuous.
+//
+// It is also used as [hapub.StateConfig.CommandFilters], which refuses
+// a state publish that would land inside this process's own
+// subscription. That guard is inert today and the inertness is
+// asserted, not assumed — see TestNothingThisDaemonPublishesIsAlsoSubscribed.
+func (c *Coordinator) commandFilters() []string { return commandFilters(c.topics) }
 
-	root := c.topics.root
-	site := c.topics.site
-	filters := []string{
+// commandFilters is [Coordinator.commandFilters] over a bare topic
+// builder, so the state plane can be given the list at construction —
+// before there is a Coordinator to ask.
+func commandFilters(b topicBuilder) []string {
+	root := b.root
+	site := b.site
+	return []string{
 		root + "/" + site + "/device/+/" + cmdRestart,
 		root + "/" + site + "/device/+/" + cmdLocateSet,
 		root + "/" + site + "/device/+/port/+/" + cmdPowerCycle,
@@ -114,18 +143,65 @@ func (c *Coordinator) subscribeCommands(ctx context.Context) error {
 		root + "/" + site + "/client/+/" + cmdAuthorize,
 		root + "/" + site + "/wlan/+/" + cmdWLANEnabled,
 	}
+}
 
-	for _, f := range filters {
-		// DontSendRetained is belt-and-braces alongside the retain check
-		// in the handler: brokers that honour it never deliver the stale
-		// message in the first place.
-		if _, err := c.sub.Subscribe(ctx, f, mqtt.QoS1, c.onCommand,
-			mqtt.WithRetainHandling(mqtt.DontSendRetained)); err != nil {
+// subscribeCommands wires the inbound topics through the shared router.
+//
+// The router replaces three hand-written pieces: the per-filter
+// Subscribe loop, the `if msg.Retain` drop (now
+// [hapub.CommandConfig.DeliverRetained]) and the topic arithmetic
+// onCommand did by hand. It adds two this daemon did not have — the
+// overlap refusal above, and MQTT 5.0 No Local, which stops the broker
+// from echoing this process's own publishes into its own command
+// handler at the source rather than after the fact.
+//
+// One wire-visible change: the subscriptions carried
+// RetainHandling=DontSendRetained before and carry No Local now. The
+// effect is the same or stronger — a retained command is dropped by
+// policy instead of by a hand-written check — and no PUBLISH moves.
+func (c *Coordinator) subscribeCommands(ctx context.Context) error {
+	if !c.cfg.Controls.Enable || c.sub == nil {
+		return nil
+	}
+
+	router := newCommandRouter(ctx, c.planeTransport(), c.log)
+	for _, f := range c.commandFilters() {
+		if err := router.Handle(f, c.onRoutedCommand); err != nil {
 			return err
 		}
 	}
-	c.log.Info("coordinator.commands_subscribed", slog.Int("filters", len(filters)))
+	// Checked here rather than trusted: the state plane refuses a
+	// colliding publish one message at a time, while this refuses the
+	// boot. A self-echo is a property of the topic layout and the
+	// catalogue, so it cannot be transient — it is either always wrong
+	// or never.
+	if err := router.CheckDisjoint(c.knownStateTopics()...); err != nil {
+		return err
+	}
+	if err := router.Start(ctx); err != nil {
+		return err
+	}
+	c.router = router
+	c.log.Info("coordinator.commands_subscribed",
+		slog.Int("filters", len(c.commandFilters())),
+		slog.Bool("attributed", router.Attributed()))
 	return nil
+}
+
+// knownStateTopics is every topic this daemon has published a state to,
+// for the disjointness check. It is the published set rather than a
+// re-derived catalogue on purpose: what matters is what actually went
+// on the wire, and a second derivation could disagree with it.
+func (c *Coordinator) knownStateTopics() []string {
+	return append(c.pub.knownTopics(), c.AvailabilityTopic())
+}
+
+// onRoutedCommand is the router's handler. It parses and enqueues, and
+// does nothing else — see rule 1 above. It runs on a router worker
+// rather than the transport's read loop, which is what makes rule 1
+// structural instead of a convention.
+func (c *Coordinator) onRoutedCommand(_ context.Context, cmd hapub.Command) {
+	c.onCommand(&mqtt.Message{Topic: cmd.Topic, Payload: cmd.Payload, Retain: cmd.Retained})
 }
 
 // onCommand is the MQTT message handler. It parses and enqueues, and

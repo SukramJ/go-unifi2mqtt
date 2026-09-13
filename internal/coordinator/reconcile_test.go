@@ -55,6 +55,17 @@ func (s *fakeSubscriber) deliverRetained(t *testing.T, filter string, msgs map[s
 	}
 }
 
+// sweepWindow is the filter the orphan sweep actually subscribes.
+//
+// ADR 0070 phase 9 step 5 moved the snapshot onto
+// [hapub.Runtime.Sweep], which opens `<prefix>/#` where this daemon
+// subscribed `<prefix>/+/+/+/config`: one parser sees all three
+// discovery topic forms instead of a wildcard shape that matches only
+// one. It is derived from the runtime's own prefix rather than spelled
+// again, and TestTheSweepWindowIsTheWholeDiscoveryPrefix drives a real
+// pass and reads the filter off the subscriber so this cannot drift.
+func sweepWindow(c *Coordinator) string { return c.ha().Prefix() + "/#" }
+
 // reconcileHarness is a harness whose sweep timings are short enough to
 // run in a test, wired to a subscriber that can replay retained configs.
 func newReconcileHarness(t *testing.T, cfg *config.Config) (*harness, *fakeSubscriber) {
@@ -144,7 +155,7 @@ func TestReconcileRetractsOnlyWhatThisProcessPublished(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- h.c.reconcileOrphans(ctx) }()
 
-	sub.deliverRetained(t, h.c.hass.ConfigFilter(), map[string][]byte{
+	sub.deliverRetained(t, sweepWindow(h.c), map[string][]byte{
 		live:    ownConfig(h.c, "unifi_00005e005302_state"),
 		givenUp: ownConfig(h.c, "unifi_00005e005302_port_9_poe"),
 		pastRun: ownConfig(h.c, "unifi_00005e0053ff_state"),
@@ -195,7 +206,7 @@ func TestReconcileUnsubscribes(t *testing.T) {
 
 	sub.mu.Lock()
 	defer sub.mu.Unlock()
-	want := h.c.hass.ConfigFilter()
+	want := sweepWindow(h.c)
 	for _, f := range sub.unsubscribed {
 		if f == want {
 			return
@@ -219,7 +230,7 @@ func TestReconcileNeverSweepsBeforeItsSourceReported(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- h.c.reconcileOrphans(ctx) }()
 
-	sub.deliverRetained(t, h.c.hass.ConfigFilter(), map[string][]byte{
+	sub.deliverRetained(t, sweepWindow(h.c), map[string][]byte{
 		device: ownConfig(h.c, "unifi_00005e005302_state"),
 	})
 
@@ -478,7 +489,7 @@ func TestOwnershipCannotSeparateTwoConsolesOnOneRoot(t *testing.T) {
 	h.broker.reset()
 	done := make(chan error, 1)
 	go func() { done <- h.c.reconcileOrphans(ctx) }()
-	sub.deliverRetained(t, h.c.hass.ConfigFilter(), map[string][]byte{sibling: payload})
+	sub.deliverRetained(t, sweepWindow(h.c), map[string][]byte{sibling: payload})
 	if err := <-done; err != nil {
 		t.Fatalf("reconcileOrphans: %v", err)
 	}
@@ -540,7 +551,7 @@ func TestAStaggeredUpgradeDoesNotDeleteTheSiblingsFleet(t *testing.T) {
 	h.broker.reset()
 	done := make(chan error, 1)
 	go func() { done <- h.c.reconcileOrphans(ctx) }()
-	sub.deliverRetained(t, h.c.hass.ConfigFilter(), fleet)
+	sub.deliverRetained(t, sweepWindow(h.c), fleet)
 	if err := <-done; err != nil {
 		t.Fatalf("reconcileOrphans: %v", err)
 	}
