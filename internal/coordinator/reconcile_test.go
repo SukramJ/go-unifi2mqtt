@@ -706,7 +706,10 @@ func TestASilentSourcesConfigsAreNotReportedAsSafeToClear(t *testing.T) {
 		t.Errorf("the unready report is logged at %v, want at least Warn: it is the line "+
 			"that countermands the clearable one", rec.level)
 	}
-	if !strings.Contains(rec.text, "site") {
+	// The attribute, not the word: the topic itself carries "site", so a
+	// substring check over the whole line would pass with the attribute
+	// gone.
+	if !strings.Contains(rec.text, "silent_classes=[site]") {
 		t.Errorf("the unready report does not name the silent class: %q. "+
 			"Without it an operator cannot tell which source to fix.", rec.text)
 	}
