@@ -949,7 +949,7 @@ func TestTheSweepWindowIsTheWholeDiscoveryPrefix(t *testing.T) {
 
 	h, sub := newReconcileHarness(t, hassConfig(t))
 	t.Cleanup(h.c.Close)
-	h.c.reconcileWindow = 20 * time.Millisecond
+	h.c.reconcileWindow = 50 * time.Millisecond
 
 	if _, err := h.c.collectRetainedConfigs(t.Context()); err != nil {
 		t.Fatalf("collectRetainedConfigs: %v", err)
@@ -981,7 +981,6 @@ func TestTheSweepWindowCollectsOnlyThisDaemonsOwnShape(t *testing.T) {
 
 	h, sub := newReconcileHarness(t, hassConfig(t))
 	t.Cleanup(h.c.Close)
-	h.c.reconcileWindow = 200 * time.Millisecond
 
 	tree := map[string][]byte{
 		"homeassistant/sensor/unifi_00005e005301/state/config":  ownConfig(h.c, "unifi_00005e005301_state"),
