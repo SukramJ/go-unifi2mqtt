@@ -220,9 +220,8 @@ func (d *Discovery) WLANControl(w *model.WLAN) (Entry, error) {
 		return Entry{}, err
 	}
 	return Entry{
-		ConfigTopic: d.baseTopic + "/" + string(PlatformSwitch) + "/" +
-			siteDeviceID(d.site) + "/wlan_" + w.ID + "/config",
-		Payload: payload,
+		ConfigTopic: d.configTopic(PlatformSwitch, siteDeviceID(d.site), "wlan_"+w.ID),
+		Payload:     payload,
 	}, nil
 }
 
@@ -263,7 +262,7 @@ func (d *Discovery) button(
 		return Entry{}, err
 	}
 	return Entry{
-		ConfigTopic: d.configTopic(PlatformButton, mac, key),
+		ConfigTopic: d.configTopic(PlatformButton, deviceID(mac), key),
 		Payload:     payload,
 	}, nil
 }
@@ -305,7 +304,7 @@ func (d *Discovery) deviceSwitch(
 		return Entry{}, err
 	}
 	return Entry{
-		ConfigTopic: d.configTopic(PlatformSwitch, mac, key),
+		ConfigTopic: d.configTopic(PlatformSwitch, deviceID(mac), key),
 		Payload:     payload,
 	}, nil
 }

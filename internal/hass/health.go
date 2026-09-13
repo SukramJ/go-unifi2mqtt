@@ -103,9 +103,8 @@ func (d *Discovery) Health(siteName string) ([]Entry, error) {
 			return nil, err
 		}
 		entries = append(entries, Entry{
-			ConfigTopic: d.baseTopic + "/" + string(s.platform) + "/" +
-				siteDeviceID(d.site) + "/" + s.key + "/config",
-			Payload: payload,
+			ConfigTopic: d.configTopic(s.platform, siteDeviceID(d.site), s.key),
+			Payload:     payload,
 		})
 	}
 	return entries, nil

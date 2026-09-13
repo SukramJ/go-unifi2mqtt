@@ -184,6 +184,82 @@ func TestConfigTopicForm(t *testing.T) {
 	}
 }
 
+// TestConfigTopicFormIsTheFiveSegmentNodeIDForm is the F5 decision,
+// written so it cannot pass vacuously.
+//
+// go-hamqtt's publisher.SupersededTopics renders the retraction topics
+// for the per-entity configs a device bundle replaces. Getting the form
+// wrong is silent and total: the bundle is published while every
+// per-entity config is still retained, Home Assistant answers with one
+// "Received a conflicting MQTT discovery message" warning, and the
+// result is no entities and nothing on the wire to say so.
+//
+// Both candidate forms are transcribed here and rendered over the real
+// builder's output. The test requires that LegacyTopicWithNodeID — the
+// library's *default* — reproduces every published topic, and that
+// LegacyTopicByUniqueID reproduces none of them. Asserting only the
+// first would pass just as happily if the two forms ever became
+// indistinguishable, which is exactly when the check stops being worth
+// anything.
+//
+// It also pins the two inputs the form is a function of, because
+// neither is a property of the default: the bundle's NodeID has to be
+// device.identifiers[0], and the component key has to be the object-id
+// segment rather than anything derived from the unique_id.
+func TestConfigTopicFormIsTheFiveSegmentNodeIDForm(t *testing.T) {
+	t.Parallel()
+
+	// publisher.LegacyTopicWithNodeID, the default form.
+	withNodeID := func(prefix, platform, nodeID, componentKey, _ string) string {
+		return prefix + "/" + platform + "/" + nodeID + "/" + componentKey + "/config"
+	}
+	// publisher.LegacyTopicByUniqueID, the four-segment alternative.
+	byUniqueID := func(prefix, platform, _, _, uniqueID string) string {
+		return prefix + "/" + platform + "/" + uniqueID + "/config"
+	}
+
+	var matched, unmatchedByUID int
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			parts := strings.Split(cfg.Topic, "/")
+			prefix, platform := parts[0], parts[1]
+			// The two inputs a step-4 model has to choose. The node id
+			// is taken from the payload's own device block, not from
+			// the topic, so this proves the bundle can be keyed on it.
+			nodeID := cfg.Device.Identifiers[0]
+			componentKey := parts[3]
+
+			if got := withNodeID(prefix, platform, nodeID, componentKey, cfg.UniqueID); got != cfg.Topic {
+				t.Errorf("%s: the five-segment node-id form renders %q, want %q",
+					s.name, got, cfg.Topic)
+				continue
+			}
+			matched++
+			if byUniqueID(prefix, platform, nodeID, componentKey, cfg.UniqueID) != cfg.Topic {
+				unmatchedByUID++
+			}
+		}
+	}
+
+	if matched == 0 {
+		t.Fatal("no configs compared; the test asserts nothing")
+	}
+	// The whole point: the other candidate must reproduce *nothing*.
+	// LegacyEntityTopics replaces the default rather than extending it,
+	// so stating LegacyTopicByUniqueID at step 6 would turn a working
+	// retraction into none.
+	if unmatchedByUID != matched {
+		t.Errorf("the by-unique_id form reproduces %d of %d published topics; "+
+			"if the two forms are no longer distinguishable this test proves nothing",
+			matched-unmatchedByUID, matched)
+	}
+	if hass.LegacyConfigTopicForm !=
+		"<discovery_prefix>/<platform>/<node_id>/<object_id>/config" {
+		t.Errorf("hass.LegacyConfigTopicForm = %q, which is no longer the form "+
+			"this test proves", hass.LegacyConfigTopicForm)
+	}
+}
+
 // TestConfigFilterMatchesEveryConfigTopic pins that the orphan
 // reconcile's own subscription sees everything this daemon writes — and
 // records that it is a five-segment filter, so a four-segment device

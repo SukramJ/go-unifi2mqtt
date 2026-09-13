@@ -418,7 +418,7 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 		return Entry{}, err
 	}
 	return Entry{
-		ConfigTopic: d.configTopic(s.platform, mac, s.key),
+		ConfigTopic: d.configTopic(s.platform, deviceID(mac), s.key),
 		Payload:     payload,
 	}, nil
 }
@@ -535,12 +535,50 @@ func collapseTokens(s string) string {
 // entity along with its history (CONCEPT.md §3.4).
 func deviceID(mac model.MAC) string { return idPrefix + "_" + mac.String() }
 
-// configTopic is where a discovery payload is published:
-// <prefix>/<platform>/unifi_<mac>/<key>/config
-func (d *Discovery) configTopic(p Platform, mac model.MAC, key string) string {
-	return strings.Join([]string{
-		d.baseTopic, string(p), deviceID(mac), key, "config",
-	}, "/")
+// LegacyConfigTopicForm records the retained per-entity config topic
+// form this bridge publishes, as the ADR 0070 migration will have to
+// state it. Nothing reads it today; step 6 is what reads it.
+//
+// It matters because retracting the per-entity configs is what makes
+// room for a device bundle, and a retraction that renders a form this
+// fleet is not on retracts nothing: the bundle lands while every
+// per-entity config is still retained, Home Assistant refuses it with
+// one "Received a conflicting MQTT discovery message" warning, and the
+// result is no entities and no error anywhere on the wire.
+//
+// Three things have to hold, and only the first is the form:
+//
+//  1. Five segments, <prefix>/<platform>/<node_id>/<object_id>/config.
+//     This is publisher.SupersededTopics' *default*
+//     (LegacyTopicWithNodeID), which inverts three of the four earlier
+//     phases: here the default is right and the escape hatch is wrong.
+//     publisher.LegacyTopicByUniqueID would retract nothing at all and
+//     must not be stated — Config.LegacyEntityTopics *replaces* the
+//     default rather than extending it, so naming it would turn a
+//     working retraction into none.
+//
+//  2. The node id is byte-equal to the payload's own
+//     device.identifiers[0] — unifi_<mac>, unifi_client_<key> or
+//     unifi_site_<site> — on every config this daemon writes. A bundle
+//     keyed on anything else, a slug of the device name above all,
+//     retracts nothing.
+//
+//  3. The component key is the **object-id segment**, which is not
+//     derivable from the unique_id: on the client ip and signal sensors
+//     and on every SSID switch the two differ. Deriving the component
+//     key from a unique_id suffix silently retracts nothing for those.
+//
+// TestConfigTopicFormIsTheFiveSegmentNodeIDForm renders both candidate
+// forms over the real builder output and requires that one reproduces
+// the published topic and the other does not.
+const LegacyConfigTopicForm = "<discovery_prefix>/<platform>/<node_id>/<object_id>/config"
+
+// configTopic is where a discovery payload is published. It is the one
+// composer for [LegacyConfigTopicForm]; every entity kind — device,
+// port, radio, control, client and site health — goes through it, so
+// there is exactly one place the form can move from.
+func (d *Discovery) configTopic(p Platform, nodeID, objectID string) string {
+	return strings.Join([]string{d.baseTopic, string(p), nodeID, objectID, "config"}, "/")
 }
 
 func (d *Discovery) stateTopic(mac model.MAC, suffix string) string {
