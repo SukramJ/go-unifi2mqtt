@@ -934,12 +934,12 @@ func TestOnConnectWithoutPublisherDoesNotPanic(t *testing.T) {
 func TestPublishWithoutPublisherReportsAnError(t *testing.T) {
 	t.Parallel()
 
-	p := newPublisher(nil, 0, newFakeClock().now, slog.New(slog.DiscardHandler))
+	p := newPublisher(nil, nil, 0, newFakeClock().now, slog.New(slog.DiscardHandler))
 	if err := p.publish(t.Context(), "a", "v"); !errors.Is(err, ErrNoPublisher) {
 		t.Errorf("publish error = %v, want ErrNoPublisher", err)
 	}
-	if err := p.publishRaw(t.Context(), "a", "v", mqtt.QoS1); !errors.Is(err, ErrNoPublisher) {
-		t.Errorf("publishRaw error = %v, want ErrNoPublisher", err)
+	if err := p.publish(t.Context(), "a", ""); !errors.Is(err, ErrNoPublisher) {
+		t.Errorf("publish of an empty payload error = %v, want ErrNoPublisher", err)
 	}
 }
 

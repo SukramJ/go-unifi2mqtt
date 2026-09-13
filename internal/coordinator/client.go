@@ -99,17 +99,23 @@ func (c *Coordinator) trackPresent(ctx context.Context, cl *model.Client, now ti
 	key := cl.Key()
 
 	c.mu.Lock()
-	st, known := c.clients[key]
+	st := c.clients[key]
 	st.lastSeen = now
 	st.home = true
 	st.client = *cl
 	c.clients[key] = st
+	// Keyed on its own latch rather than on "have we seen this client
+	// before", because the two answer different questions: presence
+	// state survives a broker reconnect, an announcement to a broker
+	// that lost its retained store does not. See
+	// [Coordinator.rediscoverOnReconnect].
+	announced := c.clientsDiscovered[key]
 	c.mu.Unlock()
 
 	if c.store != nil {
 		c.store.SetClient(*cl, true, now)
 	}
-	if !known {
+	if !announced {
 		if err := c.publishClientDiscovery(ctx, cl); err != nil {
 			return err
 		}
@@ -274,6 +280,7 @@ func (c *Coordinator) publishClientDiscovery(ctx context.Context, cl *model.Clie
 		topics = append(topics, e.ConfigTopic)
 	}
 	c.announcedClients[cl.Key()] = topics
+	c.clientsDiscovered[cl.Key()] = true
 	c.mu.Unlock()
 	return nil
 }

@@ -4,9 +4,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
+
+	hapub "github.com/SukramJ/go-hamqtt/publisher"
 )
 
 // A signal landing during startup surfaces as context.Canceled. Exiting
@@ -104,6 +107,40 @@ func TestTruncate(t *testing.T) {
 	for _, tt := range tests {
 		if got := truncate(tt.in, tt.n); got != tt.want {
 			t.Errorf("truncate(%q, %d) = %q, want %q", tt.in, tt.n, got, tt.want)
+		}
+	}
+}
+
+// bridgeWill copies every field of the runtime's will onto the client's
+// own type, and composes none of them.
+//
+// It is a function rather than an inline literal in bridge() precisely
+// so this assertion is reachable: bridge() dials a broker and blocks,
+// so a will spelled inline there is a will nothing checks —
+// go-daikin2mqtt's equivalent step found exactly that when rewriting
+// the will as a literal survived its whole suite.
+func TestBridgeWillCopiesEveryField(t *testing.T) {
+	t.Parallel()
+
+	// Every value is deliberately NOT the one this daemon actually
+	// ships. A probe made of the real strings cannot tell a copy from a
+	// literal — which is the whole failure this test exists for.
+	for _, want := range []hapub.Will{
+		{Topic: "probe/root/marker", Payload: []byte("probe-death"), QoS: 2, Retain: true},
+		{Topic: "other/root/marker", Payload: []byte("gone"), QoS: 0, Retain: false},
+	} {
+		got := bridgeWill(want)
+		if got.Topic != want.Topic {
+			t.Errorf("topic = %q, want %q", got.Topic, want.Topic)
+		}
+		if !bytes.Equal(got.Payload, want.Payload) {
+			t.Errorf("payload = %q, want %q", got.Payload, want.Payload)
+		}
+		if byte(got.QoS) != want.QoS {
+			t.Errorf("qos = %d, want %d", got.QoS, want.QoS)
+		}
+		if got.Retain != want.Retain {
+			t.Errorf("retain = %v, want %v", got.Retain, want.Retain)
 		}
 	}
 }

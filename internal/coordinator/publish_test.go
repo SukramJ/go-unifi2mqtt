@@ -23,7 +23,7 @@ func TestForceRepublishIsPerTopic(t *testing.T) {
 
 	clock := newFakeClock()
 	broker := &fakeBroker{}
-	p := newPublisher(broker, 10*time.Minute, clock.now, slog.New(slog.DiscardHandler))
+	p := newPublisher(broker, nil, 10*time.Minute, clock.now, slog.New(slog.DiscardHandler))
 
 	// Two topics published at the same moment.
 	for _, topic := range []string{"a", "b"} {
@@ -63,7 +63,7 @@ func TestForceRepublishStaggers(t *testing.T) {
 
 	clock := newFakeClock()
 	broker := &fakeBroker{}
-	p := newPublisher(broker, 10*time.Minute, clock.now, slog.New(slog.DiscardHandler))
+	p := newPublisher(broker, nil, 10*time.Minute, clock.now, slog.New(slog.DiscardHandler))
 
 	if err := p.publish(t.Context(), "early", "v"); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -95,7 +95,7 @@ func TestForceRepublishDisabled(t *testing.T) {
 
 	clock := newFakeClock()
 	broker := &fakeBroker{}
-	p := newPublisher(broker, 0, clock.now, slog.New(slog.DiscardHandler))
+	p := newPublisher(broker, nil, 0, clock.now, slog.New(slog.DiscardHandler))
 
 	if err := p.publish(t.Context(), "a", "v"); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -118,7 +118,7 @@ func TestFailedPublishIsNotRemembered(t *testing.T) {
 
 	clock := newFakeClock()
 	broker := &fakeBroker{fail: errBroker}
-	p := newPublisher(broker, 0, clock.now, slog.New(slog.DiscardHandler))
+	p := newPublisher(broker, nil, 0, clock.now, slog.New(slog.DiscardHandler))
 
 	if err := p.publish(t.Context(), "a", "v"); err == nil {
 		t.Fatal("publish succeeded against a failing broker")
@@ -140,7 +140,7 @@ func TestForgetOnlyDropsMatchingPrefix(t *testing.T) {
 	t.Parallel()
 
 	clock := newFakeClock()
-	p := newPublisher(&fakeBroker{}, 0, clock.now, slog.New(slog.DiscardHandler))
+	p := newPublisher(&fakeBroker{}, nil, 0, clock.now, slog.New(slog.DiscardHandler))
 
 	for _, topic := range []string{"d/aa/state", "d/aa/uptime", "d/bb/state"} {
 		if err := p.publish(t.Context(), topic, "v"); err != nil {

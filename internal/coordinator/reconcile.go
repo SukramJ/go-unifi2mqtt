@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	mqtt "github.com/SukramJ/go-mqtt"
+	hapub "github.com/SukramJ/go-hamqtt/publisher"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 )
@@ -224,44 +224,86 @@ func classNames(ready map[hass.Class]bool) []string {
 	return out
 }
 
-// collectRetainedConfigs subscribes to the discovery prefix and gathers
-// the retained configs the broker replays.
+// collectRetainedConfigs opens one report-only snapshot window over the
+// discovery prefix and returns the retained configs of this daemon's
+// own shape that the broker replayed.
 //
-// The subscription is torn down before returning: it exists for this
-// one burst, and leaving it open would feed every later discovery
-// publish — including this daemon's own — back into the read loop for
-// no reason.
+// It is [hapub.Runtime.Sweep] with ReportOnly set, and the two halves
+// of that sentence matter separately.
+//
+// # Why the library's own retraction is not used
+//
+// A retracting pass clears every *owned* topic the window saw that the
+// runtime does not claim — where "claims" means "this Runtime published
+// it". That is the exact inverse of this bridge's rule. Here the sweep
+// may clear only a topic this **process** published and has since given
+// up ([hass.Claims]), because the shape is not distinguishing: two
+// instances bridging two different UniFi consoles to one broker with
+// the shipped configuration emit byte-identical config topics,
+// unique_ids, availability topics and state topics for the whole site
+// plane, and a retained config that looks exactly like ours may be a
+// sibling console's live entity. The runtime cannot express that: it
+// publishes no discovery config at all at this step, so its claim set
+// is empty and an armed pass would judge this daemon's entire retained
+// fleet — and the neighbour's — an orphan, once per boot. [SweepResult.Unclaimed]
+// is therefore deliberately unread; the judgement stays in
+// [hass.Discovery.OrphanConfigs], over the claim list, which is the
+// whole of the evidence and not a second signal beside a payload
+// predicate.
+//
+// What the library does supply is the window itself: one subscription
+// that is torn down on every exit path — a cancelled context and a
+// broker that refuses the UNSUBSCRIBE included — a gate that stops a
+// failed teardown accumulating for the process lifetime, and one parser
+// for all three discovery topic forms instead of a wildcard shape that
+// matches only one.
+//
+// # The one wire-visible change
+//
+// The window is `<prefix>/#` where this daemon subscribed
+// `<prefix>/+/+/+/config`. For the few seconds it is open this daemon
+// *receives* every retained message under the discovery prefix; it acts
+// on none that [hass.OwnsConfigTopic] and [hass.Discovery.IsOwnConfig]
+// do not both claim, and the pass retracts nothing at all. The widening
+// is in what it reads, never in what it writes.
 func (c *Coordinator) collectRetainedConfigs(ctx context.Context) (map[string][]byte, error) {
-	filter := c.hass.ConfigFilter()
+	rt := c.ha()
+	if rt == nil {
+		return nil, ErrNoPublisher
+	}
+	prefix := rt.Prefix()
 
 	var mu sync.Mutex
 	retained := make(map[string][]byte)
-	handler := func(msg *mqtt.Message) {
-		// Runs inline in the MQTT read loop, so it must stay this cheap:
-		// anything slower than a copy and a map write stalls
-		// acknowledgement processing and the keep-alive watchdog.
-		mu.Lock()
-		retained[msg.Topic] = append([]byte(nil), msg.Payload...)
-		mu.Unlock()
-	}
-
-	if _, err := c.sub.Subscribe(ctx, filter, mqtt.QoS0, handler); err != nil {
+	res, err := rt.Sweep(ctx, hapub.SweepRequest{
+		// Look, never touch. The retraction below is this daemon's own,
+		// over a list this daemon narrowed.
+		ReportOnly: true,
+		Window:     c.reconcileWindow,
+		Owns:       hass.OwnsConfigTopic,
+		Inspect: func(t hapub.ConfigTopic, body []byte) {
+			// Runs inline in the MQTT read loop, so it must stay this
+			// cheap: anything slower than a copy and a map write stalls
+			// acknowledgement processing and the keep-alive watchdog.
+			topic := hass.ConfigTopicFor(prefix, t)
+			if topic == "" {
+				return
+			}
+			mu.Lock()
+			retained[topic] = append([]byte(nil), body...)
+			mu.Unlock()
+		},
+	})
+	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if u, ok := c.sub.(unsubscriber); ok {
-			if err := u.Unsubscribe(context.WithoutCancel(ctx), filter); err != nil {
-				c.log.Warn("coordinator.reconcile_unsubscribe_failed",
-					slog.String("err", err.Error()))
-			}
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(c.reconcileWindow):
-	}
+	// Inspected is logged beside the verdict because a window that saw
+	// none of this daemon's retained configs and one that saw them all
+	// and correctly found nothing orphaned both read as "0 cleared"
+	// otherwise, and they are completely different faults.
+	c.log.Debug("coordinator.reconcile_window",
+		slog.Int("inspected", res.Inspected),
+		slog.Int("collected", len(retained)))
 
 	mu.Lock()
 	defer mu.Unlock()

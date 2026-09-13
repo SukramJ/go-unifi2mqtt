@@ -38,6 +38,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	hapub "github.com/SukramJ/go-hamqtt/publisher"
 	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
@@ -221,7 +222,19 @@ func bridge(
 		Info:         info,
 		Logger:       logger,
 	})
-	lwtTopic := c.AvailabilityTopic()
+	// The Last Will is part of CONNECT, so the client needs it before it
+	// exists — and the will is the discovery runtime's own statement, so
+	// the coordinator (which owns the topic layout the runtime derives
+	// it from) is built first. Every field is copied rather than
+	// respelled: two sibling bridges in this programme configure a will
+	// whose topic no published entity references, and the broker then
+	// dutifully writes "offline" on a crash while every entity stays
+	// available forever, showing the last value it ever saw.
+	will, err := c.Will()
+	if err != nil {
+		return fmt.Errorf("unifi2mqtt: mqtt will: %w", err)
+	}
+	defer c.Close()
 
 	var tlsConfig *tls.Config
 	if cfg.MQTTSSL {
@@ -239,11 +252,7 @@ func bridge(
 		// re-publishes "offline" because a clean DISCONNECT suppresses
 		// the will. Without the birth, one network blip would leave the
 		// retained topic stuck at "offline" for the rest of the run.
-		Will: &mqtt.Will{
-			Topic:   lwtTopic,
-			Payload: []byte("offline"),
-			Retain:  true,
-		},
+		Will:      bridgeWill(will),
 		TLSConfig: tlsConfig,
 		Logger:    logger,
 	})
@@ -262,6 +271,17 @@ func bridge(
 	// Must happen before Start: the lifecycle calls OnConnect from
 	// inside its first connect, and that hook publishes.
 	c.SetPublisher(breaker)
+	// The bridge availability marker goes around the breaker, and the
+	// asymmetry is the point: mqtt.Breaker counts ErrNotConnected as a
+	// failure, so a connection drop is exactly what opens the circuit —
+	// and the first thing a reconnected daemon does is announce itself
+	// online. Behind the breaker that announcement fails fast with
+	// ErrCircuitOpen, nothing retries it, and the fleet sits unavailable
+	// under `availability_mode: "all"` behind the "offline" the will
+	// just wrote. At shutdown it is worse: a graceful DISCONNECT
+	// suppresses the will, so a marker the breaker refused leaves a
+	// retained "online" standing forever.
+	c.SetDirectPublisher(mqttClient)
 	// Subscriptions go to the client directly rather than through the
 	// breaker: they are startup-path calls with their own SUBACK-bounded
 	// wait, and must not be rejected during a publish-side brownout.
@@ -595,4 +615,21 @@ func truncate(s string, n int) string {
 		return s[:n]
 	}
 	return s[:n-1] + "…"
+}
+
+// bridgeWill copies publisher.Will onto the client's own will type,
+// field for field and with no literal of its own.
+//
+// A function rather than an inline literal specifically so it can be
+// asserted: bridge() dials a broker and blocks, so a policy spelled
+// inline there is a policy nothing checks. go-daikin2mqtt's equivalent
+// step found exactly this — rewriting the will as a literal survived
+// its whole suite until the copy was extracted.
+func bridgeWill(w hapub.Will) *mqtt.Will {
+	return &mqtt.Will{
+		Topic:   w.Topic,
+		Payload: w.Payload,
+		QoS:     mqtt.QoS(w.QoS),
+		Retain:  w.Retain,
+	}
 }
