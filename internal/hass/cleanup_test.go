@@ -212,55 +212,106 @@ func TestOrphanConfigs(t *testing.T) {
 		client  = "homeassistant/device_tracker/unifi_client_aabbccddeeff/presence/config"
 		foreign = "homeassistant/sensor/zigbee_lamp/state/config"
 		cleared = "homeassistant/sensor/unifi_00005e005400/state/config"
-		// A second instance of this daemon, bridging another console to
-		// the same broker under its own MQTT root. Its ids sit in the
-		// same namespace and classify as ours, so the class gate cannot
-		// catch it — only the availability topic tells the two apart. Two
-		// instances that got this wrong would delete each other's
-		// entities on every start.
-		sibling = "homeassistant/sensor/unifi_00005e0053aa/state/config"
+		// A config with every mark of ours that this process never
+		// published. It is either an earlier run's leftover or a second
+		// UniFi console's live entity, and no string on the wire says
+		// which — so it is reported and never cleared.
+		unpublished = "homeassistant/switch/unifi_site_default/wlan_other-console/config"
+		// A second instance under its own MQTT root. Caught one step
+		// earlier, by the shape test, so it is not even reported.
+		otherRoot = "homeassistant/sensor/unifi_00005e0053aa/state/config"
 	)
 	retained := map[string][]byte{
-		live:    own("unifi_00005e005302_state"),
-		stale:   own("unifi_00005e005399_state"),
-		client:  own("unifi_client_aabbccddeeff_presence"),
-		foreign: []byte(`{"unique_id":"zigbee_lamp_state","availability":[{"topic":"` + ours + `"}]}`),
-		cleared: nil,
-		sibling: []byte(`{"unique_id":"unifi_00005e0053aa_state",` +
+		live:        own("unifi_00005e005302_state"),
+		stale:       own("unifi_00005e005399_state"),
+		client:      own("unifi_client_aabbccddeeff_presence"),
+		foreign:     []byte(`{"unique_id":"zigbee_lamp_state","availability":[{"topic":"` + ours + `"}]}`),
+		cleared:     nil,
+		unpublished: own("unifi_wlan_other-console_enabled"),
+		otherRoot: []byte(`{"unique_id":"unifi_00005e0053aa_state",` +
 			`"availability":[{"topic":"unifi-garage/bridge/status"}]}`),
 	}
-	published := map[string]bool{live: true}
+	// This process announced `live`, and published `stale` and `client`
+	// earlier in this same run before giving them up — a retraction that
+	// did not stick is exactly what the sweep is left to retry.
+	claims := Claims{
+		Published: map[string]bool{live: true, stale: true, client: true},
+		Announced: map[string]bool{live: true},
+	}
+
+	check := func(t *testing.T, got []string, want ...string) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("got %v, want %v", got, want)
+			}
+		}
+	}
 
 	t.Run("everything ready", func(t *testing.T) {
 		t.Parallel()
 
-		got := d.OrphanConfigs(retained, published, allReady)
-		want := map[string]bool{stale: true, client: true}
-		if len(got) != len(want) {
-			t.Fatalf("orphans = %v, want %v", got, want)
-		}
-		for _, topic := range got {
-			if !want[topic] {
-				t.Errorf("unexpected orphan %s", topic)
-			}
-		}
+		orphans, unclaimed := d.OrphanConfigs(retained, claims, allReady)
+		check(t, orphans, client, stale)
+		check(t, unclaimed, unpublished)
 	})
 
 	t.Run("client source not ready", func(t *testing.T) {
 		t.Parallel()
 
 		ready := map[Class]bool{ClassDevice: true, ClassSite: true, ClassWLAN: true}
-		got := d.OrphanConfigs(retained, published, ready)
-		if len(got) != 1 || got[0] != stale {
-			t.Fatalf("orphans = %v, want only the stale device config", got)
-		}
+		orphans, _ := d.OrphanConfigs(retained, claims, ready)
+		check(t, orphans, stale)
 	})
 
 	t.Run("nothing ready", func(t *testing.T) {
 		t.Parallel()
 
-		if got := d.OrphanConfigs(retained, published, nil); len(got) != 0 {
-			t.Fatalf("orphans = %v, want none", got)
-		}
+		orphans, unclaimed := d.OrphanConfigs(retained, claims, nil)
+		check(t, orphans)
+		// Readiness gates the retraction, not the report: an unclaimed
+		// config is worth naming whatever its source has done.
+		check(t, unclaimed, unpublished)
 	})
+
+	t.Run("a process that published nothing clears nothing", func(t *testing.T) {
+		t.Parallel()
+
+		orphans, unclaimed := d.OrphanConfigs(retained, Claims{}, allReady)
+		check(t, orphans)
+		check(t, unclaimed, client, live, stale, unpublished)
+	})
+}
+
+// The claim list is the whole of the ownership evidence, so a config
+// that carries every mark of ours and was not published by this process
+// must survive a sweep in which the class is ready, the shape matches
+// and the entity is not announced — the exact four conditions the old
+// rule cleared on.
+func TestAnUnpublishedConfigIsNeverAnOrphan(t *testing.T) {
+	t.Parallel()
+
+	d := newTestDiscovery(LangEN)
+	const topic = "homeassistant/switch/unifi_site_default/wlan_other-console/config"
+	payload := []byte(`{"unique_id":"unifi_wlan_other-console_enabled",` +
+		`"availability":[{"topic":"` + stubTopics{}.AvailabilityTopic() + `"}]}`)
+
+	if !d.IsOwnConfig(payload) {
+		t.Fatal("setup: the payload no longer has this daemon's shape, " +
+			"so this test no longer measures the hard case")
+	}
+	orphans, unclaimed := d.OrphanConfigs(
+		map[string][]byte{topic: payload},
+		Claims{Published: map[string]bool{"homeassistant/sensor/unifi_00005e005302/state/config": true}},
+		map[Class]bool{ClassDevice: true, ClassClient: true, ClassSite: true, ClassWLAN: true},
+	)
+	if len(orphans) != 0 {
+		t.Errorf("orphans = %v, want none — an unpublished config is not ours to clear", orphans)
+	}
+	if len(unclaimed) != 1 || unclaimed[0] != topic {
+		t.Errorf("unclaimed = %v, want [%s] — it must at least be reported", unclaimed, topic)
+	}
 }

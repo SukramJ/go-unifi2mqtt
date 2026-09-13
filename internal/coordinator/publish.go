@@ -15,6 +15,8 @@ import (
 	"time"
 
 	mqtt "github.com/SukramJ/go-mqtt"
+
+	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 )
 
 // ErrNoPublisher is returned when a publish is attempted before an
@@ -75,6 +77,20 @@ type publisher struct {
 	// broker's retained configs against this set, so clearing it on
 	// reconnect would make every entity look orphaned.
 	configs map[string]bool
+	// published is every discovery config topic this process has
+	// published since it started. Unlike configs it never shrinks: a
+	// retracted topic stays in it.
+	//
+	// This is the sweep's entire ownership evidence, and the reason it
+	// is kept at all is that nothing in a published payload can supply
+	// it. Two instances of this daemon bridging two different UniFi
+	// consoles to one broker emit byte-identical config topics,
+	// unique_ids, availability topics and state topics for the whole
+	// site plane, so a retained config that looks exactly like ours may
+	// be a sibling console's live entity. Having published a topic is
+	// the one fact about it no sibling can forge — see
+	// [hass.Claims].
+	published map[string]bool
 }
 
 // entry is one topic's last publication.
@@ -91,6 +107,7 @@ func newPublisher(out Publisher, forceEvery time.Duration, now func() time.Time,
 		forceEvery: forceEvery,
 		last:       make(map[string]entry),
 		configs:    make(map[string]bool),
+		published:  make(map[string]bool),
 	}
 }
 
@@ -183,6 +200,11 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 		// would then read it back off the broker as an orphan and delete
 		// a live entity.
 		p.configs[topic] = true
+		// Recorded here too, and never removed. configs answers "is this
+		// a live entity of ours"; published answers "did this process
+		// ever put that topic on the broker", which is what entitles the
+		// sweep to retract it later.
+		p.published[topic] = true
 		prev, known := p.last[topic]
 		skip := known && bytes.Equal(prev.payload, payload) && !p.staleLocked(prev, now)
 		p.mu.Unlock()
@@ -213,6 +235,19 @@ func (p *publisher) announcedConfigs() map[string]bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return maps.Clone(p.configs)
+}
+
+// claims is everything this process knows first-hand about its own
+// discovery publications, copied under one lock so the two sets cannot
+// be read a poll apart — Announced must always be a subset of
+// Published, and a torn read could break that.
+func (p *publisher) claims() hass.Claims {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return hass.Claims{
+		Published: maps.Clone(p.published),
+		Announced: maps.Clone(p.configs),
+	}
 }
 
 // forget clears the remembered payloads for every topic under prefix

@@ -85,11 +85,13 @@ configuration:
   hass_cleanup:
     name: Remove orphaned entities
     description: >-
-      On start, clear the discovery configs this add-on owns but no longer
-      publishes — entities left behind by an earlier version, by a device
-      that was removed, or by a filter that no longer matches. Only configs
-      carrying this bridge's own identifiers are touched. Turn off to keep
-      every entity until you delete it yourself.
+      On start, clear the discovery configs this run of the add-on published
+      and has since given up. A config it did not publish itself is never
+      cleared, even one that looks exactly like its own — a second UniFi
+      console on the same broker publishes indistinguishable configs, and
+      clearing the wrong one deletes that console's entities. Leftovers from
+      an earlier version are named in the log instead. Turn off to stop the
+      add-on reading the discovery prefix at all.
 
   refresh_devices:
     name: Device refresh (seconds)

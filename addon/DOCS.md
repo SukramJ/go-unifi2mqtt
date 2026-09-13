@@ -81,7 +81,7 @@ controller API to fill those gaps.
 | `mqtt_client_id` | *(empty)* | Identifier presented to the broker. Empty means `unifi2mqtt-` + `mqtt_topic`. Set it when two instances share one broker — two clients on one identifier evict each other in a loop. |
 | `hass_enable` | `true` | Publish Home Assistant discovery. |
 | `hass_base_topic` | `homeassistant` | Discovery prefix. Only change this if you changed it in the MQTT integration too. |
-| `hass_cleanup` | `true` | On start, remove discovery configs this add-on owns but no longer publishes — leftovers from an older version, a removed device, or a filter that no longer matches. Only configs carrying this bridge's own identifiers are touched, so other integrations and a second instance on the same broker are unaffected. |
+| `hass_cleanup` | `true` | On start, remove the discovery configs **this run of the add-on published and has since given up**. A config it did not publish itself is never removed, even one that looks exactly like its own — two UniFi consoles bridged to one broker publish indistinguishable configs, and removing the wrong one deletes another console's entities from Home Assistant with nothing in any log to say so. Leftovers from an earlier version or a removed device are therefore listed in the log (`reconcile_unclaimed`) instead of removed; see Troubleshooting. |
 
 ### Polling
 
@@ -191,8 +191,21 @@ connect. After a Home Assistant restart the add-on re-announces
 everything automatically.
 
 **An entity is stuck `unavailable` and nothing publishes to it** — it is
-a leftover discovery config. With `hass_cleanup` on it is removed at the
-next start, once the poll it belongs to has reported.
+a leftover discovery config from an earlier run. The add-on does **not**
+remove it: it cannot tell that config apart from a live entity of a
+second UniFi console bridged to the same broker, so it names it in the
+log instead, as `coordinator.reconcile_unclaimed`, with the full topic.
+
+If you do not run a second console against this broker and MQTT topic
+root, those topics are safe to clear yourself — one empty retained
+publish per topic deletes the entity:
+
+```sh
+mosquitto_pub -h <broker> -r -n -t 'homeassistant/sensor/unifi_.../state/config'
+```
+
+Configs this run published itself and then gave up are still cleared
+automatically, once the poll they belong to has reported.
 
 **Entity ids came out in German** — entities created before version
 1.0.1 could pick up their id from the translated name. Home Assistant

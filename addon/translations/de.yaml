@@ -86,12 +86,15 @@ configuration:
   hass_cleanup:
     name: Verwaiste Entitäten entfernen
     description: >-
-      Beim Start die Discovery-Konfigurationen entfernen, die dieses Add-on
-      besitzt, aber nicht mehr veröffentlicht — Entitäten aus einer älteren
-      Version, von einem entfernten Gerät oder aus einem Filter, der nicht
-      mehr zutrifft. Angefasst werden nur Konfigurationen mit den eigenen
-      Kennungen dieser Bridge. Aus lassen, wenn Entitäten nur manuell
-      verschwinden sollen.
+      Beim Start die Discovery-Konfigurationen entfernen, die dieser Lauf des
+      Add-ons selbst veröffentlicht und inzwischen aufgegeben hat. Eine
+      Konfiguration, die das Add-on nicht selbst veröffentlicht hat, wird nie
+      entfernt — auch keine, die exakt wie eine eigene aussieht: eine zweite
+      UniFi-Konsole am selben Broker veröffentlicht ununterscheidbare
+      Konfigurationen, und die falsche zu entfernen löscht deren Entitäten.
+      Reste einer älteren Version werden stattdessen im Log genannt.
+      Ausschalten, damit das Add-on den Discovery-Prefix gar nicht erst
+      liest.
 
   refresh_devices:
     name: Geräte abfragen (Sekunden)

@@ -5,6 +5,7 @@ package hass
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 )
 
@@ -19,11 +20,38 @@ import (
 // every start and it sits there unavailable forever, with nothing in
 // any log to say why.
 //
-// The reconcile closes that gap by reading what is actually retained
-// under the discovery prefix and clearing what this daemon owns but no
-// longer announces. Ownership is the delicate part: the discovery
-// prefix is shared with every other MQTT integration on the broker, and
-// clearing someone else's config deletes their entity.
+// The reconcile reads what is actually retained under the discovery
+// prefix and clears the orphans among them. Ownership is the delicate
+// part: the discovery prefix is shared with every other MQTT
+// integration on the broker, and clearing someone else's config deletes
+// their entity — silently, because Home Assistant reports nothing when
+// an entity vanishes with its retained config.
+//
+// # Why ownership here is a claim list, not a predicate
+//
+// Every sibling bridge in this programme separates two instances of
+// itself by a string in the payload: go-homeconnect2mqtt requires the
+// state topic to sit under the publishing instance's own MQTT root
+// (its PR #44), which go-mtec2mqtt's PR #54 established as the rule.
+//
+// That rule has nothing to key on here. A state topic in this bridge is
+// "<root>/<site>/…". The root is MQTT_TOPIC, which is exactly what the
+// availability-topic check already reads, and the site segment is
+// Site.Internal, which is "default" on every UniFi console out of the
+// box. Two instances bridging two *different consoles* to one broker
+// with the shipped configuration publish byte-identical config topics,
+// unique_ids, availability topics and state topics for the whole site
+// plane. No predicate over today's strings separates them, and
+// TestOwnershipCannotSeparateTwoConsolesOnOneRoot measured the
+// consequence: one console's daemon deleted the other console's SSID
+// switch out of Home Assistant.
+//
+// So ownership is not asked of the payload at all. It is *recorded*:
+// the sweep may clear a retained config only if this process published
+// that exact topic since it started ([Claims.Published]). Nothing else
+// is ours, by construction, whatever it looks like. Everything that
+// looks like ours but was never published by this process is reported
+// and left alone — see [Discovery.OrphanConfigs].
 
 // Class is the kind of object an owned discovery config belongs to.
 //
@@ -70,26 +98,32 @@ func (c Class) String() string {
 // this daemon writes: <prefix>/<platform>/<object>/<key>/config.
 //
 // It spans the whole discovery prefix rather than just this daemon's
-// configs, because ownership lives in the payload's unique_id, not in
-// the topic — there is no wildcard that expresses "mine". Scoping is
-// therefore done in code, in [Discovery.OrphanConfigs].
+// configs, because there is no wildcard that expresses "mine" — the
+// config topics this daemon writes are not distinguishable by shape
+// from any other integration's. Scoping is therefore done in code, in
+// [Discovery.OrphanConfigs].
 func (d *Discovery) ConfigFilter() string {
 	return d.baseTopic + "/+/+/+/config"
 }
 
-// IsOwnConfig reports whether a retained discovery config was published
-// by this daemon.
+// IsOwnConfig reports whether a retained discovery config has the shape
+// this daemon publishes: a unique_id in this project's namespace, and
+// this bridge's availability topic — which embeds the configured MQTT
+// root, so an instance under a *different* root reads as someone
+// else's.
 //
-// Two independent signals must agree. The unique_id has to sit in this
-// project's namespace, and the payload has to name this bridge's
-// availability topic — which embeds the configured MQTT root, so a
-// second instance bridging another console to the same broker under a
-// different root is correctly seen as someone else's.
+// It is a shape test, and shape is all it can be. It does not
+// distinguish this instance from a second one bridging another console
+// under the same root, because nothing in the payload does; that is
+// what the claim list in [Discovery.OrphanConfigs] is for, and this
+// predicate must never again be used on its own to decide a retraction.
 //
-// Requiring both matters because neither alone is enough: another
-// integration could coincidentally use an "unifi_" id, and availability
-// topics are not unique to a single entity. A config that fails either
-// test is left strictly alone.
+// It is still worth having, in two places. It keeps another
+// integration's configs out of the sweep's judgement entirely, and it
+// is the second half of the retraction test: the claim list says this
+// process published that topic, and this says what is retained there
+// now is still a config of ours rather than something another writer
+// put on top of it.
 func (d *Discovery) IsOwnConfig(payload []byte) bool {
 	cfg, ok := parseOwnership(payload)
 	if !ok {
@@ -107,38 +141,66 @@ func (d *Discovery) IsOwnConfig(payload []byte) bool {
 	return false
 }
 
-// OrphanConfigs returns the retained config topics this daemon owns,
-// no longer announces, and is entitled to clear right now.
+// Claims is what this process knows, first-hand, about its own
+// discovery publications. It is the whole of the sweep's ownership
+// evidence — see the note at the head of this file for why nothing in
+// the payload can supply the rest.
+type Claims struct {
+	// Published is every config topic this process has published since
+	// it started. It only ever grows: a topic this process announced and
+	// later retracted stays claimed, which is precisely what lets a
+	// retraction that did not stick be retried.
+	Published map[string]bool
+	// Announced is the subset still claimed as a live entity. A topic in
+	// Published but not in Announced is one this process published and
+	// has since given up — the only kind of orphan it may clear.
+	Announced map[string]bool
+}
+
+// OrphanConfigs sorts the retained discovery configs into the ones this
+// daemon may clear and the ones it may only talk about.
 //
-// published is the set of config topics currently announced; ready
-// reports which classes have completed a successful cycle. A class that
-// is not ready is skipped entirely: its absence from published means
-// "not polled yet", not "gone", and sweeping on that reading would
-// delete live entities together with their history.
+// orphans are retractable: this process published that exact topic
+// since it started, it no longer announces it, the payload still has
+// this daemon's shape, and the class's source has reported. All four
+// must hold. The first is what makes the answer safe against a second
+// console on the same root — a config this process never published is
+// not ours to delete, however much it looks like ours.
 //
-// Configs belonging to another integration, to a future version this
-// one cannot classify, and already-cleared (empty) payloads are never
-// returned, so the caller can clear everything it gets back.
+// unclaimed are the configs that carry this daemon's shape and were not
+// published by this process: a leftover from an earlier run whose
+// catalogue differed, or a sibling console's live entity. The two are
+// indistinguishable — that is the finding — so neither is touched and
+// the caller reports them instead.
+//
+// ready reports which classes have completed a successful cycle. A
+// class that is not ready is skipped entirely: its absence from
+// Announced means "not polled yet", not "gone".
 func (d *Discovery) OrphanConfigs(
 	retained map[string][]byte,
-	published map[string]bool,
+	claims Claims,
 	ready map[Class]bool,
-) []string {
-	out := make([]string, 0, len(retained))
+) (orphans, unclaimed []string) {
 	for topic, payload := range retained {
-		if len(payload) == 0 || published[topic] {
+		if len(payload) == 0 || claims.Announced[topic] {
 			continue // already cleared, or still a current entity
 		}
 		if !d.IsOwnConfig(payload) {
 			continue // another integration's entity — never touch it
 		}
+		if !claims.Published[topic] {
+			unclaimed = append(unclaimed, topic)
+			continue // not ours to delete: see the head of this file
+		}
 		cfg, _ := parseOwnership(payload)
 		if !ready[ClassOf(cfg.UniqueID)] {
 			continue // its source has not reported yet
 		}
-		out = append(out, topic)
+		orphans = append(orphans, topic)
 	}
-	return out
+	slices.Sort(orphans)
+	slices.Sort(unclaimed)
+	return orphans, unclaimed
 }
 
 // ClassOf classifies one of this project's unique_ids.

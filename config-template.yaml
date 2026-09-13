@@ -82,10 +82,11 @@ MQTT_TOPIC: unifi # Root of the published topic tree
 HASS_ENABLE: false # Publish auto-discovery config topics
 HASS_BASE_TOPIC: homeassistant # Discovery prefix configured in HA
 HASS_BIRTH_GRACETIME: 15 # Seconds to wait after HA's birth message before republishing
-# On start, clear retained discovery configs this daemon owns but no longer
-# publishes. Only configs carrying this bridge's unique_id prefix AND its
-# availability topic are touched, so another integration — or a second
-# instance under a different MQTT_TOPIC — is never affected.
+# On start, clear the retained discovery configs this run published and has
+# since given up. A config this process did not publish is never cleared,
+# even one that looks exactly like ours: two UniFi consoles bridged to one
+# broker under one MQTT_TOPIC publish indistinguishable configs. Those are
+# logged as coordinator.reconcile_unclaimed instead.
 HASS_CLEANUP: true
 
 # ---------------------------------------------------------------------------
