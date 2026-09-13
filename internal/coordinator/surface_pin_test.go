@@ -518,7 +518,7 @@ func regenerateSurfaceGoldens(t *testing.T) {
 var goldenDigests = map[string]string{
 	"minimal.en":  "69dd1e5f60dd22c6666f25ef5b0307e75d7a7a4d39499259fe5ae5e83e4da915",
 	"minimal.de":  "81ba397fb3f4d33201c92f67f2735908dbd554f458de99713f8098c9334f7b9f",
-	"full.en":     "377be9a22de60fcdb8925b18b9ee40e8ca5790c09220ec13f25f86d03fba6e73",
-	"full.de":     "f6c4792b42bf9490f2cee89d2c4f183a73cc70f6b39d21e7774f55f1c6238e39",
-	"nonascii.de": "6ab88cf3aa87b2999324de8fa60598ad76829d628226b2dad9fa994c00e79339",
+	"full.en":     "328d79ed687fc56c0a6bf0ed453cadf47ea31838a30a23ab947df5956354f75a",
+	"full.de":     "778126942ff6585d7b89b50347cc11e2e1f7edded95d3d64ce971139a920a4d0",
+	"nonascii.de": "dc1fea1bd8f34b3f7aedb96455a00dfb9f6a02e96480bce99cf0de246b650939",
 }

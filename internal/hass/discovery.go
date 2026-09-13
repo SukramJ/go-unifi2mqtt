@@ -157,7 +157,14 @@ type entity struct {
 	// when it is first created.
 	DefaultEntityID string `json:"default_entity_id,omitempty"`
 
-	StateTopic          string `json:"state_topic"`
+	// StateTopic is omitted when empty because a button has none, and
+	// "state_topic" is not a key the MQTT button schema declares. Home
+	// Assistant's discovery schemas are extra=REMOVE_EXTRA, so an empty
+	// one is dropped on arrival today — but a validator reading the
+	// payload as a document refuses it, and once these entities are
+	// published as one device bundle a refusal costs the device its
+	// whole entity set rather than the one key.
+	StateTopic          string `json:"state_topic,omitempty"`
 	UnitOfMeasurement   string `json:"unit_of_measurement,omitempty"`
 	DeviceClass         string `json:"device_class,omitempty"`
 	StateClass          string `json:"state_class,omitempty"`

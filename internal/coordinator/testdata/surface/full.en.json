@@ -482,9 +482,7 @@
         "entity_category": "config",
         "icon": "mdi:restart",
         "name": "Restart",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005301_restart"
       }
     },
@@ -524,9 +522,7 @@
         "entity_category": "config",
         "icon": "mdi:power-cycle",
         "name": "Port 1 power-cycle",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005302_port_1_power_cycle"
       }
     },
@@ -566,9 +562,7 @@
         "entity_category": "config",
         "icon": "mdi:restart",
         "name": "Restart",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005302_restart"
       }
     },
@@ -608,9 +602,7 @@
         "entity_category": "config",
         "icon": "mdi:restart",
         "name": "Restart",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005303_restart"
       }
     },
@@ -649,9 +641,7 @@
         "entity_category": "config",
         "icon": "mdi:restart",
         "name": "Restart",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005304_restart"
       }
     },
@@ -684,9 +674,7 @@
         },
         "icon": "mdi:account-check",
         "name": "Authorize guest",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_client_00005e005313_authorize"
       }
     },
@@ -2553,7 +2541,6 @@
         "entity_category": "config",
         "icon": "mdi:map-marker-radius",
         "name": "Locate",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/device/00005e005301/locate",
@@ -2596,7 +2583,6 @@
         "entity_category": "config",
         "icon": "mdi:map-marker-radius",
         "name": "Locate",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/locate",
@@ -2639,7 +2625,6 @@
         "entity_category": "config",
         "icon": "mdi:map-marker-radius",
         "name": "Locate",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/device/00005e005303/locate",
@@ -2681,7 +2666,6 @@
         "entity_category": "config",
         "icon": "mdi:map-marker-radius",
         "name": "Locate",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/device/00005e005304/locate",
@@ -2717,7 +2701,6 @@
         },
         "icon": "mdi:cancel",
         "name": "Blocked",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/client/00005e005311/blocked",
@@ -2753,7 +2736,6 @@
         },
         "icon": "mdi:cancel",
         "name": "Blocked",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/client/00005e005312/blocked",
@@ -2789,7 +2771,6 @@
         },
         "icon": "mdi:cancel",
         "name": "Blocked",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/client/00005e005313/blocked",
@@ -2819,7 +2800,6 @@
         },
         "icon": "mdi:wifi",
         "name": "HomeNet",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/wlan/wlan-1/enabled",
@@ -2849,7 +2829,6 @@
         },
         "icon": "mdi:wifi",
         "name": "IoT",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/wlan/wlan-2/enabled",
