@@ -51,6 +51,7 @@ func TestQoSIsStatedNotDefaulted(t *testing.T) {
 		{"state", StateQoS, 0},
 		{"availability", AvailabilityQoS, 1},
 		{"command", CommandQoS, 1},
+		{"pulse", PulseQoS, 0},
 	} {
 		if tc.qos == hapub.QoSUnset {
 			t.Errorf("%s QoS is QoSUnset, which the library resolves to QoS 1", tc.name)
@@ -745,6 +746,28 @@ func TestSubscribeCommandsFailsTheBootOnASelfEcho(t *testing.T) {
 	}
 	if err := h.c.subscribeCommands(ctx); !errors.Is(err, hapub.ErrStateCommandCollision) {
 		t.Errorf("subscribeCommands returned %v, want ErrStateCommandCollision", err)
+	}
+}
+
+// The state plane says what its pulses would be delivered at.
+//
+// [hapub.StateConfig.PulseQoS] is the one field in that package whose
+// default is QoS 0 rather than QoS 1, so a plane that states
+// StateConfig.QoS and leaves PulseQoS alone is publishing pulses at a
+// level nobody chose. This daemon publishes none, which is exactly why
+// no other assertion here can see the field: the constants match, the
+// wire is empty, and a golden records nothing. go-hamqtt v0.34.0 says
+// it at construction, and this drives that constructor and requires
+// the warning to be absent — so removing PulseQoS from the config
+// fails here and nowhere else.
+func TestTheStatePlaneStatesItsPulseQoS(t *testing.T) {
+	t.Parallel()
+
+	logs := &logCapture{}
+	newStatePlane(nopTransport{}, nil, slog.New(logs))
+	if logs.contains("pulse_qos_unstated") {
+		t.Error("the state plane leaves PulseQoS unstated; its pulses would be delivered " +
+			"at QoS 0 whatever StateQoS says")
 	}
 }
 
