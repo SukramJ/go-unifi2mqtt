@@ -25,8 +25,40 @@ import (
 // nothing to explain it.
 //
 // This sweep reads what is actually retained under the discovery prefix
-// and clears what this daemon owns but no longer announces. Doing that
-// safely is entirely a question of when — see [Coordinator.readyClasses].
+// and clears the orphans among them. Doing that safely is a question of
+// when — see [Coordinator.readyClasses] — and, since this PR, of what
+// counts as ours at all.
+//
+// # What the sweep may and may not clear
+//
+// It clears only a topic *this process published since it started* and
+// no longer announces. It never clears a config it merely recognises,
+// however exactly that config matches this daemon's shape, because on
+// this bridge the shape is not distinguishing: two instances bridging
+// two different UniFi consoles to one broker with the shipped
+// configuration produce byte-identical config topics, unique_ids,
+// availability topics and state topics for the whole site plane. The
+// sweep used to clear on that recognition, and it deleted the other
+// console's entities out of Home Assistant. See the head of
+// internal/hass/cleanup.go.
+//
+// **The cost is stated, not hidden.** A config genuinely left behind by
+// an *earlier run of this daemon* — an entity that version named
+// differently, a device unplugged while the daemon was stopped — was
+// also not published by this process, so it is no longer cleared
+// either. It is logged, once, as coordinator.reconcile_unclaimed, with
+// the topics named, and an operator who knows there is no second
+// console can clear them with a single empty retained publish each. A
+// stale entity an operator can see and delete is a far better outcome
+// than a neighbour's fleet deleted silently, which is what the
+// alternative actually did.
+//
+// This is the same conclusion go-homeconnect2mqtt reached in its PR #44
+// by a different route: look, do not touch, and retract only over a
+// list the caller narrowed itself. There the narrowing could still be a
+// payload predicate, because its instances differ by MQTT root inside
+// the state topic. Here they do not, so the narrowing has to be the
+// claim list and nothing else.
 
 // reconcileReadyPoll is how often readiness is re-checked while the
 // first poll cycles complete.
@@ -84,7 +116,18 @@ func (c *Coordinator) reconcileOrphans(ctx context.Context) error {
 		return nil
 	}
 
-	orphans := c.hass.OrphanConfigs(retained, c.pub.announcedConfigs(), ready)
+	orphans, unclaimed := c.hass.OrphanConfigs(retained, c.pub.claims(), ready)
+	if len(unclaimed) > 0 {
+		// Reported, never cleared. Each of these either belongs to an
+		// earlier run of this daemon or is a second console's live
+		// entity, and nothing on the wire tells the two apart.
+		c.log.Info("coordinator.reconcile_unclaimed",
+			slog.Int("count", len(unclaimed)),
+			slog.Any("topics", unclaimed),
+			slog.String("action", "left alone: this process did not publish them. "+
+				"If no second UniFi console shares this broker and MQTT root, "+
+				"clear them by publishing an empty retained payload to each"))
+	}
 	if len(orphans) == 0 {
 		c.log.Info("coordinator.reconcile_clean",
 			slog.Int("retained", len(retained)),

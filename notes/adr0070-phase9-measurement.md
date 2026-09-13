@@ -1345,10 +1345,13 @@ has byte-identical config topics, byte-identical `unique_id`s, an
 identical availability topic **and identical state topics**. No
 ownership rule expressible over today's strings separates them.
 
-That is not only a step-6 gate. It is a live defect, now pinned:
-`TestOwnershipCannotSeparateTwoConsolesOnOneRoot` drives the real sweep
-against the hard case — same root, same site segment, another console's
-SSID switch — and records that **the sweep clears it today**. One
+That is not only a step-6 gate. It was a live defect, pinned here and
+**fixed in the PR that follows this one** — see "F6 resolved" below;
+what the rest of this section describes is the state at the time of
+writing. `TestOwnershipCannotSeparateTwoConsolesOnOneRoot` drives the
+real sweep against the hard case — same root, same site segment,
+another console's SSID switch — and recorded that **the sweep cleared
+it**. One
 console's daemon deletes the other console's SSID switch from Home
 Assistant, because it does not announce that SSID and its ownership test
 says the config is its own. At step 6 the same inability is worse by the
@@ -1356,11 +1359,12 @@ usual factor: a bundle is one retained topic per device, so one
 console's bundle replaces the other console's entire site entity set on
 every poll.
 
-It is deliberately **not** fixed here. Every candidate identity — the
-site UUID in `siteDeviceID`, an `INSTANCE_ID` — re-keys entities Home
-Assistant has already registered, which is a step-3 decision, and the
-brief for this step is to write the collision down rather than invent
-an identity for it.
+It was deliberately **not** fixed in the PR that measured it. Every
+candidate *identity* — the site UUID in `siteDeviceID`, an
+`INSTANCE_ID` — re-keys entities Home Assistant has already registered,
+which is a step-3 decision. The fix that followed needed no identity at
+all: it stopped asking the payload who published a config and started
+recording it. See "F6 resolved" below.
 
 Two notes for whoever builds step 6, both from mtec's reviewer:
 
@@ -1375,6 +1379,90 @@ Two notes for whoever builds step 6, both from mtec's reviewer:
   `unifi-garage/bridge/status`. The same-root, different-console case is
   the one that matters, and it is now fixtured by
   `TestOwnershipCannotSeparateTwoConsolesOnOneRoot`.
+
+### F6 resolved — the sweep claims only its own publishes
+
+**Fixed after this document was written.** The defect the section above
+records — one console's daemon clearing the other console's SSID switch
+out of Home Assistant — is closed, and it is closed without inventing an
+identity, so nothing in step 3 is pre-empted and **not one published
+byte moves**. The five discovery goldens and all five SHA-256 literals
+are unchanged.
+
+**The rule.** The sweep may retract a retained discovery config only if
+*this process published that exact topic since it started*. Ownership
+stopped being a predicate over the payload and became a claim list
+(`publisher.published`, exposed as `hass.Claims`): a monotonic set of
+every config topic this process put on the broker, which a retraction
+does not remove. An orphan is `claimed ∧ ¬announced ∧ own-shape ∧
+class-ready`. Nothing else is ours, whatever it looks like, and a
+sibling console cannot forge "you published this".
+
+`IsOwnConfig` survives as the shape half — it keeps another
+integration's configs out of the judgement entirely, and it checks that
+what is retained on a claimed topic is still a config of ours — but it
+is documented as never again sufficient on its own.
+
+**What a fresh boot does.** It claims nothing, so it can retract
+nothing until it has published. That is already the ordering: the sweep
+runs behind `awaitReady`, which waits for every enabled source to
+complete a first successful cycle, so by the time it reads the broker
+the claim list is this boot's complete publish pass.
+`TestAFreshProcessClaimsNothing` pins both halves — empty before the
+pass, and `Announced ⊆ Published` after it.
+
+**The cost, stated rather than hidden.** A config genuinely left by an
+*earlier run* of this daemon was not published by *this* process, so it
+is no longer cleared either. It cannot be: it is byte-indistinguishable
+from a second console's live entity, which is the whole finding. It is
+now logged once, as `coordinator.reconcile_unclaimed`, naming every
+topic, with the remedy — one empty retained publish per topic for an
+operator who knows there is no second console. A stale entity an
+operator can see and delete beats a neighbour's fleet deleted silently,
+and Home Assistant says nothing at all when entities vanish with their
+retained configs. `README.md`, `addon/DOCS.md`, `config-template.yaml`
+and both add-on translations were corrected; they all described the old,
+wider behaviour.
+
+**What still gets cleared,** and why the sweep is not dead: a retraction
+this process issued that did not stick. `removeStale` and
+`forgetDiscovery` clear per device and abandon the rest of the list on
+the first publish error; the claim survives that, the announcement does
+not, and the next sweep retries it. That is the path
+`TestReconcileRetractsOnlyWhatThisProcessPublished` drives, and it is
+what keeps every other assertion in that test from passing vacuously.
+
+**`ReportOnly` / `Inspect` were not needed.** go-homeconnect2mqtt's PR
+#44 sets `publisher.SweepRequest.ReportOnly` and moves the payload check
+into `Inspect` because its sweep belongs to go-hamqtt's `publisher`,
+whose `Owns` sees only a topic — and because there the payload *can*
+still decide, its instances differing by `MQTT_TOPIC` inside the state
+topic. This bridge does not depend on go-hamqtt; `reconcileOrphans` is
+its own code, so "look, never touch, and retract only over a list the
+caller narrowed" is expressed directly. And the narrowing here cannot be
+a payload predicate at all, which is why the claim list had to be the
+whole of it rather than a second signal beside one.
+
+**How it is pinned.** By driving the sweep, never by asking the
+predicate — mtec's stale conclusion survived a release because its test
+asserted `IsOwnConfig` and never called `reconcileOrphans`.
+`TestOwnershipCannotSeparateTwoConsolesOnOneRoot` keeps the hard case
+(same root, same site segment, another console's SSID switch), still
+asserts in its setup that the sibling's payload passes `IsOwnConfig` and
+that this process never published its topic — so it cannot pass
+vacuously — and now asserts the switch survives.
+`TestAStaggeredUpgradeDoesNotDeleteTheSiblingsFleet`, modelled on
+go-homeconnect2mqtt's, sweeps against a sibling console's entire
+ten-topic fleet on one root and requires that none of it is retracted.
+
+**The step-6 bundle decision is now separable.** The gate this document
+set on step 6 was that one console's bundle would replace the other's
+whole site entity set. The retraction half of that is defused: the sweep
+can no longer clear a config it did not publish, whatever form it takes.
+So step 6 can choose, later and unhurriedly, to publish a bundle only
+where an unambiguous instance identity is configured, and leave the
+per-entity form everywhere else. That decision no longer blocks on
+step 3 inventing an identity, and it is no longer urgent.
 
 ### The release note step 7 owes
 

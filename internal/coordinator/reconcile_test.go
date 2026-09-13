@@ -5,6 +5,7 @@ package coordinator
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -80,9 +81,16 @@ func ownConfig(c *Coordinator, uniqueID string) []byte {
 		`","availability":[{"topic":"` + c.AvailabilityTopic() + `"}]}`)
 }
 
-// The core of the feature: a config left on the broker by an earlier run
-// is cleared, while the ones this run announces are not.
-func TestReconcileClearsStaleConfigsOnly(t *testing.T) {
+// The core of the feature, restated: the sweep retracts what this
+// process published and has since given up, and nothing else.
+//
+// Everything in `retained` below other than `givenUp` carries at least
+// one mark that puts it out of reach — and `pastRun` carries none at
+// all, which is the point: it has this daemon's id namespace, this
+// daemon's availability topic and a config topic this daemon's own
+// filter matches, and it is still not cleared, because this process did
+// not publish it.
+func TestReconcileRetractsOnlyWhatThisProcessPublished(t *testing.T) {
 	t.Parallel()
 
 	h, sub := newReconcileHarness(t, hassConfig(t))
@@ -103,13 +111,34 @@ func TestReconcileClearsStaleConfigsOnly(t *testing.T) {
 	}
 
 	const (
-		stale   = "homeassistant/sensor/unifi_00005e0053ff/state/config"
+		// Published by this process earlier in this same run and then
+		// given up — a port that vanished, an entity a filter stopped
+		// matching. The broker still has the old payload because the
+		// retraction did not stick, and retrying it is what the sweep is
+		// for now.
+		givenUp = "homeassistant/sensor/unifi_00005e005302/port_9_poe/config"
+		// Left by an earlier run of this same daemon, or published by a
+		// second console on this same root. Indistinguishable, so
+		// untouchable.
+		pastRun = "homeassistant/sensor/unifi_00005e0053ff/state/config"
 		foreign = "homeassistant/sensor/zigbee_lamp/state/config"
 		// A second instance of this daemon on the same broker under its
-		// own MQTT root. Its ids look exactly like ours; only the
-		// availability topic separates them.
-		sibling = "homeassistant/sensor/unifi_00005e0053aa/state/config"
+		// own MQTT root. Its ids look exactly like ours; the availability
+		// topic separates them.
+		otherRoot = "homeassistant/sensor/unifi_00005e0053aa/state/config"
 	)
+
+	// Claim givenUp and then give it up, through the real publish path.
+	if err := h.c.pub.publishConfig(ctx, givenUp, ownConfig(h.c, "unifi_00005e005302_port_9_poe")); err != nil {
+		t.Fatalf("publishConfig: %v", err)
+	}
+	if err := h.c.clearConfig(ctx, givenUp); err != nil {
+		t.Fatalf("clearConfig: %v", err)
+	}
+	if h.c.pub.announcedConfigs()[givenUp] {
+		t.Fatal("test setup: the given-up config is still announced")
+	}
+
 	h.broker.reset()
 
 	done := make(chan error, 1)
@@ -117,9 +146,10 @@ func TestReconcileClearsStaleConfigsOnly(t *testing.T) {
 
 	sub.deliverRetained(t, h.c.hass.ConfigFilter(), map[string][]byte{
 		live:    ownConfig(h.c, "unifi_00005e005302_state"),
-		stale:   ownConfig(h.c, "unifi_00005e0053ff_state"),
+		givenUp: ownConfig(h.c, "unifi_00005e005302_port_9_poe"),
+		pastRun: ownConfig(h.c, "unifi_00005e0053ff_state"),
 		foreign: []byte(`{"unique_id":"zigbee_lamp_state"}`),
-		sibling: []byte(`{"unique_id":"unifi_00005e0053aa_state",` +
+		otherRoot: []byte(`{"unique_id":"unifi_00005e0053aa_state",` +
 			`"availability":[{"topic":"unifi-garage/bridge/status"}]}`),
 	})
 
@@ -127,17 +157,21 @@ func TestReconcileClearsStaleConfigsOnly(t *testing.T) {
 		t.Fatalf("reconcileOrphans: %v", err)
 	}
 
-	if payload, ok := h.broker.latest(stale); !ok || payload != "" {
-		t.Errorf("stale config: payload %q, published %v — want an empty retained clear", payload, ok)
+	// The sweep must still be able to clear something, or every
+	// assertion below passes vacuously.
+	if payload, ok := h.broker.latest(givenUp); !ok || payload != "" {
+		t.Errorf("a config this process published and gave up: payload %q, published %v "+
+			"— want an empty retained clear", payload, ok)
 	}
-	if _, ok := h.broker.latest(live); ok {
-		t.Error("a currently announced config was cleared")
-	}
-	if _, ok := h.broker.latest(foreign); ok {
-		t.Error("another integration's config was cleared")
-	}
-	if _, ok := h.broker.latest(sibling); ok {
-		t.Error("a second bridge instance's config was cleared")
+	for name, topic := range map[string]string{
+		"a currently announced config":          live,
+		"a config this process never published": pastRun,
+		"another integration's config":          foreign,
+		"a second bridge instance's config":     otherRoot,
+	} {
+		if _, ok := h.broker.latest(topic); ok {
+			t.Errorf("%s was cleared (%s)", name, topic)
+		}
 	}
 }
 
@@ -339,41 +373,71 @@ func TestClearedConfigLeavesTheAnnouncedSet(t *testing.T) {
 		t.Fatalf("clearConfig: %v", err)
 	}
 	if h.c.pub.announcedConfigs()[topic] {
-		t.Errorf("%s is still claimed after being cleared", topic)
+		t.Errorf("%s is still announced after being cleared", topic)
+	}
+	// The claim, unlike the announcement, survives. That is what lets
+	// the sweep retry a retraction that did not stick — and it is the
+	// only route by which the sweep can clear anything at all now.
+	if !h.c.pub.claims().Published[topic] {
+		t.Errorf("%s left the claim list when it was cleared; a retraction "+
+			"that did not stick could then never be retried", topic)
 	}
 }
 
-// TestOwnershipCannotSeparateTwoConsolesOnOneRoot measures the hard
-// case, and it is a **gate on step 6** rather than a defect fixed here.
+// The claim list is process-local and first-hand: it records what this
+// process put on the broker, never what it read back off it. A fresh
+// process claims nothing, which is why the sweep runs only after the
+// first publish pass — see Coordinator.awaitReady.
+func TestAFreshProcessClaimsNothing(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, hassConfig(t))
+	if got := h.c.pub.claims(); len(got.Published) != 0 || len(got.Announced) != 0 {
+		t.Errorf("a process that has published nothing claims %v / %v", got.Published, got.Announced)
+	}
+
+	if err := h.c.refreshStatic(t.Context()); err != nil {
+		t.Fatalf("refreshStatic: %v", err)
+	}
+	got := h.c.pub.claims()
+	if len(got.Published) == 0 {
+		t.Fatal("the publish pass claimed nothing")
+	}
+	for topic := range got.Announced {
+		if !got.Published[topic] {
+			t.Errorf("%s is announced but not published — Announced must be a "+
+				"subset of Published or the sweep can retract an unclaimed topic", topic)
+		}
+	}
+}
+
+// TestOwnershipCannotSeparateTwoConsolesOnOneRoot is the hard case, and
+// it now asserts the fix rather than recording the defect.
 //
-// go-mtec2mqtt's F4 (its PR #54) established the pattern this bridge
-// will have to adopt: `IsOwnConfig` must unconditionally require the
-// payload's state topic to sit under this instance's own identity, and
-// must claim nothing before it has learned that identity. mtec's
-// earlier version gated the check on a flag, and under the shipped
-// default a staggered two-instance upgrade deleted the sibling's entire
-// fleet — neither instance could tell its own retained configs from the
-// other's. Its reviewer also faulted the test for asserting the
-// predicate without ever driving the sweep, and for fixturing the
-// sibling under a *different* MQTT root, which is the easy edge.
+// go-mtec2mqtt's F4 (its PR #54) established the rule the programme
+// settled on: require the payload's state topic to sit under the
+// publishing instance's own identity, and claim nothing before that
+// identity is known. **This bridge has no such identity.** A state
+// topic here is `<root>/<site>/…`; the root is MQTT_TOPIC, which is
+// what the availability-topic check already reads, and the site segment
+// is `Site.Internal`, which is `default` on every UniFi console out of
+// the box. Two instances bridging two different consoles on one broker
+// with the shipped configuration therefore produce byte-identical state
+// topics, config topics, availability topics and unique_ids for the
+// whole site plane, and no predicate over those strings separates them.
 //
-// So this test drives the real sweep, and fixtures the hard case: the
-// same MQTT root, the same site segment, another console.
+// PR #23 measured what that cost: this same test, driving this same
+// sweep, recorded that one console's daemon **cleared the other
+// console's SSID switch out of Home Assistant**. Home Assistant reports
+// nothing when an entity disappears with its retained config, so the
+// only symptom was entities gone.
 //
-// **The answer for this bridge is that no such identity exists.** A
-// state topic here is `<root>/<site>/…`. The root is MQTT_TOPIC, which
-// is what today's availability-topic check already keys on. The site
-// segment is `Site.Internal`, which is `default` on every UniFi console
-// out of the box. Two instances bridging two *different consoles* on
-// one broker with the shipped configuration therefore produce
-// byte-identical state topics, config topics and unique_ids for the
-// whole site plane — `unifi_site_default`, its seven health entities
-// and every SSID switch — and a state-topic ownership rule separates
-// them no better than the availability topic does.
-//
-// This test pins that as it is today. It is not a fix: inventing an
-// identity (the site UUID in `siteDeviceID`, or an INSTANCE_ID) is a
-// step-3 decision that re-registers every existing site entity.
+// The rule is now a claim list instead of a predicate: the sweep may
+// retract only a topic this process published since it started. The
+// sibling console's switch fails that by construction, whatever it
+// looks like — which is why the setup below still asserts that it looks
+// exactly like ours. If it stopped doing so, this test would pass while
+// measuring nothing.
 func TestOwnershipCannotSeparateTwoConsolesOnOneRoot(t *testing.T) {
 	t.Parallel()
 
@@ -399,8 +463,16 @@ func TestOwnershipCannotSeparateTwoConsolesOnOneRoot(t *testing.T) {
 		`"availability":[{"topic":"` + h.c.AvailabilityTopic() + `"}]}`)
 
 	if !h.c.hass.IsOwnConfig(payload) {
-		t.Fatal("setup: the sibling console's config is not claimed, so this " +
+		t.Fatal("setup: the sibling console's config no longer has this " +
+			"daemon's shape, so this test no longer measures the hard case")
+	}
+	if h.c.pub.claims().Published[sibling] {
+		t.Fatal("setup: this process published the sibling's topic, so this " +
 			"test no longer measures the hard case")
+	}
+	if len(h.c.pub.claims().Published) == 0 {
+		t.Fatal("setup: this process claimed nothing, so a sweep that clears " +
+			"nothing would prove nothing")
 	}
 
 	h.broker.reset()
@@ -411,17 +483,78 @@ func TestOwnershipCannotSeparateTwoConsolesOnOneRoot(t *testing.T) {
 		t.Fatalf("reconcileOrphans: %v", err)
 	}
 
-	// Today the sweep clears it: we do not announce that SSID, our
-	// ownership test says it is ours, so it is an orphan. That is the
-	// measured behaviour, and it is what gates step 6 — where the same
-	// inability means one console's *bundle* replaces the other
-	// console's whole site entity set on every poll.
-	payloadOut, cleared := h.broker.latest(sibling)
-	if !cleared || payloadOut != "" {
-		t.Errorf("the other console's SSID switch was left alone "+
-			"(payload %q, published %v). If that is now deliberate, this "+
-			"test has to say so and the step 6 gate in "+
-			"notes/adr0070-phase9-measurement.md has to be closed",
-			payloadOut, cleared)
+	if payloadOut, cleared := h.broker.latest(sibling); cleared {
+		t.Errorf("the other console's SSID switch was cleared (payload %q). "+
+			"This process never published that topic, so it is not ours to "+
+			"retract — a Home Assistant user sees the entity disappear with "+
+			"nothing in any log to explain it", payloadOut)
+	}
+}
+
+// TestAStaggeredUpgradeDoesNotDeleteTheSiblingsFleet is the shape that
+// falsified go-mtec2mqtt's "harmless" verdict one PR after it was
+// written, and that go-homeconnect2mqtt pinned in its PR #44: instance
+// A is upgraded and publishes a *different* catalogue, so its announced
+// set no longer names the topics the not-yet-upgraded instance B still
+// owns and keeps republishing.
+//
+// Here A and B bridge two different UniFi consoles to one broker under
+// one MQTT root — the configuration in which every identity string of
+// the site plane collides — and B's whole fleet is the retained tree A
+// sweeps against. A must clear none of it.
+func TestAStaggeredUpgradeDoesNotDeleteTheSiblingsFleet(t *testing.T) {
+	t.Parallel()
+
+	h, sub := newReconcileHarness(t, hassConfig(t))
+	ctx := t.Context()
+
+	if err := h.c.refreshStatic(ctx); err != nil {
+		t.Fatalf("refreshStatic: %v", err)
+	}
+	if err := h.c.refreshDevices(ctx); err != nil {
+		t.Fatalf("refreshDevices: %v", err)
+	}
+
+	// The sibling's fleet: one device of its own with a full entity set,
+	// its site-health plane and two SSIDs. Every payload is exactly what
+	// this daemon publishes, because the sibling *is* this daemon.
+	fleet := map[string][]byte{}
+	for _, key := range []string{"state", "uptime", "cpu", "memory", "reachable"} {
+		fleet["homeassistant/sensor/unifi_00005e00daad/"+key+"/config"] = ownConfig(h.c, "unifi_00005e00daad_"+key)
+	}
+	for _, key := range []string{"wan_state", "wan_connectivity", "clients"} {
+		fleet["homeassistant/sensor/unifi_site_default/"+key+"/config"] = ownConfig(h.c, "unifi_site_"+key)
+	}
+	for _, ssid := range []string{"other-console-guest", "other-console-iot"} {
+		fleet["homeassistant/switch/unifi_site_default/wlan_"+ssid+"/config"] = ownConfig(h.c, "unifi_wlan_"+ssid+"_enabled")
+	}
+
+	announced := h.c.pub.announcedConfigs()
+	for topic := range fleet {
+		if announced[topic] {
+			t.Fatalf("setup: %s is one of this instance's own configs, so the "+
+				"fleet is not the sibling's", topic)
+		}
+	}
+
+	h.broker.reset()
+	done := make(chan error, 1)
+	go func() { done <- h.c.reconcileOrphans(ctx) }()
+	sub.deliverRetained(t, h.c.hass.ConfigFilter(), fleet)
+	if err := <-done; err != nil {
+		t.Fatalf("reconcileOrphans: %v", err)
+	}
+
+	var cleared []string
+	for topic := range fleet {
+		if _, ok := h.broker.latest(topic); ok {
+			cleared = append(cleared, topic)
+		}
+	}
+	if len(cleared) > 0 {
+		slices.Sort(cleared)
+		t.Errorf("a staggered upgrade retracted %d of %d topics (%v) — "+
+			"that is the not-yet-upgraded sibling instance's fleet",
+			len(cleared), len(fleet), cleared)
 	}
 }

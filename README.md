@@ -159,12 +159,18 @@ unifi/<site>/client/<mac>/cmd/authorize          ← {"minutes":60} or empty
 unifi/<site>/wlan/<id>/enabled/set               ← ON | OFF
 ```
 
-Discovery configs are retained too, and stale ones are cleared on
-start: the daemon reads back what is retained under the discovery
-prefix and removes the entities it owns but no longer publishes. It
-identifies its own by `unique_id` prefix *and* availability topic, so a
-second instance on the same broker is left alone. `HASS_CLEANUP: false`
-disables it.
+Discovery configs are retained too. On start the daemon reads back what
+is retained under the discovery prefix and clears the orphans among
+them — but only ones **it published itself during this run** and has
+since given up. A retained config it did not publish is never cleared,
+however exactly it matches this daemon's own shape: two instances
+bridging two different UniFi consoles to one broker under one
+`MQTT_TOPIC` emit byte-identical config topics, `unique_id`s,
+availability topics and state topics for the whole site plane, so
+"looks like mine" would delete the other console's entities. Those
+configs are logged as `coordinator.reconcile_unclaimed` with their
+topics, for an operator to clear with one empty retained publish each.
+`HASS_CLEANUP: false` disables the sweep entirely.
 
 State topics are retained, command topics are not. **Retained commands
 are ignored on purpose**: a stale `mosquitto_pub -r` would otherwise
