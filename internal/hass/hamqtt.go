@@ -405,10 +405,7 @@ type HamqttComponent struct {
 // transport, and the result is handed back to the caller.
 func (d *Discovery) RenderHamqtt(f HamqttFleet) ([]HamqttComponent, error) {
 	ctx := d.newHamqttContext()
-	groups, err := d.hamqttGroups(f)
-	if err != nil {
-		return nil, err
-	}
+	groups := d.hamqttGroups(f)
 
 	out := make([]HamqttComponent, 0, 128)
 	seen := make(map[string]bool, 128)
@@ -448,10 +445,7 @@ func (d *Discovery) RenderHamqtt(f HamqttFleet) ([]HamqttComponent, error) {
 // reported rather than hidden: see [HamqttDeviceBlockConflicts].
 func (d *Discovery) HamqttBundles(f HamqttFleet, origin discovery.Origin) ([]*discovery.Bundle, error) {
 	ctx := d.newHamqttContext()
-	groups, err := d.hamqttGroups(f)
-	if err != nil {
-		return nil, err
-	}
+	groups := d.hamqttGroups(f)
 
 	order := make([]string, 0, len(groups))
 	merged := map[string]*hamqttGroup{}
@@ -489,11 +483,8 @@ func (d *Discovery) HamqttBundles(f HamqttFleet, origin discovery.Origin) ([]*di
 // that is only last-write-wins in Home Assistant's device registry; a
 // bundle has exactly one device block, so one of the two names has to
 // win visibly.
-func (d *Discovery) HamqttDeviceBlockConflicts(f HamqttFleet) (map[string][]string, error) {
-	groups, err := d.hamqttGroups(f)
-	if err != nil {
-		return nil, err
-	}
+func (d *Discovery) HamqttDeviceBlockConflicts(f HamqttFleet) map[string][]string {
+	groups := d.hamqttGroups(f)
 	names := map[string][]string{}
 	for _, g := range groups {
 		uid := g.dev.UID()
@@ -508,7 +499,7 @@ func (d *Discovery) HamqttDeviceBlockConflicts(f HamqttFleet) (map[string][]stri
 			out[uid] = n
 		}
 	}
-	return out, nil
+	return out
 }
 
 func contains(s []string, v string) bool {
@@ -529,7 +520,7 @@ type hamqttGroup struct {
 // hamqttGroups projects the fleet onto the shared model, in the order
 // the coordinator announces it: devices (values then controls), the
 // SSID switches, the clients, and the site health plane.
-func (d *Discovery) hamqttGroups(f HamqttFleet) ([]*hamqttGroup, error) {
+func (d *Discovery) hamqttGroups(f HamqttFleet) []*hamqttGroup {
 	var out []*hamqttGroup
 
 	for i := range f.Devices {
@@ -537,11 +528,7 @@ func (d *Discovery) hamqttGroups(f HamqttFleet) ([]*hamqttGroup, error) {
 		if dev.MAC.IsZero() {
 			continue
 		}
-		g, err := d.hamqttDeviceGroup(dev, f.ControlOpts)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, g)
+		out = append(out, d.hamqttDeviceGroup(dev, f.ControlOpts))
 	}
 
 	if f.ControlOpts.WLANEnable {
@@ -561,7 +548,7 @@ func (d *Discovery) hamqttGroups(f HamqttFleet) ([]*hamqttGroup, error) {
 	if f.AnnounceHealth {
 		out = append(out, d.hamqttHealthGroup(f.SiteName))
 	}
-	return out, nil
+	return out
 }
 
 // --- infrastructure devices ------------------------------------------
@@ -602,7 +589,7 @@ const deviceAvailTemplate = "{{ 'online' if value == 'ONLINE' else 'offline' }}"
 // clientAvailTemplate is the client plane's equivalent.
 const clientAvailTemplate = "{{ 'online' if value == 'home' else 'offline' }}"
 
-func (d *Discovery) hamqttDeviceGroup(dev *model.Device, opts ControlOptions) (*hamqttGroup, error) {
+func (d *Discovery) hamqttDeviceGroup(dev *model.Device, opts ControlOptions) *hamqttGroup {
 	info := d.deviceInfo(dev)
 	g := &hamqttGroup{dev: hamqttDevice(info)}
 
@@ -618,12 +605,8 @@ func (d *Discovery) hamqttDeviceGroup(dev *model.Device, opts ControlOptions) (*
 		g.entities = append(g.entities, d.hamqttDeviceEntity(&specs[i], mac, info.Name))
 	}
 
-	controls, err := d.hamqttDeviceControls(dev, info, opts)
-	if err != nil {
-		return nil, err
-	}
-	g.entities = append(g.entities, controls...)
-	return g, nil
+	g.entities = append(g.entities, d.hamqttDeviceControls(dev, info, opts)...)
+	return g
 }
 
 func (d *Discovery) hamqttDeviceEntity(s *spec, mac, deviceName string) *hamqttEntity {
@@ -664,10 +647,14 @@ func (d *Discovery) hamqttDeviceEntity(s *spec, mac, deviceName string) *hamqttE
 		seedName: deviceName,
 		seedKey:  s.key,
 	}
+	// The template is a property of the device kind, not of the entity:
+	// it is set on every infrastructure entity, and hamodel.BridgeOnly
+	// is the ONE switch that decides whether the level is rendered. Two
+	// switches saying the same thing is how a setting goes inert
+	// without a test noticing.
+	e.availTemplate = deviceAvailTemplate
 	if s.bridgeAvailOnly {
 		e.Description.Availability = hamodel.BridgeOnly()
-	} else {
-		e.availTemplate = deviceAvailTemplate
 	}
 	if s.platform == PlatformBinarySensor {
 		e.fields = &discovery.BinarySensorFields{PayloadOn: s.payloadOn, PayloadOff: s.payloadOff}
@@ -677,7 +664,7 @@ func (d *Discovery) hamqttDeviceEntity(s *spec, mac, deviceName string) *hamqttE
 
 func (d *Discovery) hamqttDeviceControls(
 	dev *model.Device, info deviceInfo, opts ControlOptions,
-) ([]hamodel.Entity, error) {
+) []hamodel.Entity {
 	mac := dev.MAC.String()
 	var out []hamodel.Entity
 
@@ -722,7 +709,7 @@ func (d *Discovery) hamqttDeviceControls(
 			out = append(out, e)
 		}
 	}
-	return out, nil
+	return out
 }
 
 func (d *Discovery) hamqttDeviceButton(
@@ -776,17 +763,16 @@ func (d *Discovery) hamqttClientGroup(
 				Role: hamodel.RoleState, Slot: clientSlot(key, "state"), Mode: hamodel.Read,
 			}},
 		},
-		uidBase:  idPrefix + "_client_" + key,
-		uidKey:   "presence",
-		seedName: info.Name,
-		seedKey:  "presence",
+		uidBase:       idPrefix + "_client_" + key,
+		uidKey:        "presence",
+		seedName:      info.Name,
+		seedKey:       "presence",
+		availTemplate: clientAvailTemplate,
 		fields: &discovery.DeviceTrackerFields{
 			SourceType: "router", PayloadHome: "home", PayloadNotHome: "not_home",
 		},
 	}
-	g.entities = append(g.entities, tracker)
-
-	g.entities = append(g.entities, d.hamqttClientSensor(key, "ip", info.Name, spec{
+	g.entities = append(g.entities, tracker, d.hamqttClientSensor(key, "ip", info.Name, spec{
 		platform: PlatformSensor, key: "client_ip", nameKey: "client_ip",
 		stateSuffix: "ip", category: "diagnostic", icon: "mdi:ip-network",
 	}))
@@ -814,11 +800,12 @@ func (d *Discovery) hamqttClientGroup(
 					{Role: hamodel.RoleCommand, Slot: clientSlot(key, "blocked/set"), Mode: hamodel.Write},
 				},
 			},
-			uidBase:  idPrefix + "_client_" + key,
-			uidKey:   "blocked",
-			seedName: info.Name,
-			seedKey:  "blocked",
-			fields:   &discovery.SwitchFields{StateOn: payloadON, StateOff: payloadOFF},
+			uidBase:       idPrefix + "_client_" + key,
+			uidKey:        "blocked",
+			seedName:      info.Name,
+			seedKey:       "blocked",
+			availTemplate: clientAvailTemplate,
+			fields:        &discovery.SwitchFields{StateOn: payloadON, StateOff: payloadOFF},
 		})
 	}
 	if ctl.GuestAuthorize && cl.IsGuest {
@@ -837,11 +824,12 @@ func (d *Discovery) hamqttClientGroup(
 					Mode: hamodel.Write,
 				}},
 			},
-			uidBase:  idPrefix + "_client_" + key,
-			uidKey:   "authorize",
-			seedName: info.Name,
-			seedKey:  "authorize",
-			fields:   &discovery.ButtonFields{PayloadPress: "PRESS"},
+			uidBase:       idPrefix + "_client_" + key,
+			uidKey:        "authorize",
+			seedName:      info.Name,
+			seedKey:       "authorize",
+			availTemplate: clientAvailTemplate,
+			fields:        &discovery.ButtonFields{PayloadPress: "PRESS"},
 		})
 	}
 	return g

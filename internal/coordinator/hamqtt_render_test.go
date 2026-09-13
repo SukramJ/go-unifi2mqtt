@@ -725,11 +725,8 @@ func TestHamqttSiteDeviceIsAnnouncedUnderTwoNames(t *testing.T) {
 	t.Parallel()
 
 	sc := surfaceScenarios()[2] // full.en: health and SSID switches both on
-	conflicts, err := scenarioDiscovery(t, sc).
+	conflicts := scenarioDiscovery(t, sc).
 		HamqttDeviceBlockConflicts(buildHamqttInputs(t, sc))
-	if err != nil {
-		t.Fatalf("HamqttDeviceBlockConflicts: %v", err)
-	}
 	want := map[string][]string{
 		"unifi_site_default": {"UniFi Site default", "UniFi Site Default"},
 	}
@@ -785,8 +782,6 @@ func TestHamqttRenderPathPublishesNothing(t *testing.T) {
 		if _, err := d.HamqttBundles(f, hamqttOrigin()); err != nil {
 			t.Fatalf("HamqttBundles: %v", err)
 		}
-		if _, err := d.HamqttDeviceBlockConflicts(f); err != nil {
-			t.Fatalf("HamqttDeviceBlockConflicts: %v", err)
-		}
+		d.HamqttDeviceBlockConflicts(f)
 	}
 }
