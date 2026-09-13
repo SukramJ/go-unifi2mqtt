@@ -254,35 +254,40 @@ func TestOrphanConfigs(t *testing.T) {
 	t.Run("everything ready", func(t *testing.T) {
 		t.Parallel()
 
-		orphans, unclaimed := d.OrphanConfigs(retained, claims, allReady)
+		orphans, unclaimed, unready := d.OrphanConfigs(retained, claims, allReady)
 		check(t, orphans, client, stale)
 		check(t, unclaimed, unpublished)
+		check(t, unready)
 	})
 
 	t.Run("client source not ready", func(t *testing.T) {
 		t.Parallel()
 
 		ready := map[Class]bool{ClassDevice: true, ClassSite: true, ClassWLAN: true}
-		orphans, _ := d.OrphanConfigs(retained, claims, ready)
+		orphans, _, _ := d.OrphanConfigs(retained, claims, ready)
 		check(t, orphans, stale)
 	})
 
 	t.Run("nothing ready", func(t *testing.T) {
 		t.Parallel()
 
-		orphans, unclaimed := d.OrphanConfigs(retained, claims, nil)
+		orphans, unclaimed, unready := d.OrphanConfigs(retained, claims, nil)
 		check(t, orphans)
-		// Readiness gates the retraction, not the report: an unclaimed
-		// config is worth naming whatever its source has done.
-		check(t, unclaimed, unpublished)
+		// Readiness gates the retraction, not the report — but it does
+		// decide *which* report. With its class silent, the config may be
+		// this daemon's own live entity that nothing has announced yet,
+		// so it is named as unready rather than as safely clearable.
+		check(t, unclaimed)
+		check(t, unready, unpublished)
 	})
 
 	t.Run("a process that published nothing clears nothing", func(t *testing.T) {
 		t.Parallel()
 
-		orphans, unclaimed := d.OrphanConfigs(retained, Claims{}, allReady)
+		orphans, unclaimed, unready := d.OrphanConfigs(retained, Claims{}, allReady)
 		check(t, orphans)
 		check(t, unclaimed, client, live, stale, unpublished)
+		check(t, unready)
 	})
 }
 
@@ -303,7 +308,7 @@ func TestAnUnpublishedConfigIsNeverAnOrphan(t *testing.T) {
 		t.Fatal("setup: the payload no longer has this daemon's shape, " +
 			"so this test no longer measures the hard case")
 	}
-	orphans, unclaimed := d.OrphanConfigs(
+	orphans, unclaimed, _ := d.OrphanConfigs(
 		map[string][]byte{topic: payload},
 		Claims{Published: map[string]bool{"homeassistant/sensor/unifi_00005e005302/state/config": true}},
 		map[Class]bool{ClassDevice: true, ClassClient: true, ClassSite: true, ClassWLAN: true},

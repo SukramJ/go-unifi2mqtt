@@ -4,6 +4,7 @@
 package hass
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/SukramJ/go-hamqtt/publisher"
@@ -44,6 +45,24 @@ var publishedPlatforms = map[string]bool{
 	"device_tracker": true,
 	"sensor":         true,
 	"switch":         true,
+}
+
+// PublishedPlatforms names the Home Assistant platforms this daemon
+// emits, sorted.
+//
+// Exported so the rendered-surface tests can compare the closed set
+// [OwnsConfigTopic] judges by against the platforms the catalogue
+// actually produces, rather than a second spelling of the same five in
+// a fixture. A platform that drifts out of this set becomes invisible
+// to the sweep in both directions — never retracted and never reported
+// — and nothing on the wire would say so.
+func PublishedPlatforms() []string {
+	out := make([]string, 0, len(publishedPlatforms))
+	for p := range publishedPlatforms {
+		out = append(out, p)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // OwnsConfigTopic reports whether a retained discovery config topic has

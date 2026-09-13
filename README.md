@@ -168,9 +168,17 @@ bridging two different UniFi consoles to one broker under one
 `MQTT_TOPIC` emit byte-identical config topics, `unique_id`s,
 availability topics and state topics for the whole site plane, so
 "looks like mine" would delete the other console's entities. Those
-configs are logged as `coordinator.reconcile_unclaimed` with their
-topics, for an operator to clear with one empty retained publish each.
-`HASS_CLEANUP: false` disables the sweep entirely.
+configs are logged with their topics, in one of two lines. A config
+whose source reported on this run is logged as
+`coordinator.reconcile_unclaimed`, for an operator who runs no second
+console to clear with one empty retained publish each. A config whose
+source did **not** report — a console unreachable at start-up, rotated
+credentials, a controller mid-upgrade — is logged as a warning,
+`coordinator.reconcile_unclaimed_unready`, and is explicitly **not**
+safe to clear: it may be this daemon's own live entity, missing from the
+announced set only because nothing announced it yet. Clearing that one
+deletes a live entity and its history. `HASS_CLEANUP: false` disables the
+sweep entirely.
 
 One retained config per entity is a deliberate choice, not a leftover:
 Home Assistant also accepts a single "device bundle" config per device,

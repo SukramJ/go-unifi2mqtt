@@ -157,3 +157,51 @@ func TestForgetOnlyDropsMatchingPrefix(t *testing.T) {
 		t.Errorf("remaining topics = %v, want only d/bb/state", remaining)
 	}
 }
+
+// The claim list records what the broker accepted, never what was
+// merely attempted.
+//
+// published is the sweep's entire licence to delete a retained config,
+// so a publish the broker refused must not create one. This is
+// go-hamqtt's own discipline, stated there in the same words, and
+// before this change the two diverged: the topic was claimed before the
+// send and never released on failure. No failing case followed from it
+// — a wrongly claimed topic must also leave the announced set, which
+// only a successful publish does — but a licence to delete is not a
+// thing to hold on the strength of an argument that nothing enforces.
+func TestAConfigPublishTheBrokerRefusedIsNotClaimed(t *testing.T) {
+	t.Parallel()
+
+	broker := &fakeBroker{fail: errBroker}
+	p := newPublisher(broker, nil, 0, newFakeClock().now, slog.New(slog.DiscardHandler))
+	const topic = "homeassistant/sensor/unifi_00005e005301/state/config"
+
+	if err := p.publishConfig(t.Context(), topic, []byte(`{"unique_id":"unifi_00005e005301_state"}`)); err == nil {
+		t.Fatal("publishConfig succeeded against a broker that refuses everything")
+	}
+	if p.claims().Published[topic] {
+		t.Errorf("%s is claimed as published although the broker refused it; "+
+			"the sweep would take that as licence to retract whatever is retained there", topic)
+	}
+
+	// And the accepted one is claimed, so the assertion above is not
+	// simply "nothing is ever claimed".
+	broker.mu.Lock()
+	broker.fail = nil
+	broker.mu.Unlock()
+	if err := p.publishConfig(t.Context(), topic, []byte(`{"unique_id":"unifi_00005e005301_state"}`)); err != nil {
+		t.Fatalf("publishConfig: %v", err)
+	}
+	if !p.claims().Published[topic] {
+		t.Errorf("%s is not claimed although the broker accepted it; the sweep could "+
+			"never retract this daemon's own leftover", topic)
+	}
+	// A republish the dedup gate suppresses needs no record of its own —
+	// the send it was deduplicated against already made one.
+	if err := p.publishConfig(t.Context(), topic, []byte(`{"unique_id":"unifi_00005e005301_state"}`)); err != nil {
+		t.Fatalf("publishConfig (deduplicated): %v", err)
+	}
+	if !p.claims().Published[topic] {
+		t.Errorf("%s lost its claim to change detection", topic)
+	}
+}

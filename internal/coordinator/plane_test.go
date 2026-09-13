@@ -1235,3 +1235,94 @@ func withSampleClients(h *harness) {
 	}
 	h.src.mu.Unlock()
 }
+
+// The composition root states the legacy topic form, and it is the one
+// the installed fleet is actually on.
+//
+// [Coordinator.RuntimeConfig] is a method rather than a literal so a
+// daemon and its tests cannot be configured differently — and then no
+// test read it. Dropping LegacyEntityTopics from it survived the whole
+// suite: the field has no live consumer yet, so nothing saw it go. Its
+// siblings are all covered behaviourally; this one needs an assertion
+// at the use site, because TestTheLegacyConfigTopicFormIsTheFiveSegmentOne
+// tests the function and never its statement here.
+//
+// Zero consequence today. At step 6 it is the input whose loss
+// publishes the device bundle into a tree that still holds all 315
+// per-entity configs.
+func TestTheRuntimeConfigStatesTheLegacyTopicForm(t *testing.T) {
+	t.Parallel()
+
+	c := New(Deps{
+		Cfg:    testConfig(),
+		Site:   testSite(),
+		Source: newFakeSource(),
+		MQTT:   &fakeBroker{},
+		Logger: slog.New(slog.DiscardHandler),
+		Now:    newFakeClock().now,
+	})
+	t.Cleanup(c.Close)
+
+	forms := c.RuntimeConfig(slog.New(slog.DiscardHandler)).LegacyEntityTopics
+	if len(forms) != 1 {
+		t.Fatalf("the runtime is built with %d legacy topic forms, want exactly 1: "+
+			"the field REPLACES the library default rather than extending it, so an "+
+			"empty one is not 'the default' but 'no retraction at all'", len(forms))
+	}
+	got := forms[0](hapub.LegacyEntity{
+		Prefix:   "homeassistant",
+		Platform: "sensor",
+		NodeID:   "unifi_00005e005301",
+		ObjectID: "state",
+	})
+	const want = "homeassistant/sensor/unifi_00005e005301/state/config"
+	if got != want {
+		t.Errorf("the stated form renders %q, want %q — the five-segment form measured "+
+			"at 315 of 315", got, want)
+	}
+}
+
+// The breaker bypass is exactly one topic wide.
+//
+// TestTheAvailabilityMarkerDoesNotGoThroughTheBreaker proves the marker
+// goes around it, but its non-vacuity half publishes through
+// statePlaneTransport, which resolves the outbound publisher itself and
+// never calls publisherFor — so widening the bypass to "everything when
+// a direct publisher exists" left that test green. This one drives the
+// same transport the planes ride, which is the one that asks.
+func TestOnlyTheAvailabilityMarkerBypassesTheBreaker(t *testing.T) {
+	t.Parallel()
+
+	direct := &fakeBroker{}
+	gated := &fakeBroker{fail: mqtt.ErrCircuitOpen}
+	c := New(Deps{
+		Cfg:    testConfig(),
+		Site:   testSite(),
+		Source: newFakeSource(),
+		MQTT:   gated,
+		Logger: slog.New(slog.DiscardHandler),
+		Now:    newFakeClock().now,
+	})
+	t.Cleanup(c.Close)
+	c.SetDirectPublisher(direct)
+	ctx := t.Context()
+
+	tr := c.planeTransport()
+	if err := tr.Publish(ctx, c.AvailabilityTopic(), []byte(payloadOnline), 1, true); err != nil {
+		t.Errorf("the availability marker was refused by the open circuit: %v", err)
+	}
+	// Anything else on the same transport must ride the breaker. A
+	// bypass that keyed on the direct publisher's existence rather than
+	// on the topic would let every plane past it the moment one is set.
+	const other = "unifi/default/device/aa/state"
+	if err := tr.Publish(ctx, other, []byte("ONLINE"), 0, true); !errors.Is(err, mqtt.ErrCircuitOpen) {
+		t.Errorf("a state publish through the plane transport bypassed the breaker: %v", err)
+	}
+	if _, ok := direct.latest(other); ok {
+		t.Errorf("%s reached the direct publisher; only the availability marker may", other)
+	}
+	if direct.total() != 1 {
+		t.Errorf("the direct publisher carried %d messages, want only the availability marker",
+			direct.total())
+	}
+}

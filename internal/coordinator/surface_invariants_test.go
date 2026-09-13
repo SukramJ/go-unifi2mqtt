@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	hapub "github.com/SukramJ/go-hamqtt/publisher"
 	hatopic "github.com/SukramJ/go-hamqtt/topic"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
@@ -1092,4 +1093,52 @@ func boolSet(m map[string]int) map[string]bool {
 		out[k] = true
 	}
 	return out
+}
+
+// The sweep's platform set and the catalogue's platforms are the same
+// five, compared rather than spelled twice.
+//
+// [hass.OwnsConfigTopic] judges a retained config by a closed map of
+// platforms; TestSurfaceCensus states the same five again as a fixture
+// histogram. Nothing compared them, so dropping one from the map
+// survived the suite. A platform that falls out of it becomes invisible
+// to the sweep in *both* directions — its configs are never retracted
+// and never even reported — and the only evidence would be entities
+// that quietly accumulate on the broker.
+//
+// The two sibling tests cannot see this: TestOwnsConfigTopicIsNarrow
+// uses synthetic topics and TestReportOnlySweepOverTheRealFleet builds
+// its own ten-topic tree. This runs the real predicate over the real
+// fleet.
+func TestTheSweepPredicateOwnsEveryConfigThisDaemonPublishes(t *testing.T) {
+	t.Parallel()
+
+	const prefix = "homeassistant"
+	seen := map[string]bool{}
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			parsed, ok := hapub.ParseConfigTopic(prefix, cfg.Topic)
+			if !ok {
+				t.Errorf("%s: %s does not parse as a discovery config topic", s.name, cfg.Topic)
+				continue
+			}
+			seen[parsed.Platform] = true
+			if !hass.OwnsConfigTopic(parsed) {
+				t.Errorf("%s: the sweep does not recognise %s as this daemon's own. "+
+					"It would neither be retracted nor reported — an entity that "+
+					"accumulates silently on the broker.", s.name, cfg.Topic)
+			}
+		}
+	}
+
+	// And the other direction: a platform in the closed set that the
+	// catalogue no longer produces widens the window over configs that
+	// are not ours to judge.
+	got := slices.Sorted(keysOf(seen))
+	want := hass.PublishedPlatforms()
+	if !slices.Equal(got, want) {
+		t.Errorf("the rendered surface covers platforms %v, while hass.PublishedPlatforms "+
+			"declares %v; the sweep and the catalogue disagree about what this daemon emits",
+			got, want)
+	}
 }

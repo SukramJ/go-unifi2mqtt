@@ -116,17 +116,37 @@ func (c *Coordinator) reconcileOrphans(ctx context.Context) error {
 		return nil
 	}
 
-	orphans, unclaimed := c.hass.OrphanConfigs(retained, c.pub.claims(), ready)
+	orphans, unclaimed, unready := c.hass.OrphanConfigs(retained, c.pub.claims(), ready)
 	if len(unclaimed) > 0 {
 		// Reported, never cleared. Each of these either belongs to an
 		// earlier run of this daemon or is a second console's live
-		// entity, and nothing on the wire tells the two apart.
+		// entity, and nothing on the wire tells the two apart. Their
+		// class has reported, so "this run does not announce it" is a
+		// statement about the entity rather than about the source.
 		c.log.Info("coordinator.reconcile_unclaimed",
 			slog.Int("count", len(unclaimed)),
 			slog.Any("topics", unclaimed),
-			slog.String("action", "left alone: this process did not publish them. "+
+			slog.String("action", "left alone: this process did not publish them, "+
+				"and the source that would have is up to date. "+
 				"If no second UniFi console shares this broker and MQTT root, "+
 				"clear them by publishing an empty retained payload to each"))
+	}
+	if len(unready) > 0 {
+		// The same shape, the opposite advice. These belong to classes
+		// that never reported in this run, so their absence from the
+		// announced set may mean nothing more than that their source is
+		// down: with the classic layer failing, every site-health config
+		// this daemon itself publishes lands here. Telling an operator
+		// they are safe to clear is telling them to delete their own live
+		// entities, and their history with them.
+		c.log.Warn("coordinator.reconcile_unclaimed_unready",
+			slog.Int("count", len(unready)),
+			slog.Any("topics", unready),
+			slog.Any("silent_classes", classNames(unreadyClasses(ready))),
+			slog.String("action", "left alone and NOT safe to clear: the source that "+
+				"would announce them has not reported in this run, so these may be "+
+				"this daemon's own live entities. Fix the source, restart, and read "+
+				"coordinator.reconcile_unclaimed on a run where every source reported"))
 	}
 	if len(orphans) == 0 {
 		c.log.Info("coordinator.reconcile_clean",
@@ -183,9 +203,19 @@ func (c *Coordinator) awaitReady(ctx context.Context) (ready map[hass.Class]bool
 // history — the one failure this whole file exists to avoid.
 //
 // A disabled source is ready immediately, and that is deliberate rather
-// than an oversight: turning CLIENTS.ENABLE off is a decision that
-// those entities should go away, so the configs left behind are exactly
-// what the sweep is for.
+// than an oversight: turning CLIENTS.ENABLE off is a decision that its
+// entities should go away, so its leftovers are the sweep's business
+// rather than something to wait on.
+//
+// What that readiness buys is narrower than it was before the claim
+// list. Ready or not, the sweep only ever retracts a topic *this
+// process published*, and a process that runs with CLIENTS.ENABLE off
+// publishes no client configs at all — so the configs an earlier run
+// left behind are not in Published and are reported as unclaimed rather
+// than cleared. Readiness decides which of the two reports a config
+// lands in, and therefore what the operator is told about it; it no
+// longer decides whether a disabled source's leftovers get swept,
+// because nothing does.
 func (c *Coordinator) readyClasses() map[hass.Class]bool {
 	ready := make(map[hass.Class]bool, 4)
 	if c.readyDevices.Load() {
@@ -211,6 +241,20 @@ func (c *Coordinator) readyClasses() map[hass.Class]bool {
 func allReady(ready map[hass.Class]bool) bool {
 	return ready[hass.ClassDevice] && ready[hass.ClassWLAN] &&
 		ready[hass.ClassClient] && ready[hass.ClassSite]
+}
+
+// unreadyClasses is the complement of ready over the four classes, so
+// the report of the configs a silent source left behind can name which
+// source that was. An operator reading "site" here knows the classic
+// layer is what to fix.
+func unreadyClasses(ready map[hass.Class]bool) map[hass.Class]bool {
+	out := make(map[hass.Class]bool, 4)
+	for _, cl := range []hass.Class{hass.ClassDevice, hass.ClassClient, hass.ClassSite, hass.ClassWLAN} {
+		if !ready[cl] {
+			out[cl] = true
+		}
+	}
+	return out
 }
 
 // classNames lists the ready classes for a log line.

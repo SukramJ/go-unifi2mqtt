@@ -103,8 +103,13 @@ type publisher struct {
 	// reconnect would make every entity look orphaned.
 	configs map[string]bool
 	// published is every discovery config topic this process has
-	// published since it started. Unlike configs it never shrinks: a
-	// retracted topic stays in it.
+	// successfully published since it started. Unlike configs it never
+	// shrinks: a retracted topic stays in it, which is what lets a
+	// retraction that did not stick be retried.
+	//
+	// A publish the broker refused is not in it. The set is the sweep's
+	// licence to delete a retained config, so it records what the broker
+	// accepted and never what was merely attempted — see publishConfig.
 	//
 	// This is the sweep's entire ownership evidence, and the reason it
 	// is kept at all is that nothing in a published payload can supply
@@ -263,11 +268,6 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 		// would then read it back off the broker as an orphan and delete
 		// a live entity.
 		p.configs[topic] = true
-		// Recorded here too, and never removed. configs answers "is this
-		// a live entity of ours"; published answers "did this process
-		// ever put that topic on the broker", which is what entitles the
-		// sweep to retract it later.
-		p.published[topic] = true
 		prev, known := p.lastConfig[topic]
 		skip := known && bytes.Equal(prev.payload, payload) && !p.staleLocked(prev.at, now)
 		p.mu.Unlock()
@@ -288,6 +288,18 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 
 	p.mu.Lock()
 	p.lastConfig[topic] = entry{payload: payload, at: now}
+	// Recorded only now, and never removed: what the broker accepted,
+	// never what was merely attempted. configs answers "is this a live
+	// entity of ours" and is recorded before the send, because change
+	// detection suppresses the send while the entity stays claimed;
+	// published answers "did this process ever put that topic on the
+	// broker", which is the sweep's sole entitlement to retract it, so a
+	// publish that returned an error must not create one. A skipped
+	// republish needs no record here — the send it was deduplicated
+	// against is the one that made it.
+	//
+	// This is go-hamqtt's discipline, stated there in the same words.
+	p.published[topic] = true
 	p.mu.Unlock()
 	return nil
 }

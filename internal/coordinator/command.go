@@ -123,6 +123,11 @@ var ErrNoSubscriber = errors.New("coordinator: no MQTT subscriber configured")
 // drives that refusal against a deliberately overlapping seventh so the
 // pass cannot be vacuous.
 //
+// Disjointness is a property of these six and nothing wider. This
+// daemon holds two other subscriptions — Home Assistant's status topic
+// and the sweep's transient `<prefix>/#` window — and those two do
+// overlap each other; see watchHomeAssistant for why that is benign.
+//
 // It is also used as [hapub.StateConfig.CommandFilters], which refuses
 // a state publish that would land inside this process's own
 // subscription. That guard is inert today and the inertness is
@@ -172,9 +177,21 @@ func (c *Coordinator) subscribeCommands(ctx context.Context) error {
 	}
 	// Checked here rather than trusted: the state plane refuses a
 	// colliding publish one message at a time, while this refuses the
-	// boot. A self-echo is a property of the topic layout and the
-	// catalogue, so it cannot be transient — it is either always wrong
-	// or never.
+	// boot.
+	//
+	// What it gets to check is narrower than "every published state
+	// topic", and the gap is worth naming. subscribeCommands runs before
+	// the device, stats, clients and health loops do, so the published
+	// set it hands over holds only what has gone out by then — the
+	// `client/<key>/blocked` state topic, nearest neighbour of the
+	// `client/+/blocked/set` filter, is typically not in it yet. The
+	// static guarantee is the one below it: all six filters end in a
+	// command suffix (`set`, `restart`, `authorize`, …) that no state
+	// topic this catalogue renders carries, which is what makes a
+	// self-echo impossible rather than merely unobserved. This check is
+	// the cheap second opinion over whatever happens to be published at
+	// boot, and TestNothingThisDaemonPublishesIsAlsoSubscribed is the
+	// one that runs over the whole rendered surface.
 	if err := router.CheckDisjoint(c.knownStateTopics()...); err != nil {
 		return err
 	}

@@ -14,6 +14,7 @@ import (
 	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
+	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 )
 
 // fakeSubscriber captures the handler so tests can deliver a birth
@@ -349,5 +350,55 @@ func TestDiscoveryPayloadIsValidJSON(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no discovery payloads to check")
+	}
+}
+
+// A broker reconnect re-opens the discovery latches and leaves the
+// readiness latch alone.
+//
+// The two look alike and mean opposite things. healthDiscovered is "did
+// we announce the site-health configs on this connection", and a
+// reconnect must clear it or a broker that came back without its
+// retained store never gets them again. healthAnnounced is "has the
+// classic layer ever answered", which is what the orphan sweep reads to
+// decide whether the site class may be judged at all — and a reconnect
+// says nothing about the console. Clearing that one too would un-ready
+// the sweep's own signal on every reconnect, which is precisely the
+// split ADR 0070 phase 9 step 5 introduced.
+//
+// The mutant's direction is safe — the sweep does less — which is why
+// nothing else catches it.
+func TestAReconnectReopensDiscoveryWithoutUnreadyingTheSweep(t *testing.T) {
+	t.Parallel()
+
+	cfg := hassConfig(t)
+	cfg.ClassicEnable = true
+	h := newHarness(t, cfg)
+
+	h.c.healthDiscovered.Store(true)
+	h.c.healthAnnounced.Store(true)
+	h.c.mu.Lock()
+	h.c.clientsDiscovered["aabbccddeeff"] = true
+	h.c.mu.Unlock()
+
+	h.c.rediscoverOnReconnect()
+
+	if h.c.healthDiscovered.Load() {
+		t.Error("the health discovery latch survived a reconnect; a broker that came " +
+			"back without its retained store would never see those configs again")
+	}
+	h.c.mu.Lock()
+	n := len(h.c.clientsDiscovered)
+	h.c.mu.Unlock()
+	if n != 0 {
+		t.Errorf("%d client discovery latches survived a reconnect", n)
+	}
+	if !h.c.healthAnnounced.Load() {
+		t.Fatal("a reconnect cleared healthAnnounced: the sweep would read site health " +
+			"as a source that never reported, on every reconnect, although the classic " +
+			"layer has answered")
+	}
+	if !h.c.readyClasses()[hass.ClassSite] {
+		t.Error("site health is not ready after a reconnect although the classic layer answered")
 	}
 }

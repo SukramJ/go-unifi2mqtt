@@ -52,9 +52,18 @@ import (
 // It exists because `QoS(cfg.MQTT.QoS)` reads correctly and is wrong
 // for exactly one input — 0 is [hapub.QoSUnset], which every
 // constructor resolves to QoS 1. This bridge exposes no operator knob
-// for QoS at all: the three values below are compile-time constants,
-// each stated as a sentinel and each read off a recorded transport
-// call by TestEveryPlanePublishReachesTheWireAtTheStatedQoS.
+// for QoS at all: the values below are compile-time constants, each
+// stated as a sentinel.
+//
+// Only the *publish* levels are measured. StateQoS and the discovery
+// and availability levels are read off recorded transport calls by
+// TestEveryPlanePublishReachesTheWireAtTheStatedQoS. CommandQoS is not
+// among them and cannot be: it is the QoS of a SUBSCRIBE, carried in
+// the subscription rather than in any publish, and the transports those
+// tests record are publish paths. No test on this bridge records a
+// subscribe's QoS anywhere. Its provenance is the value subscribeCommands
+// passed before this step, stated so the field reads as a decision
+// rather than a default — not as a measurement.
 const (
 	// StateQoS is every entity state, attributes and `bridge/info`
 	// publish: QoS 0, retained. Preservation, not endorsement — the
