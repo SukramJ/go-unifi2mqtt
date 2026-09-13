@@ -2040,6 +2040,342 @@ alone.
 
 ---
 
+## Step 5 outcome — the state, command, birth/LWT and sweep planes
+
+**Added after step 4b.** Three of this daemon's four planes now publish
+through `github.com/SukramJ/go-hamqtt`'s `publisher` package. Discovery
+configs still go out per entity through this package's own builders; the
+device bundle is step 6.
+
+### The headline
+
+| | |
+| --- | ---: |
+| Pinned scenarios | **5**, all held |
+| SHA-256 digests moved | **0** |
+| Golden files regenerated | **0** (`-update-surface-golden` never passed) |
+| Published topics added, removed or renamed | **0** |
+| QoS or retain flags moved | **0** |
+| Subscriptions that changed | **1** — the sweep window |
+
+`git diff origin/main -- internal/coordinator/testdata` is empty, and
+`TestPublishQoSAndRetain` still reads 315 configs at QoS 1, 5
+availability markers at QoS 1 and 317 state publishes at QoS 0 **off
+the transport call**. The goldens are not passive here: six of the
+mutations below move a published byte and each is caught by all five.
+
+### What moved
+
+| Plane | Before | Now |
+| --- | --- | --- |
+| Entity state, attributes, `bridge/info` | `publisher.publish` → `mqtt.Publish(…, QoS0, true)` | `publisher.StatePublisher` at `StateQoS` |
+| A retained state clear | an empty payload through the same path | `StatePublisher.Evict` |
+| Birth, death and the Last Will | three literals — `publishRaw` twice and a `mqtt.Will` in `main` | `publisher.Runtime.AnnounceOnline` / `AnnounceOffline` / `Will` |
+| The command sub-tree | six `Subscribe` calls plus a hand-written retain check | `publisher.CommandRouter` |
+| The orphan snapshot | a hand-rolled subscribe/collect/unsubscribe | `publisher.Runtime.Sweep`, `ReportOnly` |
+| Discovery configs | `publisher.publishConfig` | unchanged — step 6 |
+
+### Every QoS is stated, and the fourth field has no site
+
+`publisher.QoS`'s zero value is `QoSUnset` and every runtime type in
+that package resolves it to **QoS 1**. This is the one bridge in the
+programme that does not publish everything at one level, so an omitted
+field would not have been "unchanged": it would have moved 317 messages
+per pinned run onto a different delivery guarantee, with a broker
+capture as the only evidence ([F9](#f9)).
+
+| Constant | Field | Wire |
+| --- | --- | ---: |
+| `StateQoS` | `publisher.StateConfig.QoS` | 0 |
+| `AvailabilityQoS` | `publisher.Config.QoS` — the marker, the will and the sweep window | 1 |
+| `CommandQoS` | `publisher.CommandConfig.QoS` | 1 |
+
+**`publisher.AvailabilityConfig.QoS` has no construction site on this
+bridge, and that is recorded rather than left as an omission.** This
+daemon builds no `AvailabilityPublisher`: its bridge level is the one
+retained marker `Runtime` owns, and its device level is not a dedicated
+availability topic at all but the object's own state topic read through
+a `value_template` ([F8](#f8)) — which the state plane already writes. A
+second writer there would fight it. go-daikin2mqtt recorded the same
+absence at its own step 5 for a different structural reason.
+
+Verified two ways, and the second is the load-bearing one.
+`TestQoSIsStatedNotDefaulted` asserts the sentinels resolve to the
+intended wire byte — it is the only thing that catches `CommandQoS`,
+which governs a SUBSCRIBE and moves no published byte.
+`TestEveryPlanePublishReachesTheWireAtTheStatedQoS` reads the QoS off
+the recorded transport call, because a test that asserts a constant
+passes even when the constant is never reached.
+
+### The filters cannot overlap, and that is proved rather than argued
+
+A broker sends one PUBLISH copy per matching subscription, and a client
+that re-matches each arriving copy against its whole filter list then
+runs every matching handler per copy — so two overlapping filters
+power-cycle a port twice per press with nothing in any log. openccu-loom
+measured exactly that against Mosquitto 2.1.2.
+
+All six permanent command filters are registered on one
+`publisher.CommandRouter`, whose `Handle` refuses an ambiguous pair
+outright. `TestSubscriptionFiltersCannotOverlap` registers the six, then
+registers a deliberately overlapping seventh and requires
+`ErrAmbiguousRoutes`, so the pass cannot be vacuous. `CommandRouter.Attributed()`
+is false: the router accepted no overlap at all.
+
+**This bridge is not go-daikin2mqtt's case.** Its two discovery filters
+overlapped and were serialised; here there is only one transient
+discovery filter left, the sweep window, and it lives in another tree
+entirely — so no command handler can be reached twice however wide it
+is. The Home Assistant birth subscription (`<prefix>/status`) does sit
+inside the sweep's `<prefix>/#`, and that overlap is harmless for the
+reason that decides it: the sweep's handler discards anything that is
+not a parseable config topic, and neither subscription is in the command
+tree.
+
+Separately, `StateConfig.CommandFilters` is stated and
+`CommandRouter.CheckDisjoint` runs over every published state topic at
+boot — **failing the boot**, not warning, because a self-echo is a
+property of the topic layout and the catalogue and therefore cannot be
+transient. Both are usable here, unlike on go-homeconnect2mqtt whose
+command filter is a whole device sub-tree; both are inert today and the
+inertness is asserted rather than assumed.
+
+### The sweep — the claim gate survived the move, because it never entered the library
+
+`publisher.Runtime.Sweep` **cannot** express "only what this process
+published", and the reason is worth stating plainly: its retracting pass
+clears every *owned* topic the window saw that the runtime does **not**
+claim. That is the exact inverse of this bridge's rule, which may clear
+only a topic this process **did** publish and has since given up
+(`hass.Claims`). The runtime publishes no discovery config at step 5, so
+its claim set is empty and an armed pass would judge this daemon's
+entire retained fleet — and a neighbouring console's — an orphan, once
+per boot.
+
+So the pass is `ReportOnly: true`. `Owns` is `hass.OwnsConfigTopic` (the
+topic half, which scopes the window), `Inspect` collects the retained
+bodies, and the judgement stays exactly where it was: `OrphanConfigs`
+over the claim list, with `IsOwnConfig` as the shape half.
+`SweepResult.Unclaimed` is deliberately unread — it is every owned topic
+minus an empty claim set, which is the list that cleared 29 live configs
+in a sibling repo when it was mistaken for one.
+
+**Nothing weakened.** `publisher.published` lives in this package and
+survives the runtime rebuild, so the gate is structurally independent of
+the plane that moved. `TestReconcileRetractsOnlyWhatThisProcessPublished`,
+`TestOwnershipCannotSeparateTwoConsolesOnOneRoot` and
+`TestAStaggeredUpgradeDoesNotDeleteTheSiblingsFleet` are unchanged and
+still pass, and they drive the sweep rather than asking the predicate.
+
+**The one wire-visible change of this step** is the window itself:
+`<prefix>/#` where this daemon subscribed `<prefix>/+/+/+/config`. One
+parser now sees all three discovery topic forms instead of a wildcard
+shape that matches one. For the few seconds it is open this daemon
+*receives* every retained message under the discovery prefix; it acts on
+none that both predicates claim, and the pass retracts nothing at all.
+The widening is in what it reads, never in what it writes. The same
+single value moved in go-mtec2mqtt's and go-homeconnect2mqtt's
+equivalent steps, for the same reason.
+
+### The `ReportOnly` fan-out
+
+`TestReportOnlySweepOverTheRealFleet`, over a hostile retained tree:
+
+```
+ReportOnly over the real fleet: 10 retained configs offered, 4 owned by topic,
+  2 claimed by this process (1 still announced), 1 retracted:
+  [homeassistant/sensor/unifi_00005e005301/retired/config]
+```
+
+Nine survivors, **eight distinct reasons** — the fan-out is the point,
+because a pass that spared everything for one reason has only been shown
+to work in one direction:
+
+| retained topic | verdict | declined by |
+| --- | --- | --- |
+| `sensor/unifi_00005e005301/retired/config` | **retract** | ours, published by this process, no longer announced |
+| `sensor/unifi_00005e005301/state/config` | keep | claimed: this process announces it right now |
+| `switch/unifi_site_default/wlan_other-console/config` | keep | **not published by this process** — another console's live entity |
+| `sensor/zigbee2mqtt_bridge/state/config` | keep | another integration's namespace |
+| `binary_sensor/tasmota_ABC/status/config` | keep | another integration's namespace |
+| `device/unifi_00005e005301/config` | keep | the device-document form |
+| `sensor/unifi_00005e005301_state/config` | keep | the node-id-less four-segment form |
+| `sensor/unifi_00005e005399/state/config` | keep | a device of ours this process never published |
+| `climate/unifi_00005e005301/thermostat/config` | keep | a platform this daemon never emits |
+| `sensor/unifi_00005e005301/gone/config` | keep | already empty; retracting it again would be a message for nothing |
+
+Six of the ten never reached a payload check at all — they were declined
+by the topic predicate. `Inspected` is logged beside the verdict,
+because a window that saw none of this daemon's configs and one that saw
+them all and correctly found nothing orphaned both read as "0 cleared"
+otherwise.
+
+### Step 6's known mistake is now unavailable
+
+`publisher.Runtime`'s memo of what it has superseded, declared and
+announced is correct **per connection** and wrong per process. A QoS 0
+retraction to a dying socket returns nil — that only means `Write`+`Flush`
+returned — the memo records it done, and an in-process retry after the
+reconnect re-sends **zero** retractions and publishes anyway. At step 6
+that is one device bundle landing in a tree still holding every
+per-entity config, which Home Assistant refuses with a single `WARNING
+[mqtt.entity] Received a conflicting MQTT discovery message` and no
+entities. go-mtec2mqtt shipped that shape.
+
+**The answer is a factory, not an instance.** `Coordinator.newRuntime`
+rebuilds the whole `publisher.Runtime` at the head of every (re)connect
+and closes the old one; it is held in an `atomic.Pointer`.
+`TestOnConnectRebuildsTheDiscoveryRuntime` asserts the **object
+identity** changed rather than that a field was reset, so a memo the
+library adds later is covered the day it is added. What the rebuild is
+worth is pinned by `TestTheDiscoveryRuntimeMemoDoesNotSurviveAConnection`,
+which drives the **defect beside the fix** as two rows of one table,
+following go-homeconnect2mqtt's #45: the second row asserts that without
+the rebuild the second publish is suppressed, and it is what turns red
+if the rebuild ever goes away.
+
+### F16 (new) — the reconnect gate was open and nobody walked through it · **high**
+
+Found by asking go-homeconnect2mqtt's question of this tree. `OnConnect`
+cleared the change-detection memory, so the dedup gate opened on every
+(re)connect — and three of the four discovery classes would never have
+come back through it. This daemon announces client configs on a client's
+**first sighting** and the site-health configs on the classic layer's
+**first answer**, neither of which happens twice while the daemon runs,
+so a broker that came back without its retained store (a restart without
+persistence, a failover to a fresh node) kept those entities missing
+until the daemon itself was restarted. The device and SSID configs would
+have come back, but only on the static loop's **hour-long** cadence.
+
+Fixed: `rediscoverOnReconnect` re-opens the two one-shot latches and
+nudges the static loop. The health *readiness* signal the sweep gates on
+(`healthAnnounced`) is deliberately split from the *announce* latch
+(`healthDiscovered`) and only ever moves forward, so re-opening the
+latter cannot un-ready a class the sweep is waiting on.
+`TestAReconnectRepublishesEveryClassOfConfig` drives a full cycle,
+empties the broker, reconnects and requires **every** config topic back
+— with a fixture guard that fails if any class is absent from it.
+
+### F17 (new) — birth and death went silently behind the circuit breaker · **high**
+
+`mqtt.Breaker` counts `ErrNotConnected` as a failure, so a connection
+drop is exactly what opens the circuit: a poll cycle publishing hundreds
+of topics against a dropped link trips it in five. The first thing a
+reconnected daemon then does is announce itself online — through the
+breaker, which fails fast with `ErrCircuitOpen`. Nothing retries it, so
+the retained marker stays at the `offline` the broker's Last Will just
+wrote, and **every entity of the fleet sits unavailable under
+`availability_mode: "all"`** while the daemon is demonstrably connected
+and publishing state nobody displays. A self-locking circle. At shutdown
+it is worse: a graceful DISCONNECT suppresses the will, so a marker the
+breaker refused leaves a retained `online` standing forever.
+
+Fixed by an asymmetry, and it is the same one this file already carried
+for subscriptions: the bridge availability marker publishes through the
+raw client, everything else through the breaker. The breaker exists for
+volume — several hundred retained topics per cycle, each otherwise
+stalling a full `AckTimeout` — and birth and death are one publish each,
+and the two an operator cannot afford to lose.
+`TestTheAvailabilityMarkerDoesNotGoThroughTheBreaker` drives it against
+a **deliberately tripped** publisher, which is the state a reconnect
+actually finds, and asserts in the same test that a state publish still
+rides the breaker so the bypass is not a blanket one.
+
+go-homeconnect2mqtt found this at its own step 5, and found it again one
+line away at step 6. It is here as a named function for that reason.
+
+### Mutation proof — 40 applied, 37 caught, 3 equivalent
+
+One at a time against a **filesystem copy** of a committed tree (`cp -a`,
+never `git checkout --`), whole suite each run. Nine mutations survived
+the first pass, and **every one of them was a genuine hole, not an
+equivalent**; each was closed in its own commit and the mutation
+re-applied against the new assertion.
+
+| # | Mutation | Failing tests |
+| ---: | --- | --- |
+| M1 | `StateQoS` left `QoSUnset` | 5 |
+| M2 | `StateQoS` → QoS 1 | 5 |
+| M3 | `AvailabilityQoS` → QoS 0 | 6 |
+| **M4** | `CommandQoS` → QoS 0 | **1 — moves no published byte** |
+| **M5** | `CommandQoS` left `QoSUnset` | **1 — same, and the wire byte is unchanged** |
+| M6 | the runtime is not rebuilt on connect | 2 |
+| M7 | the reconnect does not re-open the dedup gate | 3 |
+| M8 | an empty payload is published rather than evicted | 7 |
+| M9 | the eviction loses its dedup memo | 1 |
+| M10 | `forget` no longer forgets the state plane | 2 |
+| M11 | the forced republish never forgets the gate | 3 |
+| M12 | the sweep is armed rather than report-only | 5 |
+| **M13** | `Owns` widened to everything | **0 first — a real hole**, now `TestTheSweepWindowCollectsOnlyThisDaemonsOwnShape` |
+| M14 | `OwnsConfigTopic` drops the `unifi_` namespace guard | 3 |
+| M15 | `OwnsConfigTopic` drops the platform guard | 3 |
+| **M16** | `OwnsConfigTopic` accepts a bundle | **0 — equivalent**, subsumed by the platform guard and now asserted |
+| M17 | `ConfigTopicFor` renders the object-id form | 3 |
+| M18 | `LegacyConfigTopicForms` → `LegacyTopicByUniqueID` | 1 |
+| M19 | the availability marker goes through the breaker | 1 |
+| M20 | `bridgeWill` drops the retain flag | 1 |
+| **M21** | `bridgeWill` writes its own `"offline"` literal | **0 first** — the probe was made of the real strings; now a sentinel |
+| M21c | `bridgeWill` writes its own topic literal | 1 |
+| M22 | the reconnect does not re-drive discovery | 1 |
+| M23 | the health announce latch is not re-opened | 1 |
+| M24 | the client announce latches are not cleared | 1 |
+| **M25** | the router delivers retained commands | **0 first** — masked by `onCommand`'s own check; now `TestTheRouterItselfDropsARetainedDelivery` |
+| M26 | a command filter widened to `device/+/cmd/#` | 2 |
+| **M27** | `CheckDisjoint`'s verdict is discarded | **0 first** — now `TestSubscribeCommandsFailsTheBootOnASelfEcho` |
+| M28 | `StateConfig.CommandFilters` dropped | 1 |
+| M29 | `AnnounceOffline` announces online | 1 |
+| M30 | `Manufacturer` `Ubiquiti` → `Ubiquity` | 4 |
+| **M31** | the router's routes are registered but never started | **0 first** — now `TestSubscribeCommandsStartsTheRouter` |
+| **M32** | `Config.Layout` replaced by an **equivalent** literal | **0 — equivalent**; `TestTheRuntimeDerivesItsStatusTopicFromTheLayout` asserts the derivation |
+| M32b | `Config.Layout` replaced by a **wrong** literal (mtec's `<prefix>/status/lwt`) | 10 |
+| M33 | the forced-republish clock advances on a suppressed publish | 2 |
+| **M34** | the reconnect does not nudge the static loop | **0 first** — now asserted on the nudge channel |
+| **M35** | `bridge/info` publishes straight to the client again | **0 first** — now `TestEveryStateTopicGoesThroughTheDedupGate` |
+| **M36** | `Inspect` drops its empty-topic guard | **0 — equivalent**, subsumed by `Owns`' three non-empty guards |
+| M37 | the reconnect clears the sweep's claim list | 1 |
+| **M38** | a plane subscribe silently succeeds without a subscriber | **0 first** — now `TestThePlanesRefuseToSubscribeWithoutASubscriber` |
+| M39 | `Config.Prefix` dropped (the library default is the same string) | *see M40* |
+| **M40** | `Config.Prefix` dropped | **0 first** — the default happens to equal every test's `HASS_BASE_TOPIC`; now `TestTheRuntimeIsScopedToTheConfiguredDiscoveryPrefix` |
+
+Five mutations are caught by exactly one assertion (M4, M5, M9, M18,
+M19), which is the measure that matters: those five move no published
+byte, so no golden could ever catch one — they are the reason this step
+has assertions of its own at all.
+
+### The blind spot, re-checked after the change
+
+Unchanged, and re-measured the only honest way. `Manufacturer`
+`Ubiquiti → Ubiquity` with **the five goldens regenerated** is caught by
+`TestPublishedSurfaceDigests` and by **nothing else** — the same result
+step 4 recorded as M22 and step 4b as M10. Both the shipped builders and
+the rendering path read this package's own catalogue, so a catalogue
+mutation moves both sides of every byte comparison together, and the
+five SHA-256 literals held outside the fixtures are the last line of
+defence. They are exactly where they were.
+
+### What this step deliberately does not do
+
+- **No golden regenerated, no digest touched.** The five literals are
+  byte-identical to step 4b's.
+- **No bundle.** `Runtime.PublishBundle` is not called and
+  `discovery.Bundle` is not constructed on any publishing path. Step 6.
+- **Discovery still publishes per entity, through this package's own
+  builders.** Only the plumbing the bundle step depends on moved.
+- **`Runtime.WatchBirth` was not adopted.** This daemon subscribes
+  `<prefix>/status` at QoS 1 and re-announces after a configurable grace
+  period, because Home Assistant publishes `online` before its MQTT
+  integration can process discovery; `WatchBirth` subscribes at the
+  runtime's QoS and replays immediately, and the replay would be of
+  cached bytes a freshly rebuilt runtime does not have.
+- **The sweep's judgement did not move into the library.** See above:
+  `Runtime.Sweep`'s ownership rule is the inverse of this bridge's, and
+  the claim list stays the whole of the evidence.
+- **[F6](#f6) stays decided-nothing.** Two consoles on one broker still
+  cannot be told apart by anything in a payload, and nothing here needed
+  them to be.
+
+---
+
 ## Sequencing — the rest of phase 9
 
 Ordered so each step de-risks the next, following the shape phases 5–8
