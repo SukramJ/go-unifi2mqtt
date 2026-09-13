@@ -63,6 +63,13 @@ MQTT_PORT: 1883 # 1883 plain · 8883 when MQTT_SSL is true
 MQTT_LOGIN: "" # (override: env UNIFI_MQTT_LOGIN)
 MQTT_PASSWORD: "" # (override: env UNIFI_MQTT_PASSWORD)
 MQTT_TOPIC: unifi # Root of the published topic tree
+# The identifier this daemon presents to the broker. Unset means
+# "unifi2mqtt-" + MQTT_TOPIC, which is what every installation presented
+# before this key existed. Set it when two daemons share a broker: MQTT
+# requires the broker to disconnect the session it already holds when a
+# second client presents the same identifier, so two on one id evict
+# each other in a loop with nothing in either log to say why.
+# MQTT_CLIENT_ID: "" # (override: env UNIFI_MQTT_CLIENT_ID)
 # MQTT_SSL: false          # Connect via TLS (tls://) instead of plain TCP
 # MQTT_SSL_INSECURE: false # DANGEROUS: skip broker certificate verification
 #                          # (self-signed certs only); only takes effect when

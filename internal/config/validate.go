@@ -50,6 +50,18 @@ func (c *Config) validate(o options) error {
 		if strings.TrimSpace(c.MQTTTopic) == "" {
 			errs = append(errs, "MQTT_TOPIC must not be empty")
 		}
+		// A set-but-blank or space-bearing client id is legal on the
+		// wire and is almost always a paste accident. Left alone it
+		// produces the eviction loop MQTT_CLIENT_ID exists to end, and
+		// that loop names nothing in any log — so it is refused at
+		// startup, where the message can say which key is wrong.
+		switch id := c.MQTTClientID; {
+		case id == "": // unset: the derived default applies
+		case strings.TrimSpace(id) == "":
+			errs = append(errs, "MQTT_CLIENT_ID must not be blank; leave it unset for the default")
+		case strings.TrimSpace(id) != id:
+			errs = append(errs, "MQTT_CLIENT_ID must not begin or end with whitespace")
+		}
 	}
 	if strings.TrimSpace(c.Site) == "" {
 		errs = append(errs, "SITE must not be empty")

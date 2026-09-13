@@ -285,3 +285,77 @@ func TestEmptySecretStaysEmpty(t *testing.T) {
 		t.Error("IsSet() = true for an unset secret")
 	}
 }
+
+// TestClientIDDefaultsToTheHistoricalLiteral pins F6 of
+// notes/adr0070-phase9-measurement.md.
+//
+// Two daemons with the shipped configuration both present
+// "unifi2mqtt-unifi", and MQTT requires a broker to disconnect the
+// session it already holds when a second client presents that session's
+// identifier (3.1.1 §3.1.3.2 / 5.0 §3.1.4). They evict each other in a
+// loop, each Lifecycle reconnecting into the other's session, both last
+// wills firing repeatedly, and nothing in either log saying why.
+//
+// The default has to stay byte-identical to what installations already
+// present: an upgrade that changed it would make every running
+// installation's first restart look exactly like the takeover this key
+// exists to prevent.
+func TestClientIDDefaultsToTheHistoricalLiteral(t *testing.T) {
+	t.Parallel()
+
+	base := "HOST: h\nAPI_KEY: k\nMQTT_SERVER: b\n"
+	for _, tc := range []struct {
+		name string
+		yaml string
+		env  MapEnv
+		want string
+	}{
+		{"shipped default", base, nil, "unifi2mqtt-unifi"},
+		{"derived from MQTT_TOPIC", base + "MQTT_TOPIC: unifi-garage\n", nil,
+			"unifi2mqtt-unifi-garage"},
+		{"explicit key wins", base + "MQTT_CLIENT_ID: garage-bridge\n", nil, "garage-bridge"},
+		{"explicit key wins over MQTT_TOPIC",
+			base + "MQTT_TOPIC: unifi-garage\nMQTT_CLIENT_ID: garage-bridge\n", nil,
+			"garage-bridge"},
+		{"environment override", base, MapEnv{"UNIFI_MQTT_CLIENT_ID": "from-env"}, "from-env"},
+		{"empty key falls back", base + `MQTT_CLIENT_ID: ""` + "\n", nil, "unifi2mqtt-unifi"},
+	} {
+		cfg, err := Load(strings.NewReader(tc.yaml), tc.env)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got := cfg.ClientID(); got != tc.want {
+			t.Errorf("%s: ClientID() = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A blank or whitespace-bearing client id is legal on the wire and
+// almost always a paste accident. Unrefused it produces the eviction
+// loop this key exists to end, and that loop names nothing in any log.
+func TestBlankClientIDIsRefused(t *testing.T) {
+	t.Parallel()
+
+	base := "HOST: h\nAPI_KEY: k\nMQTT_SERVER: b\n"
+	for _, tc := range []struct {
+		name    string
+		yaml    string
+		wantErr bool
+	}{
+		{"unset", base, false},
+		{"a real id", base + "MQTT_CLIENT_ID: garage\n", false},
+		{"blank", base + `MQTT_CLIENT_ID: "   "` + "\n", true},
+		{"leading space", base + `MQTT_CLIENT_ID: " garage"` + "\n", true},
+		{"trailing space", base + `MQTT_CLIENT_ID: "garage "` + "\n", true},
+	} {
+		_, err := Load(strings.NewReader(tc.yaml), MapEnv{})
+		switch {
+		case tc.wantErr && err == nil:
+			t.Errorf("%s: Load() = nil, want an error naming MQTT_CLIENT_ID", tc.name)
+		case tc.wantErr && !strings.Contains(err.Error(), "MQTT_CLIENT_ID"):
+			t.Errorf("%s: Load() = %v, want an error naming MQTT_CLIENT_ID", tc.name, err)
+		case !tc.wantErr && err != nil:
+			t.Errorf("%s: Load() = %v, want nil", tc.name, err)
+		}
+	}
+}

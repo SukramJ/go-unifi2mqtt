@@ -4,6 +4,7 @@
 package coordinator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -811,6 +812,66 @@ func TestTwoDefaultInstancesCollideOnEveryString(t *testing.T) {
 		}
 		if a.configs[i].Availability[0].Topic == other.configs[i].Availability[0].Topic {
 			t.Fatalf("changing MQTT_TOPIC did not move the availability topic")
+		}
+	}
+}
+
+// TestClientIDSeparatesSessionsAndNothingElse is the other half of F6,
+// and the fact step 6 has to plan around.
+//
+// MQTT_CLIENT_ID ends the eviction loop two default daemons are in. It
+// does not separate their published surface by one byte: the config
+// topics, the unique_ids and the device identifiers carry no
+// instance-scoped string at all, and unlike MQTT_TOPIC the client id
+// does not even move the availability topic.
+//
+// Today that means two instances on one console overwrite each other
+// entity by entity — noisy, and converging. At step 6 a device bundle
+// is *one* retained topic carrying that device's whole component set,
+// so two instances with any divergence — a different LANGUAGE, a
+// different control set, one with the classic layer and one without —
+// replace each other's entire entity set on every publish. A staggered
+// upgrade is worse still: A retracts the per-entity configs, B on the
+// old build republishes them, A retracts again, and upgrading B second
+// makes B's bundle replace A's whole fleet. go-mtec2mqtt's reviewer
+// demonstrated that this actually happens.
+func TestClientIDSeparatesSessionsAndNothingElse(t *testing.T) {
+	t.Parallel()
+
+	sc := surfaceScenarios()[2] // full.en
+	a := loadSurface(t, sc)
+
+	other := sc
+	other.name = "full.en.client-id"
+	other.yaml = sc.yaml + "MQTT_CLIENT_ID: unifi2mqtt-garage\n"
+	b := loadSurface(t, other)
+
+	if len(a.msgs) != len(b.msgs) {
+		t.Fatalf("MQTT_CLIENT_ID changed the message count: %d vs %d",
+			len(a.msgs), len(b.msgs))
+	}
+	for i := range a.msgs {
+		x, err := json.Marshal(a.msgs[i])
+		if err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		y, err := json.Marshal(b.msgs[i])
+		if err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		if !bytes.Equal(x, y) {
+			t.Errorf("MQTT_CLIENT_ID moved a published message: %s",
+				a.msgs[i].Topic)
+		}
+	}
+	// And the configs specifically, so a future availability change
+	// cannot make this pass for the wrong reason.
+	for i := range a.configs {
+		if a.configs[i].Topic != b.configs[i].Topic ||
+			a.configs[i].UniqueID != b.configs[i].UniqueID ||
+			len(a.configs[i].Availability) != len(b.configs[i].Availability) ||
+			a.configs[i].Availability[0].Topic != b.configs[i].Availability[0].Topic {
+			t.Errorf("MQTT_CLIENT_ID moved %s", a.configs[i].Topic)
 		}
 	}
 }

@@ -65,6 +65,14 @@ configuration:
     name: Topic-Wurzel
     description: >-
       Wurzel des Topic-Baums, z. B. unifi/default/device/...
+  mqtt_client_id:
+    name: MQTT-Client-ID
+    description: >-
+      Kennung, mit der sich dieses Add-on beim Broker meldet. Leer bedeutet
+      "unifi2mqtt-" plus Topic-Wurzel. Setzen, wenn zwei Instanzen denselben
+      Broker nutzen: MQTT verlangt, dass der Broker die bestehende Sitzung
+      trennt, sobald ein zweiter Client dieselbe Kennung vorlegt — beide
+      werfen sich dann endlos gegenseitig hinaus.
 
   hass_enable:
     name: Home-Assistant-Discovery
