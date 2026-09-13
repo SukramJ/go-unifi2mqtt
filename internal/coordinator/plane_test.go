@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -518,6 +519,109 @@ func TestNothingThisDaemonPublishesIsAlsoSubscribed(t *testing.T) {
 	// And the state plane refuses the same topic one message at a time.
 	if _, err := h.c.pub.state.Publish(ctx, collide, []byte("x")); !errors.Is(err, hapub.ErrStateCommandCollision) {
 		t.Errorf("the state plane published into its own command tree: %v", err)
+	}
+}
+
+// The router itself drops a retained delivery, by policy.
+//
+// onCommand keeps its own `if msg.Retain` check, and that check would
+// mask this one from every test that drives the handler directly — so
+// the policy is asserted here against a router built by the production
+// constructor. go-homeconnect2mqtt's equivalent step found exactly that
+// masking with a mutation.
+func TestTheRouterItselfDropsARetainedDelivery(t *testing.T) {
+	t.Parallel()
+
+	tr := &replayTransport{}
+	r := newCommandRouter(t.Context(), tr, slog.New(slog.DiscardHandler))
+	const filter = "unifi/default/device/+/cmd/restart"
+	seen := make(chan hapub.Command, 4)
+	if err := r.Handle(filter, func(_ context.Context, cmd hapub.Command) { seen <- cmd }); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if err := r.Start(t.Context()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	tr.deliver("unifi/default/device/aa/cmd/restart", []byte("PRESS"), true)
+	tr.deliver("unifi/default/device/aa/cmd/restart", []byte("PRESS"), false)
+	r.WaitIdle()
+
+	var got []hapub.Command
+	for len(seen) > 0 {
+		got = append(got, <-seen)
+	}
+	if len(got) != 1 {
+		t.Fatalf("the router delivered %d commands, want 1: a retained command is a replay, not a request", len(got))
+	}
+	if got[0].Retained {
+		t.Error("the delivered command was the retained one")
+	}
+}
+
+// replayTransport is a [hapub.Transport] whose subscriptions can be fed
+// by hand, the way a broker replays a retained message on subscribe.
+type replayTransport struct {
+	mu       sync.Mutex
+	handlers map[string]hapub.Handler
+}
+
+func (r *replayTransport) Publish(context.Context, string, []byte, byte, bool) error { return nil }
+
+func (r *replayTransport) Subscribe(_ context.Context, filter string, _ byte, h hapub.Handler) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.handlers == nil {
+		r.handlers = map[string]hapub.Handler{}
+	}
+	r.handlers[filter] = h
+	return nil
+}
+
+func (r *replayTransport) Unsubscribe(context.Context, string) error { return nil }
+
+func (r *replayTransport) deliver(topic string, payload []byte, retained bool) {
+	r.mu.Lock()
+	hs := make([]hapub.Handler, 0, len(r.handlers))
+	for _, h := range r.handlers {
+		hs = append(hs, h)
+	}
+	r.mu.Unlock()
+	for _, h := range hs {
+		h(topic, payload, retained)
+	}
+}
+
+// A self-echo fails the boot rather than warning.
+//
+// The check cannot be reached from the shipped catalogue — every
+// command suffix is one no state topic carries, which is what
+// TestNothingThisDaemonPublishesIsAlsoSubscribed asserts directly — so
+// the collision is injected through the one seam that can carry an
+// arbitrary topic into the published set. What is pinned here is that
+// the verdict is acted on: a tripwire whose result is discarded is not
+// a tripwire.
+func TestSubscribeCommandsFailsTheBootOnASelfEcho(t *testing.T) {
+	t.Parallel()
+
+	h := newHarnessWith(t, controlConfig(t, ""), allCaps{})
+	t.Cleanup(h.c.Close)
+	h.c.SetSubscriber(&fakeSubscriber{})
+	ctx := t.Context()
+
+	if err := h.c.subscribeCommands(ctx); err != nil {
+		t.Fatalf("the shipped layout already collides with its own command tree: %v", err)
+	}
+
+	collide := h.c.topics.device(gwMAC, cmdRestart)
+	if err := h.c.pub.publishConfig(ctx, collide, []byte("{}")); err != nil {
+		t.Fatalf("seeding the colliding topic: %v", err)
+	}
+	if !slices.Contains(h.c.knownStateTopics(), collide) {
+		t.Fatalf("%s did not reach the published set; this test proves nothing", collide)
+	}
+	if err := h.c.subscribeCommands(ctx); !errors.Is(err, hapub.ErrStateCommandCollision) {
+		t.Errorf("subscribeCommands returned %v, want ErrStateCommandCollision", err)
 	}
 }
 
