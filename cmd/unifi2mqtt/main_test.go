@@ -122,23 +122,25 @@ func TestTruncate(t *testing.T) {
 func TestBridgeWillCopiesEveryField(t *testing.T) {
 	t.Parallel()
 
-	want := hapub.Will{
-		Topic:   "unifi/bridge/status",
-		Payload: []byte("offline"),
-		QoS:     1,
-		Retain:  true,
-	}
-	got := bridgeWill(want)
-	if got.Topic != want.Topic {
-		t.Errorf("topic = %q, want %q", got.Topic, want.Topic)
-	}
-	if !bytes.Equal(got.Payload, want.Payload) {
-		t.Errorf("payload = %q, want %q", got.Payload, want.Payload)
-	}
-	if byte(got.QoS) != want.QoS {
-		t.Errorf("qos = %d, want %d", got.QoS, want.QoS)
-	}
-	if !got.Retain {
-		t.Error("the will is not retained; a Home Assistant that subscribes after the crash never sees it")
+	// Every value is deliberately NOT the one this daemon actually
+	// ships. A probe made of the real strings cannot tell a copy from a
+	// literal — which is the whole failure this test exists for.
+	for _, want := range []hapub.Will{
+		{Topic: "probe/root/marker", Payload: []byte("probe-death"), QoS: 2, Retain: true},
+		{Topic: "other/root/marker", Payload: []byte("gone"), QoS: 0, Retain: false},
+	} {
+		got := bridgeWill(want)
+		if got.Topic != want.Topic {
+			t.Errorf("topic = %q, want %q", got.Topic, want.Topic)
+		}
+		if !bytes.Equal(got.Payload, want.Payload) {
+			t.Errorf("payload = %q, want %q", got.Payload, want.Payload)
+		}
+		if byte(got.QoS) != want.QoS {
+			t.Errorf("qos = %d, want %d", got.QoS, want.QoS)
+		}
+		if got.Retain != want.Retain {
+			t.Errorf("retain = %v, want %v", got.Retain, want.Retain)
+		}
 	}
 }

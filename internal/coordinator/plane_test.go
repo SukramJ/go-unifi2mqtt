@@ -825,6 +825,23 @@ func TestOwnsConfigTopicIsNarrow(t *testing.T) {
 	if !hass.OwnsConfigTopic(own) {
 		t.Fatalf("%+v is this daemon's own shape and was declined", own)
 	}
+	// The Bundle and empty-field guards are subsumed by the ones below
+	// them today: a device document parses with an empty platform, so
+	// the platform guard declines it whether the Bundle guard is there
+	// or not. They are kept as an upgrade tripwire, and the subsumption
+	// is asserted rather than assumed — the day [hapub.ParseConfigTopic]
+	// grows a form that parses a bundle WITH a platform, the Bundle
+	// guard becomes the only thing standing and needs a test of its own.
+	parsed, ok := hapub.ParseConfigTopic("homeassistant", "homeassistant/device/unifi_00005e005301/config")
+	if !ok || !parsed.Bundle {
+		t.Fatalf("a device document no longer parses as a bundle: %+v ok=%v", parsed, ok)
+	}
+	if parsed.Platform != "" || parsed.ObjectID != "" {
+		t.Errorf("a device document now parses with platform %q and object id %q; "+
+			"the Bundle guard in OwnsConfigTopic is no longer redundant and needs its own case",
+			parsed.Platform, parsed.ObjectID)
+	}
+
 	for name, t2 := range map[string]hapub.ConfigTopic{
 		"a device document":     {Bundle: true, NodeID: "unifi_00005e005301"},
 		"no platform":           {NodeID: "unifi_00005e005301", ObjectID: "state"},
