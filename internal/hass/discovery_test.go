@@ -31,7 +31,10 @@ func (stubTopics) WLANTopic(id, key string) string {
 func (stubTopics) AvailabilityTopic() string { return "unifi/bridge/status" }
 
 func newTestDiscovery(lang string) *Discovery {
-	return New(Config{BaseTopic: "homeassistant", Topics: stubTopics{}, Site: "default", Language: lang})
+	return New(Config{
+		BaseTopic: "homeassistant", Topics: stubTopics{},
+		Site: "default", SiteName: "Default", Language: lang,
+	})
 }
 
 func testDevice() *model.Device {
@@ -310,7 +313,7 @@ func TestEntityIDSeedIsPublished(t *testing.T) {
 			e, err := d.WLANControl(&model.WLAN{ID: "w-1", Name: "HomeNet", Enabled: true})
 			return []Entry{e}, err
 		}},
-		{"Health", func() ([]Entry, error) { return d.Health("Default") }},
+		{"Health", func() ([]Entry, error) { return d.Health() }},
 	} {
 		got, err := build.fn()
 		if err != nil {
@@ -596,7 +599,7 @@ func TestEveryBinarySensorCanReportBothStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Device: %v", err)
 	}
-	health, err := newTestDiscovery(LangEN).Health("Default")
+	health, err := newTestDiscovery(LangEN).Health()
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}

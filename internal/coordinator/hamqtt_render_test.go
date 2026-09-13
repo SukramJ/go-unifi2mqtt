@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -182,7 +183,6 @@ func buildHamqttInputs(t *testing.T, sc surfaceScenario) hass.HamqttFleet {
 		Devices:        devices,
 		Clients:        clients,
 		WLANs:          wlans,
-		SiteName:       c.site.Name,
 		ClientOpts:     hass.ClientOptions{Signal: c.clientSignalEnabled()},
 		ControlOpts:    c.controlOptions(),
 		AnnounceHealth: cfg.ClassicEnable,
@@ -257,7 +257,7 @@ func shippedConfigs(t *testing.T, d *hass.Discovery, f hass.HamqttFleet) map[str
 		add(controls)
 	}
 	if f.AnnounceHealth {
-		entries, err := d.Health(f.SiteName)
+		entries, err := d.Health()
 		if err != nil {
 			t.Fatalf("Health: %v", err)
 		}
@@ -292,30 +292,24 @@ func renderedConfigs(t *testing.T, d *hass.Discovery, f hass.HamqttFleet) map[st
 // rather than a quietly smaller number in a log line.
 const hamqttTotalConfigs = 315
 
-// emptyManufacturerConfigs is the one key the library does not
-// reproduce, counted.
+// F15's carve-out used to live here.
 //
-// This bridge's clientDeviceInfo sets Manufacturer to the empty string
-// with a comment saying it is unknown for a network client, and the
-// field has no `omitempty` — so 36 client configs carry
-// `"manufacturer": ""`. discovery.DeviceInfo.Manufacturer IS
-// `omitempty`, so the library renders the key absent, which is what
-// Home Assistant reads the empty string as anyway.
+// Step 4 could not reproduce `"manufacturer": ""` on 36 client configs
+// through the library — discovery.DeviceInfo.Manufacturer is
+// `omitempty`, so an empty manufacturer renders as an absent key — and
+// carved the one key out of the comparison under tight conditions
+// rather than forcing it through Component.Extra["device"], which would
+// have overridden exactly the part of the payload under test.
 //
-// Reproducing it would mean overriding the whole `device` block through
-// Component.Extra, which would replace exactly the part of the payload
-// the experiment is supposed to be testing. So it is enumerated instead
-// — and the difference set is pinned in both size and shape, so a
-// second divergence cannot hide inside the carve-out. The right fix is
-// to drop the key from this bridge at step 7, which moves 36 retained
-// payloads and must not share a step with a migration.
-const emptyManufacturerConfigs = 36
+// The carve-out was temporary by construction and is gone: this bridge
+// now omits the key too, so the comparison below is byte-equality on
+// all 315 configs with no exceptions at all.
 
 // TestHamqttReproducesThePublishedConfigs is the headline.
 func TestHamqttReproducesThePublishedConfigs(t *testing.T) {
 	t.Parallel()
 
-	total, matched, carved := 0, 0, 0
+	total, matched := 0, 0
 	for _, sc := range surfaceScenarios() {
 		want := goldenConfigs(t, sc.name)
 		f := buildHamqttInputs(t, sc)
@@ -332,15 +326,6 @@ func TestHamqttReproducesThePublishedConfigs(t *testing.T) {
 				matched++
 				continue
 			}
-			// The one enumerated carve-out, applied by removing the key
-			// from the PINNED side and requiring everything else to be
-			// byte-equal — so a second difference in the same payload
-			// still fails.
-			stripped, ok := withoutEmptyManufacturer(t, want[topic])
-			if ok && stripped == g {
-				carved++
-				continue
-			}
 			t.Errorf("%s: ~ %s\n  pinned   %s\n  rendered %s", sc.name, topic, want[topic], g)
 		}
 		for _, topic := range sortedKeys(got) {
@@ -354,41 +339,11 @@ func TestHamqttReproducesThePublishedConfigs(t *testing.T) {
 	if total != hamqttTotalConfigs {
 		t.Errorf("compared %d pinned configs, want %d", total, hamqttTotalConfigs)
 	}
-	if carved != emptyManufacturerConfigs {
-		t.Errorf("the empty-manufacturer carve-out covered %d configs, want %d",
-			carved, emptyManufacturerConfigs)
+	if matched != hamqttTotalConfigs {
+		t.Errorf("reproduced %d of %d pinned configs byte for byte, with no carve-outs left",
+			matched, hamqttTotalConfigs)
 	}
-	if matched+carved != hamqttTotalConfigs {
-		t.Errorf("reproduced %d of %d pinned configs (%d byte-equal, %d modulo the empty manufacturer)",
-			matched+carved, hamqttTotalConfigs, matched, carved)
-	}
-	t.Logf("byte-equal: %d of %d; reproduced modulo device.manufacturer=\"\": %d",
-		matched, hamqttTotalConfigs, carved)
-}
-
-// withoutEmptyManufacturer removes device.manufacturer from a canonical
-// payload, and only when it is the empty string. It reports false for
-// anything else, so the carve-out cannot widen by accident.
-func withoutEmptyManufacturer(t *testing.T, canonicalPayload string) (string, bool) {
-	t.Helper()
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(canonicalPayload), &obj); err != nil {
-		t.Fatalf("decode pinned payload: %v", err)
-	}
-	dev, ok := obj["device"].(map[string]any)
-	if !ok {
-		return "", false
-	}
-	m, ok := dev["manufacturer"].(string)
-	if !ok || m != "" {
-		return "", false
-	}
-	delete(dev, "manufacturer")
-	b, err := json.Marshal(obj)
-	if err != nil {
-		t.Fatalf("re-encode: %v", err)
-	}
-	return string(b), true
+	t.Logf("byte-equal: %d of %d", matched, hamqttTotalConfigs)
 }
 
 // TestHamqttInputsReproduceThePublishedConfigTopics is what makes the
@@ -545,15 +500,11 @@ func TestHamqttBundleWouldBeInvisibleToItsOwnReconcile(t *testing.T) {
 
 // --- validation --------------------------------------------------------
 
-// hamqttOrigin is the origin a bundle needs to validate at all:
-// discovery.Validate refuses a bundle whose origin has no name.
-//
-// It is deliberately NOT used by the per-entity render, which publishes
-// no origin block today (measurement F7). Adding one is a payload
-// addition on all 315 configs and belongs in step 7, alone.
-func hamqttOrigin() discovery.Origin {
-	return discovery.Origin{Name: "go-unifi2mqtt"}
-}
+// hamqttOrigin is the origin every payload carries, per F7. It is the
+// production value and not a test literal: a test-only origin would let
+// the shipped path and the render path disagree on the one block that
+// decides whether a bundle is published at all.
+func hamqttOrigin() discovery.Origin { return hass.HamqttOrigin() }
 
 // TestHamqttPayloadsPassDiscoveryValidate runs every rendered payload
 // through the schema check the library applies.
@@ -684,11 +635,19 @@ func TestHamqttBundlesWithoutAnOriginAreRefused(t *testing.T) {
 	}
 }
 
-// TestHamqttPerEntityPayloadsCarryNoOrigin is the other half, on the
+// TestHamqttPerEntityPayloadsCarryTheOrigin is the other half, on the
 // bytes rather than on the validator.
-func TestHamqttPerEntityPayloadsCarryNoOrigin(t *testing.T) {
+//
+// Step 4 asserted the opposite: the per-entity payloads carried no
+// origin, because the shipped ones did not. F7 inverted it — every
+// config on every plane now carries exactly {"name": "go-unifi2mqtt"},
+// and nothing more, so the retained bytes do not move with the version
+// the binary was linked at.
+func TestHamqttPerEntityPayloadsCarryTheOrigin(t *testing.T) {
 	t.Parallel()
 
+	want := map[string]any{"name": hass.OriginName}
+	seen := 0
 	for _, sc := range surfaceScenarios() {
 		comps, err := scenarioDiscovery(t, sc).RenderHamqtt(buildHamqttInputs(t, sc))
 		if err != nil {
@@ -699,50 +658,94 @@ func TestHamqttPerEntityPayloadsCarryNoOrigin(t *testing.T) {
 			if err := json.Unmarshal(c.Body, &body); err != nil {
 				t.Fatalf("decode %s: %v", c.Topic, err)
 			}
-			if _, ok := body["origin"]; ok {
-				t.Errorf("%s carries an origin block, which this bridge does not publish", c.Topic)
+			got, ok := body["origin"].(map[string]any)
+			if !ok {
+				t.Errorf("%s carries no origin block; a bundle of it would be refused", c.Topic)
+				continue
 			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("%s origin = %v, want %v", c.Topic, got, want)
+			}
+			seen++
 			if _, ok := body["platform"]; ok {
 				t.Errorf("%s carries a platform key, which belongs to the bundle form only", c.Topic)
 			}
 		}
 	}
+	if seen != hamqttTotalConfigs {
+		t.Errorf("checked the origin on %d configs, want %d", seen, hamqttTotalConfigs)
+	}
 }
 
 // --- the site device's two names ---------------------------------------
 
-// TestHamqttSiteDeviceIsAnnouncedUnderTwoNames records a step-6 gate
-// this rendering work surfaced and the measurement did not.
+// TestHamqttSiteDeviceIsAnnouncedUnderOneName is F14, fixed.
 //
-// "unifi_site_default" is announced as "UniFi Site Default" by the
-// seven health entities, which take Site.Name, and as "UniFi Site
-// default" by every SSID switch, which takes Site.Internal. Per entity
-// that is only last-write-wins in Home Assistant's device registry, and
-// invisible. A device bundle carries exactly ONE device block, so one
-// of the two names has to win visibly — and which one wins depends on
-// the order the components are collected in, which nothing states.
-func TestHamqttSiteDeviceIsAnnouncedUnderTwoNames(t *testing.T) {
+// Step 4 found "unifi_site_default" announced as "UniFi Site Default"
+// by the seven health entities, which took Site.Name, and as "UniFi
+// Site default" by every SSID switch, which took Site.Internal. Per
+// entity that was invisible last-write-wins in Home Assistant's device
+// registry. A device bundle carries exactly ONE device block, so at
+// step 6 one of the two would have won by collection order — which
+// nothing stated, making the name a user sees a coin flip.
+//
+// Site.Name wins: Site.Internal is the API's addressing token and was
+// never a display string. The SSID switches are the half that changes.
+func TestHamqttSiteDeviceIsAnnouncedUnderOneName(t *testing.T) {
 	t.Parallel()
 
 	sc := surfaceScenarios()[2] // full.en: health and SSID switches both on
-	conflicts := scenarioDiscovery(t, sc).
-		HamqttDeviceBlockConflicts(buildHamqttInputs(t, sc))
-	want := map[string][]string{
-		"unifi_site_default": {"UniFi Site default", "UniFi Site Default"},
+	d := scenarioDiscovery(t, sc)
+	f := buildHamqttInputs(t, sc)
+
+	if conflicts := d.HamqttDeviceBlockConflicts(f); len(conflicts) != 0 {
+		t.Fatalf("device blocks still conflict on %d identities: %v", len(conflicts), conflicts)
 	}
-	if len(conflicts) != len(want) {
-		t.Fatalf("device blocks conflicting on %d identities, want %d: %v",
-			len(conflicts), len(want), conflicts)
-	}
-	for uid, names := range want {
-		got := append([]string(nil), conflicts[uid]...)
-		sort.Strings(got)
-		sorted := append([]string(nil), names...)
-		sort.Strings(sorted)
-		if strings.Join(got, "|") != strings.Join(sorted, "|") {
-			t.Errorf("%s is announced as %v, want %v", uid, got, sorted)
+
+	// And the surviving name is the one F14 chose, on both planes —
+	// "no conflict" would also be satisfied by both reading the wrong
+	// field.
+	const want = "UniFi Site Default"
+	names := map[string]bool{}
+	for _, e := range shippedSiteConfigs(t, d, f) {
+		var body struct {
+			Device struct {
+				Name string `json:"name"`
+			} `json:"device"`
 		}
+		if err := json.Unmarshal(e.Payload, &body); err != nil {
+			t.Fatalf("decode %s: %v", e.ConfigTopic, err)
+		}
+		names[body.Device.Name] = true
 	}
+	if len(names) != 1 || !names[want] {
+		t.Errorf("the site device is announced as %v, want exactly {%q}", sortedKeys(names), want)
+	}
+}
+
+// shippedSiteConfigs returns every config the SHIPPED builders put on
+// the synthetic site device: the health plane and the SSID switches,
+// the two paths F14 made agree.
+func shippedSiteConfigs(t *testing.T, d *hass.Discovery, f hass.HamqttFleet) []hass.Entry {
+	t.Helper()
+	out, err := d.Health()
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	if !f.ControlOpts.WLANEnable {
+		t.Fatal("the scenario announces no SSID switches, so only one of the two paths is covered")
+	}
+	for i := range f.WLANs {
+		e, err := d.WLANControl(&f.WLANs[i])
+		if err != nil {
+			t.Fatalf("WLANControl: %v", err)
+		}
+		out = append(out, e)
+	}
+	if len(out) < 8 {
+		t.Fatalf("only %d site configs; both planes must be represented", len(out))
+	}
+	return out
 }
 
 // --- publishing nothing -------------------------------------------------

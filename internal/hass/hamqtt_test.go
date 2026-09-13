@@ -516,25 +516,26 @@ func TestHamqttRendersADeviceTracker(t *testing.T) {
 	}
 }
 
-// --- what the library cannot express --------------------------------------
+// --- the client device block ----------------------------------------------
 
-// TestHamqttCannotRenderAnEmptyManufacturer pins the one key of the 315
-// the library does not reproduce, and pins the reason rather than the
-// symptom.
+// TestClientDeviceBlockOmitsTheManufacturer is F15, fixed.
 //
-// clientDeviceInfo sets Manufacturer to "" because a network client has
-// none, and this repository's own field carries no `omitempty`, so 36
-// client configs publish `"manufacturer": ""`.
+// clientDeviceInfo used to set Manufacturer to "" because a network
+// client has none, and deviceInfo.Manufacturer carried no `omitempty`,
+// so 36 client configs published `"manufacturer": ""`. That was the one
+// key of the 315 step 4 could not reproduce:
 // discovery.DeviceInfo.Manufacturer IS `omitempty`, so the library
 // renders the key absent — which is what Home Assistant reads the empty
-// string as anyway. Reproducing it would mean replacing the whole
-// `device` block through Component.Extra, i.e. replacing exactly the
-// part of the payload the experiment is testing.
+// string as anyway, and which is the correct spelling of "unknown".
 //
-// The fix belongs to this bridge and to step 7: dropping the key moves
-// 36 retained payloads, and a migration step whose golden diff is empty
-// is provable while one with 36 rows is not.
-func TestHamqttCannotRenderAnEmptyManufacturer(t *testing.T) {
+// Step 4 established the library was right and carved the key out of
+// its byte comparison rather than forcing it through
+// Component.Extra["device"], which would have replaced exactly the part
+// of the payload under test. This is the fix that lets the carve-out
+// go: the shipped builder omits it too, and the whole device block —
+// not just the one key — is required to be byte-equal with no
+// exceptions.
+func TestClientDeviceBlockOmitsTheManufacturer(t *testing.T) {
 	t.Parallel()
 
 	d := hamqttTestDiscovery("en")
@@ -543,7 +544,6 @@ func TestHamqttCannotRenderAnEmptyManufacturer(t *testing.T) {
 		Name: "Phone", Type: model.ClientWireless,
 	}
 
-	// The shipped builder publishes the key, empty.
 	entries, err := d.Client(cl, ClientOptions{})
 	if err != nil {
 		t.Fatalf("Client: %v", err)
@@ -553,15 +553,20 @@ func TestHamqttCannotRenderAnEmptyManufacturer(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	dev, _ := shipped["device"].(map[string]any)
-	m, present := dev["manufacturer"]
-	if !present || m != "" {
-		t.Fatalf("the shipped client config no longer carries an empty manufacturer (%v); "+
-			"this divergence is gone and the carve-out in "+
-			"TestHamqttReproducesThePublishedConfigs must go with it", m)
+	if m, present := dev["manufacturer"]; present {
+		t.Errorf("the shipped client config still carries manufacturer=%#v; "+
+			"an absent key is the spelling F15 chose", m)
+	}
+	// The rest of the block must not have moved with it: this is the
+	// half that catches a fix that dropped more than the one key.
+	for _, key := range []string{"identifiers", "connections", "name"} {
+		if _, ok := dev[key]; !ok {
+			t.Errorf("the client device block lost %q", key)
+		}
 	}
 
-	// The library omits it, and there is no typed route to the empty
-	// string.
+	// And the library reproduces it, whole, with nothing removed from
+	// either side.
 	g := d.hamqttClientGroup(cl, ClientOptions{}, ControlOptions{})
 	body, err := renderOne(t, d, g, "presence").EntityJSON()
 	if err != nil {
@@ -572,18 +577,10 @@ func TestHamqttCannotRenderAnEmptyManufacturer(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	rdev, _ := rendered["device"].(map[string]any)
-	if _, ok := rdev["manufacturer"]; ok {
-		t.Error("the library now renders an empty manufacturer; the carve-out in " +
-			"TestHamqttReproducesThePublishedConfigs is obsolete and 315 of 315 should be byte-equal")
-	}
-	// Everything else about the device block matches, so the carve-out
-	// is one key wide and not a licence.
-	delete(dev, "manufacturer")
 	want, _ := json.Marshal(dev)
 	got, _ := json.Marshal(rdev)
 	if !bytes.Equal(want, got) {
-		t.Errorf("the device block differs beyond the manufacturer key\n shipped %s\n library %s",
-			want, got)
+		t.Errorf("the device block differs\n shipped %s\n library %s", want, got)
 	}
 }
 
@@ -654,7 +651,7 @@ func TestHamqttSitePlaneHasNoDeviceLevelSignal(t *testing.T) {
 	t.Parallel()
 
 	d := hamqttTestDiscovery("en")
-	g := d.hamqttHealthGroup("Default")
+	g := d.hamqttHealthGroup()
 	e := findEntity(t, g, "wan_latency")
 	if e.availTemplate != "" {
 		t.Fatalf("a site entity carries an availability template %q; "+

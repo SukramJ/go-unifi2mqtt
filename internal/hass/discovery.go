@@ -50,6 +50,36 @@ type Topics interface {
 // Manufacturer is the vendor string every device is announced under.
 const Manufacturer = "Ubiquiti"
 
+// OriginName is the `origin.name` every discovery payload carries.
+//
+// Home Assistant shows it as the integration that announced the device.
+// It keys nothing: the entity registry keys on unique_id and the device
+// registry on identifiers, so adding it re-registers nothing.
+//
+// It is not optional. A *device bundle* — the form ADR 0070 phase 9
+// step 6 switches to — is refused outright by go-hamqtt's
+// discovery.Validate with `origin.name is required`, and a refused
+// bundle publishes no entities at all. That is why this landed before
+// the migration rather than after it (measurement F7).
+const OriginName = "go-unifi2mqtt"
+
+// originInfo is the `origin` block.
+//
+// Name only, deliberately, following go-zendure2mqtt's phase-5
+// precedent. Home Assistant also reads `sw_version` and `support_url`,
+// and this bridge's own version is the obvious candidate for the first
+// — but it is stamped at link time, so every retained config's bytes
+// would then depend on how the binary was linked, the pinned surface
+// would depend on it too, and every release would rewrite 315 retained
+// payloads for no operator-visible gain. The build banner already says
+// the version, once, at boot.
+type originInfo struct {
+	Name string `json:"name"`
+}
+
+// origin is the block every payload in this package carries.
+func origin() originInfo { return originInfo{Name: OriginName} }
+
 // idPrefix namespaces every identifier this project creates, so a
 // unique_id cannot collide with another integration's.
 const idPrefix = "unifi"
@@ -81,10 +111,14 @@ type Discovery struct {
 	// baseTopic is Home Assistant's discovery prefix, e.g.
 	// "homeassistant".
 	baseTopic string
-	// site scopes the synthetic site device's identifiers.
-	site   string
-	lang   string
-	topics Topics
+	// site scopes the synthetic site device's identifiers. It is
+	// Site.Internal — the API's addressing token — and it is *not* a
+	// display string.
+	site string
+	// siteName is the site device's display name, from Site.Name.
+	siteName string
+	lang     string
+	topics   Topics
 }
 
 // Config configures a [Discovery].
@@ -93,8 +127,13 @@ type Config struct {
 	BaseTopic string
 	// Topics supplies the state-topic layout. Required.
 	Topics Topics
-	// Site scopes the site-health entities' identifiers.
+	// Site scopes the site-health entities' identifiers. It is
+	// Site.Internal (e.g. "default").
 	Site string
+	// SiteName is the site's display name (Site.Name, e.g. "Default").
+	// It is the only string the site device is named after; when empty
+	// it falls back to Site.
+	SiteName string
 	// Language selects the display language; anything unsupported falls
 	// back to English.
 	Language string
@@ -102,9 +141,17 @@ type Config struct {
 
 // New builds a Discovery.
 func New(cfg Config) *Discovery {
+	siteName := cfg.SiteName
+	if siteName == "" {
+		// A console that reports no display name still needs a label,
+		// and the addressing token is the only string guaranteed to be
+		// there. Before F14 the SSID switches used it unconditionally.
+		siteName = cfg.Site
+	}
 	return &Discovery{
 		baseTopic: cfg.BaseTopic,
 		site:      cfg.Site,
+		siteName:  siteName,
 		lang:      normaliseLang(cfg.Language),
 		topics:    cfg.Topics,
 	}
@@ -113,12 +160,18 @@ func New(cfg Config) *Discovery {
 // deviceInfo is the `device` block that groups entities in Home
 // Assistant's registry.
 type deviceInfo struct {
-	Identifiers  []string   `json:"identifiers"`
-	Connections  [][]string `json:"connections,omitempty"`
-	Name         string     `json:"name"`
-	Manufacturer string     `json:"manufacturer"`
-	Model        string     `json:"model,omitempty"`
-	SWVersion    string     `json:"sw_version,omitempty"`
+	Identifiers []string   `json:"identifiers"`
+	Connections [][]string `json:"connections,omitempty"`
+	Name        string     `json:"name"`
+	// Manufacturer is omitted when empty rather than published as "".
+	//
+	// A network client has no manufacturer this bridge can know, and
+	// the two spellings are not equally correct: Home Assistant reads
+	// an absent key and an empty string identically, and absent is the
+	// one that says "unknown" rather than "the empty string" (F15).
+	Manufacturer string `json:"manufacturer,omitempty"`
+	Model        string `json:"model,omitempty"`
+	SWVersion    string `json:"sw_version,omitempty"`
 	// ViaDevice reproduces the network hierarchy (client → AP → switch
 	// → gateway) in Home Assistant's device page. It is why the model
 	// carries UplinkMAC at all.
@@ -179,6 +232,11 @@ type entity struct {
 	AvailabilityMode string              `json:"availability_mode,omitempty"`
 
 	Device deviceInfo `json:"device"`
+	// Origin is on every payload, not just the ones that need it: the
+	// step-6 bundle form requires it, and a key that is present on some
+	// configs and absent on others is the shape that makes a migration
+	// diff unreadable.
+	Origin originInfo `json:"origin"`
 }
 
 // spec describes one entity before it is rendered, so the per-platform
@@ -411,6 +469,7 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 		Availability:        d.availabilityFor(mac, s.bridgeAvailOnly),
 		AvailabilityMode:    "all",
 		Device:              info,
+		Origin:              origin(),
 	}
 
 	payload, err := json.Marshal(e)
@@ -434,6 +493,31 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 // firmware, update) opt out of the second stage: making them unavailable
 // when the device is offline would hide exactly the information the
 // user needs.
+// siteDeviceInfo is the one `device` block the synthetic site device is
+// announced under.
+//
+// It exists because there used to be two. The seven health entities
+// named the site "UniFi Site <Site.Name>" and every SSID switch named
+// it "UniFi Site <Site.Internal>" — the same identity, two spellings.
+// Per entity that is invisible last-write-wins in Home Assistant's
+// device registry; a device bundle carries exactly one device block, so
+// at step 6 one of the two would have won by collection order, which
+// nothing stated (measurement F14).
+//
+// Site.Name wins because Site.Internal is the API's addressing token
+// and was never a display string. Identity is untouched either way:
+// both paths already keyed on siteDeviceID(Site.Internal), and the
+// health plane's default_entity_id seeds from this name but only ever
+// shapes an entity_id at first creation.
+func (d *Discovery) siteDeviceInfo() deviceInfo {
+	return deviceInfo{
+		Identifiers:  []string{siteDeviceID(d.site)},
+		Name:         "UniFi Site " + d.siteName,
+		Manufacturer: Manufacturer,
+		Model:        "Site",
+	}
+}
+
 func (d *Discovery) availabilityFor(mac model.MAC, bridgeOnly bool) []availabilityEntry {
 	out := make([]availabilityEntry, 0, 2)
 	out = append(out, availabilityEntry{Topic: d.topics.AvailabilityTopic()})

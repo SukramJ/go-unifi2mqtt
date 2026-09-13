@@ -31,6 +31,9 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Erreichbar",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005301/state",
@@ -69,6 +72,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Update verfügbar",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005301/update_available",
@@ -111,6 +117,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Port 1 Verbindung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/port/1/state",
@@ -154,6 +163,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Port 1 PoE",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/port/1/poe",
@@ -196,6 +208,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Port 25 Verbindung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/port/25/state",
@@ -234,6 +249,9 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Erreichbar",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/state",
@@ -273,6 +291,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Update verfügbar",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/update_available",
@@ -310,6 +331,9 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Erreichbar",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005303/state",
@@ -349,6 +373,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Update verfügbar",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005303/update_available",
@@ -385,6 +412,9 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Erreichbar",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005304/state",
@@ -423,6 +453,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Update verfügbar",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005304/update_available",
@@ -464,6 +497,9 @@
         "icon": "mdi:cpu-64-bit",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "CPU-Auslastung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005301/cpu_utilization",
         "unique_id": "unifi_00005e005301_cpu_utilization",
@@ -501,6 +537,9 @@
         "icon": "mdi:chip",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Firmware",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005301/firmware",
         "unique_id": "unifi_00005e005301_firmware"
       }
@@ -540,6 +579,9 @@
         "icon": "mdi:memory",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Speicherauslastung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005301/memory_utilization",
         "unique_id": "unifi_00005e005301_memory_utilization",
@@ -576,6 +618,9 @@
         "icon": "mdi:lan-connect",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Status",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005301/state",
         "unique_id": "unifi_00005e005301_state"
       }
@@ -615,6 +660,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Uplink Empfangsrate",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005301/uplink_rx_bps",
         "unique_id": "unifi_00005e005301_uplink_rx_bps",
@@ -656,6 +704,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Uplink Senderate",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005301/uplink_tx_bps",
         "unique_id": "unifi_00005e005301_uplink_tx_bps",
@@ -697,6 +748,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Betriebszeit",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005301/uptime",
         "unique_id": "unifi_00005e005301_uptime",
@@ -739,6 +793,9 @@
         "icon": "mdi:cpu-64-bit",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "CPU-Auslastung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005302/cpu_utilization",
         "unique_id": "unifi_00005e005302_cpu_utilization",
@@ -777,6 +834,9 @@
         "icon": "mdi:chip",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Firmware",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005302/firmware",
         "unique_id": "unifi_00005e005302_firmware"
       }
@@ -817,6 +877,9 @@
         "icon": "mdi:memory",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Speicherauslastung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005302/memory_utilization",
         "unique_id": "unifi_00005e005302_memory_utilization",
@@ -859,6 +922,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Port 1 Geschwindigkeit",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005302/port/1/speed",
         "unique_id": "unifi_00005e005302_port_1_speed",
@@ -901,6 +967,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Port 25 Geschwindigkeit",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005302/port/25/speed",
         "unique_id": "unifi_00005e005302_port_25_speed",
@@ -938,6 +1007,9 @@
         "icon": "mdi:lan-connect",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Status",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005302/state",
         "unique_id": "unifi_00005e005302_state"
       }
@@ -978,6 +1050,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Uplink Empfangsrate",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005302/uplink_rx_bps",
         "unique_id": "unifi_00005e005302_uplink_rx_bps",
@@ -1020,6 +1095,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Uplink Senderate",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005302/uplink_tx_bps",
         "unique_id": "unifi_00005e005302_uplink_tx_bps",
@@ -1062,6 +1140,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Betriebszeit",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005302/uptime",
         "unique_id": "unifi_00005e005302_uptime",
@@ -1104,6 +1185,9 @@
         "icon": "mdi:cpu-64-bit",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "CPU-Auslastung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005303/cpu_utilization",
         "unique_id": "unifi_00005e005303_cpu_utilization",
@@ -1142,6 +1226,9 @@
         "icon": "mdi:chip",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Firmware",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005303/firmware",
         "unique_id": "unifi_00005e005303_firmware"
       }
@@ -1182,6 +1269,9 @@
         "icon": "mdi:memory",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Speicherauslastung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005303/memory_utilization",
         "unique_id": "unifi_00005e005303_memory_utilization",
@@ -1224,6 +1314,9 @@
         "icon": "mdi:wifi",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Funk 2.4 GHz Kanal",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005303/radio/2g4/channel",
         "unique_id": "unifi_00005e005303_radio_2g4_channel"
       }
@@ -1263,6 +1356,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Funk 2.4 GHz Sendewiederholungen",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005303/radio/2g4/tx_retries",
         "unique_id": "unifi_00005e005303_radio_2g4_tx_retries",
@@ -1305,6 +1401,9 @@
         "icon": "mdi:wifi",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Funk 5 GHz Kanal",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005303/radio/5g/channel",
         "unique_id": "unifi_00005e005303_radio_5g_channel"
       }
@@ -1344,6 +1443,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Funk 5 GHz Sendewiederholungen",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005303/radio/5g/tx_retries",
         "unique_id": "unifi_00005e005303_radio_5g_tx_retries",
@@ -1381,6 +1483,9 @@
         "icon": "mdi:lan-connect",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Status",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005303/state",
         "unique_id": "unifi_00005e005303_state"
       }
@@ -1421,6 +1526,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Uplink Empfangsrate",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005303/uplink_rx_bps",
         "unique_id": "unifi_00005e005303_uplink_rx_bps",
@@ -1463,6 +1571,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Uplink Senderate",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005303/uplink_tx_bps",
         "unique_id": "unifi_00005e005303_uplink_tx_bps",
@@ -1505,6 +1616,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Betriebszeit",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005303/uptime",
         "unique_id": "unifi_00005e005303_uptime",
@@ -1546,6 +1660,9 @@
         "icon": "mdi:cpu-64-bit",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "CPU-Auslastung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005304/cpu_utilization",
         "unique_id": "unifi_00005e005304_cpu_utilization",
@@ -1583,6 +1700,9 @@
         "icon": "mdi:chip",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Firmware",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005304/firmware",
         "unique_id": "unifi_00005e005304_firmware"
       }
@@ -1622,6 +1742,9 @@
         "icon": "mdi:memory",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Speicherauslastung",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005304/memory_utilization",
         "unique_id": "unifi_00005e005304_memory_utilization",
@@ -1658,6 +1781,9 @@
         "icon": "mdi:lan-connect",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Status",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_topic": "unifi/default/device/00005e005304/state",
         "unique_id": "unifi_00005e005304_state"
       }
@@ -1697,6 +1823,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Uplink Empfangsrate",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005304/uplink_rx_bps",
         "unique_id": "unifi_00005e005304_uplink_rx_bps",
@@ -1738,6 +1867,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Uplink Senderate",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005304/uplink_tx_bps",
         "unique_id": "unifi_00005e005304_uplink_tx_bps",
@@ -1779,6 +1911,9 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Betriebszeit",
+        "origin": {
+          "name": "go-unifi2mqtt"
+        },
         "state_class": "measurement",
         "state_topic": "unifi/default/device/00005e005304/uptime",
         "unique_id": "unifi_00005e005304_uptime",

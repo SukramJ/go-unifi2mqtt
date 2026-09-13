@@ -396,6 +396,126 @@ func keysOf(m map[string]bool) func(func(string) bool) {
 	}
 }
 
+// --- the payload prerequisites (F7, F14, F15) -------------------------
+
+// TestEveryConfigCarriesTheOrigin is F7.
+//
+// A device bundle without `origin.name` is refused outright by
+// go-hamqtt's discovery.Validate, and a refused bundle publishes no
+// entities at all — so the block is not a nicety, it is what makes the
+// step-6 bundle form publishable. It goes on every config rather than
+// only the ones a bundle will carry: a key present on some configs and
+// absent on others makes the migration diff unreadable.
+//
+// The exact shape is pinned too. `sw_version` is deliberately absent:
+// this bridge's version is stamped at link time, so carrying it would
+// make 315 retained payloads' bytes depend on how the binary was
+// linked.
+func TestEveryConfigCarriesTheOrigin(t *testing.T) {
+	t.Parallel()
+
+	const wantName = "go-unifi2mqtt"
+	seen := 0
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			o, ok := cfg.Raw["origin"].(map[string]any)
+			if !ok {
+				t.Errorf("%s: %s carries no origin block", s.name, cfg.Topic)
+				continue
+			}
+			seen++
+			if o["name"] != wantName {
+				t.Errorf("%s: %s origin.name = %v, want %q", s.name, cfg.Topic, o["name"], wantName)
+			}
+			if len(o) != 1 {
+				t.Errorf("%s: %s origin carries %d keys (%v), want name only",
+					s.name, cfg.Topic, len(o), o)
+			}
+		}
+	}
+	if seen != hamqttTotalConfigs {
+		t.Errorf("%d configs carry an origin, want all %d", seen, hamqttTotalConfigs)
+	}
+}
+
+// TestSiteDeviceIsAnnouncedUnderOneName is F14, over the published
+// surface rather than over the rendering experiment.
+//
+// The synthetic site device used to be "UniFi Site <Site.Name>" on its
+// health entities and "UniFi Site <Site.Internal>" on every SSID
+// switch. Per entity that is last-write-wins in Home Assistant's device
+// registry and invisible; a device bundle carries exactly one device
+// block, so one of the two would have won by collection order. Both
+// paths now read Site.Name, because Site.Internal is the API's
+// addressing token and was never a display string.
+//
+// Identity is untouched: `identifiers` keys on Site.Internal on both
+// paths and did before, which is why this rename re-registers nothing.
+func TestSiteDeviceIsAnnouncedUnderOneName(t *testing.T) {
+	t.Parallel()
+
+	const siteID = "unifi_site_default"
+	names := map[string]int{}
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			if len(cfg.Device.Identifiers) == 0 || cfg.Device.Identifiers[0] != siteID {
+				continue
+			}
+			names[cfg.Device.Name]++
+		}
+	}
+	// Both planes have to be in the sample, or "one name" is trivially
+	// true because only one of them was looked at.
+	if len(names) != 1 {
+		t.Fatalf("%s is announced under %d names: %v", siteID, len(names), names)
+	}
+	const want = "UniFi Site Default"
+	if n := names[want]; n == 0 {
+		t.Fatalf("%s is announced as %v, want %q", siteID, names, want)
+	} else if n < 20 {
+		t.Errorf("only %d site configs sampled; the health plane and the SSID switches "+
+			"must both be represented or this test proves nothing", n)
+	}
+}
+
+// TestNoConfigPublishesAnEmptyManufacturer is F15.
+//
+// clientDeviceInfo has no manufacturer to report for a network client.
+// It used to say so with `"manufacturer": ""`; deviceInfo now omits the
+// key, which is what Home Assistant reads the empty string as anyway
+// and what go-hamqtt's own omitempty field renders. Step 4 carved this
+// one key out of its byte comparison; that carve-out is gone.
+func TestNoConfigPublishesAnEmptyManufacturer(t *testing.T) {
+	t.Parallel()
+
+	absent, present := 0, 0
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			dev, _ := cfg.Raw["device"].(map[string]any)
+			m, ok := dev["manufacturer"]
+			switch {
+			case !ok:
+				absent++
+			case m == "":
+				t.Errorf("%s: %s publishes an empty manufacturer", s.name, cfg.Topic)
+			default:
+				present++
+			}
+		}
+	}
+	// The 36 client configs of the three `full` scenarios are the ones
+	// that lost the key; every other config still names Ubiquiti, so a
+	// fix that dropped the key everywhere fails here.
+	const wantAbsent = 36
+	if absent != wantAbsent {
+		t.Errorf("%d configs omit the manufacturer, want %d", absent, wantAbsent)
+	}
+	if present != hamqttTotalConfigs-wantAbsent {
+		t.Errorf("%d configs name a manufacturer, want %d",
+			present, hamqttTotalConfigs-wantAbsent)
+	}
+}
+
 // TestIdentityIsLanguageIndependent compares the two languages
 // directly. CONCEPT.md §6.2 states unique_id, default_entity_id and
 // every topic segment are English; this is the check of it.

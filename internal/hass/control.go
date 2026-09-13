@@ -137,6 +137,7 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 				},
 				AvailabilityMode: "all",
 				Device:           info,
+				Origin:           origin(),
 			},
 			CommandTopic: d.topics.ClientTopic(key, "blocked/set"),
 			StateOn:      payloadON,
@@ -168,6 +169,7 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 				},
 				AvailabilityMode: "all",
 				Device:           info,
+				Origin:           origin(),
 			},
 			CommandTopic: d.topics.ClientTopic(key, "cmd/authorize"),
 			PayloadPress: "PRESS",
@@ -188,12 +190,7 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 func (d *Discovery) WLANControl(w *model.WLAN) (Entry, error) {
 	uid := idPrefix + "_wlan_" + w.ID + "_enabled"
 	seed := entityIDSeed("unifi_wlan", w.Name)
-	info := deviceInfo{
-		Identifiers:  []string{siteDeviceID(d.site)},
-		Name:         "UniFi Site " + d.site,
-		Manufacturer: Manufacturer,
-		Model:        "Site",
-	}
+	info := d.siteDeviceInfo()
 
 	e := controlEntity{
 		entity: entity{
@@ -209,6 +206,7 @@ func (d *Discovery) WLANControl(w *model.WLAN) (Entry, error) {
 			},
 			AvailabilityMode: "all",
 			Device:           info,
+			Origin:           origin(),
 		},
 		CommandTopic: d.topics.WLANTopic(w.ID, "enabled/set"),
 		StateOn:      payloadON,
@@ -252,6 +250,7 @@ func (d *Discovery) button(
 			},
 			AvailabilityMode: "all",
 			Device:           info,
+			Origin:           origin(),
 		},
 		CommandTopic: commandTopic,
 		PayloadPress: "PRESS",
@@ -293,6 +292,7 @@ func (d *Discovery) deviceSwitch(
 			},
 			AvailabilityMode: "all",
 			Device:           info,
+			Origin:           origin(),
 		},
 		CommandTopic: commandTopic,
 		StateOn:      payloadON,

@@ -254,6 +254,7 @@ func (c *Coordinator) DiscoveryConfig(baseTopic, language string) hass.Config {
 		BaseTopic: baseTopic,
 		Topics:    c,
 		Site:      c.site.Internal,
+		SiteName:  c.site.Name,
 		Language:  language,
 	}
 }
@@ -267,7 +268,7 @@ func (c *Coordinator) publishHealthDiscovery(ctx context.Context) error {
 	if c.hass == nil || c.healthAnnounced.Load() {
 		return nil
 	}
-	entries, err := c.hass.Health(c.site.Name)
+	entries, err := c.hass.Health()
 	if err != nil {
 		return err
 	}

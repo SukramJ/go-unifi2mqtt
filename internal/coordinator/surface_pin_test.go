@@ -519,10 +519,21 @@ func regenerateSurfaceGoldens(t *testing.T) {
 //
 // Deliberately not written by -update-surface-golden. See
 // [regenerateSurfaceGoldens].
+// Moved by ADR 0070 phase 9's payload prerequisites, by hand, each
+// literal named with the finding that moved it:
+//
+//   - all five by F7's `origin` block, on all 315 discovery configs;
+//   - full.en, full.de and nonascii.de additionally by F15 (the empty
+//     `device.manufacturer` dropped from 36 client configs) and by F14
+//     (the site device's `device.name`, on the 6 SSID switches that
+//     took Site.Internal).
+//
+// The two `minimal` scenarios announce neither clients nor SSIDs, which
+// is why they move on F7 alone.
 var goldenDigests = map[string]string{
-	"minimal.en":  "fdb43d26c399e3d4e6ed19d51dc1f84345283bd664e669de67bc87f9154b2d04",
-	"minimal.de":  "78d3e6e661660ea6a535b4b6af673a5bcb145b4055716cbb95e90bf88f21d9ed",
-	"full.en":     "d0c36c486104ac500c5d937902c869fddd30936f771ef34c148f217f07144a53",
-	"full.de":     "386e79804dfecc752cba247eff70e516f19606b237233924b9c957bb8375e592",
-	"nonascii.de": "1e29fdc722d8c5fc7490af7f596a9bcf0bfbe482aa753810b32eb3d947902892",
+	"minimal.en":  "4cdc44a29e2298071c5ddeff07ddeb68edfaff19ccc40255ae3b5c00d77a1972",
+	"minimal.de":  "5cd94f38b891ed52e97dbd6b6a70f2e9e4029596b9fe8b42005f99871bb70631",
+	"full.en":     "6db7e0089e9c63d6affbf3ef39877044814cbce8247f26b502f651308eb91f92",
+	"full.de":     "0268684ccedeaf879f11be87d8627d1adbd4cce6a7da309d5c549db82a787890",
+	"nonascii.de": "5b32380fdc97012ec0c4542ac96a22c20194d1de8e1fbb1dda50a4b9afe48334",
 }
