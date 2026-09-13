@@ -270,7 +270,14 @@ func bridge(
 	lifecycle := mqtt.NewLifecycle(mqtt.DefaultLifecycle(), mqttClient)
 	lifecycle.OnConnect(c.OnConnect)
 
-	if err := startMQTT(ctx, lifecycle, time.Second, 30*time.Second, logger); err != nil {
+	// Lifecycle.Start makes exactly one connect attempt and reports its
+	// outcome, so a broker that is still booting — the power-outage
+	// case, where the daemon and the broker start together — has to be
+	// retried here rather than treated as a fatal configuration error.
+	// go-mqtt v1.4.0 extracted that retry out of the bridges that had
+	// each written it; the zero RetryConfig is 1s growing to 30s and
+	// keeps trying until ctx is done, which is what a daemon wants.
+	if err := mqtt.ConnectWithRetry(ctx, lifecycle, mqtt.RetryConfig{Logger: logger}); err != nil {
 		return fmt.Errorf("unifi2mqtt: mqtt start: %w", err)
 	}
 	logger.Info("unifi2mqtt.mqtt_connected",
@@ -380,41 +387,6 @@ func buildFacade(
 		facade.StartClassic(ctx)
 	}
 	return facade, nil
-}
-
-// mqttStarter is the subset of *mqtt.Lifecycle that startMQTT drives,
-// narrowed so tests can inject first-connect failures.
-type mqttStarter interface {
-	Start(ctx context.Context) error
-}
-
-// startMQTT retries the lifecycle's synchronous first connect with
-// bounded backoff.
-//
-// Lifecycle.Start makes exactly one attempt and only runs its reconnect
-// loop after that first success, so a broker that is still booting —
-// the power-outage case, where the daemon and the broker start together
-// — must be retried here instead of being treated as a fatal
-// configuration error.
-func startMQTT(ctx context.Context, lc mqttStarter, backoff, maxBackoff time.Duration, logger *slog.Logger) error {
-	for {
-		err := lc.Start(ctx)
-		if err == nil {
-			return nil
-		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		logger.Warn("unifi2mqtt.mqtt_start_retry",
-			slog.String("err", err.Error()),
-			slog.Duration("retry_in", backoff))
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(backoff):
-		}
-		backoff = min(2*backoff, maxBackoff)
-	}
 }
 
 // inventory reads everything the Integration API offers for the site
