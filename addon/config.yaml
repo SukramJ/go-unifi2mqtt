@@ -78,6 +78,10 @@ options:
   mqtt_login: ""
   mqtt_password: ""
   mqtt_topic: unifi
+  # Empty means "unifi2mqtt-" + mqtt_topic. Set it when two add-on
+  # instances share one broker: two clients on one identifier evict each
+  # other from the broker in a loop.
+  mqtt_client_id: ""
 
   # --- Home Assistant discovery ---
   hass_enable: true
@@ -148,6 +152,7 @@ schema:
   mqtt_login: "str?"
   mqtt_password: "password?"
   mqtt_topic: str
+  mqtt_client_id: "str?"
   hass_enable: bool
   refresh_devices: int(5,3600)
   refresh_clients: int(5,3600)

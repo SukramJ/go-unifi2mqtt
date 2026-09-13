@@ -197,6 +197,10 @@ func surfaceDetails(devices []model.Device) []model.Device {
 		},
 		{Idx: 25, State: model.PortDown, Connector: "SFPPLUS", SpeedMbps: 0, MaxSpeedMbps: 10000},
 	}
+	// One device with its locate LED lit, so the locate switch's state
+	// topic carries both values across the fleet rather than a uniform
+	// OFF that a broken read-back would reproduce (F11).
+	d[1].Locating = true
 	d[2].UplinkID, d[2].UplinkMAC = "id-sw", surfSwMAC
 	d[2].Radios = []model.Radio{
 		{FrequencyGHz: 2.4, Channel: 6, ChannelWidth: 20, Standard: "802.11ax"},
@@ -516,9 +520,9 @@ func regenerateSurfaceGoldens(t *testing.T) {
 // Deliberately not written by -update-surface-golden. See
 // [regenerateSurfaceGoldens].
 var goldenDigests = map[string]string{
-	"minimal.en":  "69dd1e5f60dd22c6666f25ef5b0307e75d7a7a4d39499259fe5ae5e83e4da915",
-	"minimal.de":  "81ba397fb3f4d33201c92f67f2735908dbd554f458de99713f8098c9334f7b9f",
-	"full.en":     "377be9a22de60fcdb8925b18b9ee40e8ca5790c09220ec13f25f86d03fba6e73",
-	"full.de":     "f6c4792b42bf9490f2cee89d2c4f183a73cc70f6b39d21e7774f55f1c6238e39",
-	"nonascii.de": "6ab88cf3aa87b2999324de8fa60598ad76829d628226b2dad9fa994c00e79339",
+	"minimal.en":  "fdb43d26c399e3d4e6ed19d51dc1f84345283bd664e669de67bc87f9154b2d04",
+	"minimal.de":  "78d3e6e661660ea6a535b4b6af673a5bcb145b4055716cbb95e90bf88f21d9ed",
+	"full.en":     "d0c36c486104ac500c5d937902c869fddd30936f771ef34c148f217f07144a53",
+	"full.de":     "386e79804dfecc752cba247eff70e516f19606b237233924b9c957bb8375e592",
+	"nonascii.de": "1e29fdc722d8c5fc7490af7f596a9bcf0bfbe482aa753810b32eb3d947902892",
 }

@@ -78,6 +78,7 @@ controller API to fill those gaps.
 | `mqtt_port` | `1883` | Broker port. |
 | `mqtt_login` / `mqtt_password` | — | Broker credentials. |
 | `mqtt_topic` | `unifi` | Root of the published topic tree. |
+| `mqtt_client_id` | *(empty)* | Identifier presented to the broker. Empty means `unifi2mqtt-` + `mqtt_topic`. Set it when two instances share one broker — two clients on one identifier evict each other in a loop. |
 | `hass_enable` | `true` | Publish Home Assistant discovery. |
 | `hass_base_topic` | `homeassistant` | Discovery prefix. Only change this if you changed it in the MQTT integration too. |
 | `hass_cleanup` | `true` | On start, remove discovery configs this add-on owns but no longer publishes — leftovers from an older version, a removed device, or a filter that no longer matches. Only configs carrying this bridge's own identifiers are touched, so other integrations and a second instance on the same broker are unaffected. |

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -126,6 +127,19 @@ type Config struct {
 	MQTTTopic string `yaml:"MQTT_TOPIC"`
 	// MQTTSSL dials tls:// instead of tcp://.
 	MQTTSSL bool `yaml:"MQTT_SSL"`
+	// MQTTClientID is the identifier this daemon presents to the broker.
+	// Empty means the derived default, ClientIDPrefix + MQTTTopic, which
+	// is the id every installation presented before this key existed —
+	// so nothing has to be set, and nothing already running sees its
+	// first restart after the upgrade as a session takeover.
+	//
+	// Set it when two daemons share a broker. MQTT requires the broker
+	// to disconnect the session it already holds when a second client
+	// presents that session's identifier (3.1.1 §3.1.3.2 / 5.0 §3.1.4),
+	// so two clients on one id do not coexist: they evict each other in
+	// a loop, each reconnecting into the other's session, both last
+	// wills firing, and nothing in either log saying why.
+	MQTTClientID string `yaml:"MQTT_CLIENT_ID"`
 	// MQTTSSLInsecure disables broker certificate verification. Only
 	// meaningful together with MQTTSSL, and only ever for a self-signed
 	// broker the operator controls.
@@ -259,9 +273,30 @@ func (c *Config) MQTTBrokerURL() string {
 	return fmt.Sprintf("%s://%s:%d", scheme, c.MQTTServer, c.MQTTPort)
 }
 
-// ClientID is the MQTT client identifier, derived from the topic root
-// so two instances bridging different sites do not collide.
-func (c *Config) ClientID() string { return ClientIDPrefix + c.MQTTTopic }
+// ClientID is the MQTT client identifier this daemon presents.
+//
+// MQTT_CLIENT_ID when set; otherwise ClientIDPrefix + MQTTTopic, which
+// is what every installation presented before the key existed.
+//
+// The derived default is *not* a separation mechanism, and the doc
+// comment this replaces claimed it was ("derived from the topic root so
+// two instances bridging different sites do not collide"). It is
+// derived from MQTT_TOPIC; the site does not enter it. Two daemons
+// bridging two sites of one console with the shipped configuration
+// present the same id and evict each other in a loop.
+//
+// Changing MQTT_TOPIC does separate the sessions, and remains the
+// documented way to run two bridges — but it moves the availability
+// topic and nothing else: all config topics, all unique_ids and all
+// device identifiers are byte-identical between two instances, which is
+// a separate problem MQTT_CLIENT_ID does not solve. See F6 in
+// notes/adr0070-phase9-measurement.md.
+func (c *Config) ClientID() string {
+	if id := strings.TrimSpace(c.MQTTClientID); id != "" {
+		return id
+	}
+	return ClientIDPrefix + c.MQTTTopic
+}
 
 // Duration accessors. The YAML stores plain seconds; these are what the
 // rest of the daemon consumes.

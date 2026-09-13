@@ -43,7 +43,21 @@ type controlEntity struct {
 	// Optimistic is deliberately false everywhere: the state comes back
 	// from the console after the follow-up poll, so a failed command
 	// snaps the entity back instead of lying (CONCEPT.md §9).
-	Optimistic bool `json:"optimistic"`
+	//
+	// Nothing sets it, so nothing publishes the key. Home Assistant's
+	// MQTT switch turns optimistic mode on only when no state_topic is
+	// given, and every switch here gives one — so saying false says
+	// nothing the default does not. The button schema does not declare
+	// the key at all, and a payload carrying it is refused by a
+	// validator reading it as a document; at step 6 a refused device
+	// bundle publishes no entities whatsoever.
+	//
+	// A pointer, not a bare bool, because `omitempty` behind a bare
+	// bool is the opposite defect: it makes a deliberate false
+	// unpublishable. Here that would be silent — every value this
+	// bridge could want to state happens to be the platform default —
+	// which is precisely why it should not be possible to write.
+	Optimistic *bool `json:"optimistic,omitempty"`
 }
 
 // DeviceControls returns the control entities for one device.
@@ -146,10 +160,9 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 				Name:            name("client_authorize", d.lang),
 				UniqueID:        uid,
 				DefaultEntityID: string(PlatformButton) + "." + seed,
-				// A button has no state topic; Home Assistant only needs
-				// somewhere to publish.
-				StateTopic: "",
-				Icon:       "mdi:account-check",
+				// No StateTopic: a button has none, and "state_topic" is
+				// not a key the MQTT button schema declares.
+				Icon: "mdi:account-check",
 				Availability: []availabilityEntry{
 					{Topic: d.topics.AvailabilityTopic()},
 				},
@@ -207,9 +220,8 @@ func (d *Discovery) WLANControl(w *model.WLAN) (Entry, error) {
 		return Entry{}, err
 	}
 	return Entry{
-		ConfigTopic: d.baseTopic + "/" + string(PlatformSwitch) + "/" +
-			siteDeviceID(d.site) + "/wlan_" + w.ID + "/config",
-		Payload: payload,
+		ConfigTopic: d.configTopic(PlatformSwitch, siteDeviceID(d.site), "wlan_"+w.ID),
+		Payload:     payload,
 	}, nil
 }
 
@@ -250,7 +262,7 @@ func (d *Discovery) button(
 		return Entry{}, err
 	}
 	return Entry{
-		ConfigTopic: d.configTopic(PlatformButton, mac, key),
+		ConfigTopic: d.configTopic(PlatformButton, deviceID(mac), key),
 		Payload:     payload,
 	}, nil
 }
@@ -292,7 +304,7 @@ func (d *Discovery) deviceSwitch(
 		return Entry{}, err
 	}
 	return Entry{
-		ConfigTopic: d.configTopic(PlatformSwitch, mac, key),
+		ConfigTopic: d.configTopic(PlatformSwitch, deviceID(mac), key),
 		Payload:     payload,
 	}, nil
 }

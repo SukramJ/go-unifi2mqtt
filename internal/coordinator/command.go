@@ -370,8 +370,15 @@ func (c *Coordinator) scheduleRefresh(cmd command) {
 	switch cmd.kind {
 	case cmdKindBlock, cmdKindAuthorize:
 		ch = c.nudgeClients
-	case cmdKindRestart, cmdKindPowerCycle, cmdKindLocate, cmdKindWLAN:
+	case cmdKindRestart, cmdKindPowerCycle:
 		ch = c.nudgeDevices
+	// The locate LED and the SSID enable flag are both published by the
+	// static loop — the device list and the WLAN catalogue the fast
+	// loop sees carry neither — so nudging the device loop for them
+	// republishes an unchanged snapshot and the entity stays on the old
+	// value until the next hourly poll.
+	case cmdKindLocate, cmdKindWLAN:
+		ch = c.nudgeStatic
 	default:
 		return
 	}

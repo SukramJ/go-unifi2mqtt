@@ -58,8 +58,8 @@ type stubClassic struct {
 	detailsErr error
 	powerErr   error
 
-	details map[model.MAC]model.Client
-	power   map[model.MAC]map[int]float64
+	details       map[model.MAC]model.Client
+	deviceDetails map[model.MAC]model.DeviceDetail
 
 	detailCalls atomic.Int32
 }
@@ -82,11 +82,11 @@ func (s *stubClassic) ClientDetails(context.Context, string) (map[model.MAC]mode
 	return s.details, nil
 }
 
-func (s *stubClassic) PortPower(context.Context, string) (map[model.MAC]map[int]float64, error) {
+func (s *stubClassic) DeviceDetails(context.Context, string) (map[model.MAC]model.DeviceDetail, error) {
 	if s.powerErr != nil {
 		return nil, s.powerErr
 	}
-	return s.power, nil
+	return s.deviceDetails, nil
 }
 
 func (s *stubClassic) SetClientBlocked(context.Context, string, model.MAC, bool) error { return nil }
@@ -199,11 +199,11 @@ func TestClientMissingFromClassicResponseSurvives(t *testing.T) {
 	}
 }
 
-func TestPortPowerEnrichment(t *testing.T) {
+func TestDeviceDetailEnrichment(t *testing.T) {
 	t.Parallel()
 
-	classic := &stubClassic{power: map[model.MAC]map[int]float64{
-		swMAC: {1: 7.4},
+	classic := &stubClassic{deviceDetails: map[model.MAC]model.DeviceDetail{
+		swMAC: {PortPowerW: map[int]float64{1: 7.4}, Locating: true},
 	}}
 	f, _ := newFacade(t, classic)
 	f.StartClassic(t.Context())
@@ -218,6 +218,12 @@ func TestPortPowerEnrichment(t *testing.T) {
 	// A port with no PoE hardware must not gain a PoE block.
 	if devices[0].Ports[1].PoE != nil {
 		t.Error("a non-PoE port gained a PoE block from enrichment")
+	}
+	// The locate read-back rides the same response: without it the
+	// locate switch's state topic is written by nobody and the entity
+	// sits at "unknown" forever (F11).
+	if !devices[0].Locating {
+		t.Error("Locating = false, want the read-back from /stat/device")
 	}
 }
 

@@ -4,6 +4,7 @@
 package coordinator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -180,6 +181,82 @@ func TestConfigTopicForm(t *testing.T) {
 		sort.Strings(exceptions)
 		t.Errorf("unique_id != <node_id>_<object_id> on %d configs, want %d:\n%s",
 			got, wantExceptions, strings.Join(exceptions, "\n"))
+	}
+}
+
+// TestConfigTopicFormIsTheFiveSegmentNodeIDForm is the F5 decision,
+// written so it cannot pass vacuously.
+//
+// go-hamqtt's publisher.SupersededTopics renders the retraction topics
+// for the per-entity configs a device bundle replaces. Getting the form
+// wrong is silent and total: the bundle is published while every
+// per-entity config is still retained, Home Assistant answers with one
+// "Received a conflicting MQTT discovery message" warning, and the
+// result is no entities and nothing on the wire to say so.
+//
+// Both candidate forms are transcribed here and rendered over the real
+// builder's output. The test requires that LegacyTopicWithNodeID — the
+// library's *default* — reproduces every published topic, and that
+// LegacyTopicByUniqueID reproduces none of them. Asserting only the
+// first would pass just as happily if the two forms ever became
+// indistinguishable, which is exactly when the check stops being worth
+// anything.
+//
+// It also pins the two inputs the form is a function of, because
+// neither is a property of the default: the bundle's NodeID has to be
+// device.identifiers[0], and the component key has to be the object-id
+// segment rather than anything derived from the unique_id.
+func TestConfigTopicFormIsTheFiveSegmentNodeIDForm(t *testing.T) {
+	t.Parallel()
+
+	// publisher.LegacyTopicWithNodeID, the default form.
+	withNodeID := func(prefix, platform, nodeID, componentKey, _ string) string {
+		return prefix + "/" + platform + "/" + nodeID + "/" + componentKey + "/config"
+	}
+	// publisher.LegacyTopicByUniqueID, the four-segment alternative.
+	byUniqueID := func(prefix, platform, _, _, uniqueID string) string {
+		return prefix + "/" + platform + "/" + uniqueID + "/config"
+	}
+
+	var matched, unmatchedByUID int
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			parts := strings.Split(cfg.Topic, "/")
+			prefix, platform := parts[0], parts[1]
+			// The two inputs a step-4 model has to choose. The node id
+			// is taken from the payload's own device block, not from
+			// the topic, so this proves the bundle can be keyed on it.
+			nodeID := cfg.Device.Identifiers[0]
+			componentKey := parts[3]
+
+			if got := withNodeID(prefix, platform, nodeID, componentKey, cfg.UniqueID); got != cfg.Topic {
+				t.Errorf("%s: the five-segment node-id form renders %q, want %q",
+					s.name, got, cfg.Topic)
+				continue
+			}
+			matched++
+			if byUniqueID(prefix, platform, nodeID, componentKey, cfg.UniqueID) != cfg.Topic {
+				unmatchedByUID++
+			}
+		}
+	}
+
+	if matched == 0 {
+		t.Fatal("no configs compared; the test asserts nothing")
+	}
+	// The whole point: the other candidate must reproduce *nothing*.
+	// LegacyEntityTopics replaces the default rather than extending it,
+	// so stating LegacyTopicByUniqueID at step 6 would turn a working
+	// retraction into none.
+	if unmatchedByUID != matched {
+		t.Errorf("the by-unique_id form reproduces %d of %d published topics; "+
+			"if the two forms are no longer distinguishable this test proves nothing",
+			matched-unmatchedByUID, matched)
+	}
+	if hass.LegacyConfigTopicForm !=
+		"<discovery_prefix>/<platform>/<node_id>/<object_id>/config" {
+		t.Errorf("hass.LegacyConfigTopicForm = %q, which is no longer the form "+
+			"this test proves", hass.LegacyConfigTopicForm)
 	}
 }
 
@@ -463,7 +540,7 @@ func TestPublishQoSAndRetain(t *testing.T) {
 
 	const (
 		wantConfig = 315
-		wantState  = 305
+		wantState  = 317
 		wantAvail  = 5
 	)
 	if configQoS1 != wantConfig || stateQoS0 != wantState || availQoS1 != wantAvail || other != 0 {
@@ -483,12 +560,13 @@ func TestPublishQoSAndRetain(t *testing.T) {
 // at "unknown" forever with nothing in any log. They are listed here so
 // the test can pin the *exact* set — a new one fails, and fixing one
 // fails until it is removed from this list.
-var knownAdvertisedButUnpublished = map[string]string{
-	"unifi/default/device/00005e005301/locate": "F: the device locate switch's state topic is written by nobody",
-	"unifi/default/device/00005e005302/locate": "F: the device locate switch's state topic is written by nobody",
-	"unifi/default/device/00005e005303/locate": "F: the device locate switch's state topic is written by nobody",
-	"unifi/default/device/00005e005304/locate": "F: the device locate switch's state topic is written by nobody",
-}
+//
+// It is empty. The four entries it held were the locate switches of
+// F11, and the locate LED is now read back from the classic API and
+// published. The map stays because its emptiness is an assertion: a
+// topic that becomes advertised-but-unwritten has to be declared here,
+// in review, rather than quietly tolerated.
+var knownAdvertisedButUnpublished = map[string]string{}
 
 // TestAdvertisedStateTopicsArePublished is the builder-against-builder
 // check: every state and attributes topic a discovery config names is
@@ -547,6 +625,62 @@ func TestKnownUnpublishedTopicsAreStillAdvertised(t *testing.T) {
 				"knownAdvertisedButUnpublished (%s)", topic, why)
 		}
 	}
+}
+
+// TestLocateSwitchStateReflectsTheReadBack is the regression for F11 of
+// notes/adr0070-phase9-measurement.md.
+//
+// The locate switch advertised `…/device/<mac>/locate` as its state
+// topic and nothing in this daemon ever wrote to it. The switch sat at
+// "unknown" forever: a press was executed — the command path works —
+// and the entity never reflected it, with nothing in any log.
+//
+// Asserting only that the topic is written would pass on a publisher
+// that hard-codes OFF, so this checks the *value* against the fixture's
+// read-back, which is ON for exactly one device of the four.
+func TestLocateSwitchStateReflectsTheReadBack(t *testing.T) {
+	t.Parallel()
+
+	// The one device whose locate LED the fixture reports as lit.
+	const litDevice = "unifi/default/device/00005e005302/locate"
+
+	checked := 0
+	for _, s := range allSurfaces(t) {
+		for _, cfg := range s.configs {
+			if !strings.HasSuffix(cfg.Topic, "/locate/config") {
+				continue
+			}
+			checked++
+			want := "OFF"
+			if cfg.StateTopic == litDevice {
+				want = "ON"
+			}
+			got, ok := s.textOn(cfg.StateTopic)
+			if !ok {
+				t.Errorf("%s: %s names %q, which nothing publishes",
+					s.name, cfg.Topic, cfg.StateTopic)
+				continue
+			}
+			if got != want {
+				t.Errorf("%s: %s = %q, want %q", s.name, cfg.StateTopic, got, want)
+			}
+		}
+	}
+	// Three scenarios have the control on, four devices each.
+	const wantChecked = 12
+	if checked != wantChecked {
+		t.Errorf("checked %d locate switches, want %d", checked, wantChecked)
+	}
+}
+
+// textOn returns the scalar payload published on a topic.
+func (s surface) textOn(topic string) (string, bool) {
+	for _, m := range s.msgs {
+		if m.Topic == topic && m.Text != nil {
+			return *m.Text, true
+		}
+	}
+	return "", false
 }
 
 // TestCommandTopicsAreSubscribed pins the third vocabulary: the command
@@ -758,6 +892,66 @@ func TestTwoDefaultInstancesCollideOnEveryString(t *testing.T) {
 	}
 }
 
+// TestClientIDSeparatesSessionsAndNothingElse is the other half of F6,
+// and the fact step 6 has to plan around.
+//
+// MQTT_CLIENT_ID ends the eviction loop two default daemons are in. It
+// does not separate their published surface by one byte: the config
+// topics, the unique_ids and the device identifiers carry no
+// instance-scoped string at all, and unlike MQTT_TOPIC the client id
+// does not even move the availability topic.
+//
+// Today that means two instances on one console overwrite each other
+// entity by entity — noisy, and converging. At step 6 a device bundle
+// is *one* retained topic carrying that device's whole component set,
+// so two instances with any divergence — a different LANGUAGE, a
+// different control set, one with the classic layer and one without —
+// replace each other's entire entity set on every publish. A staggered
+// upgrade is worse still: A retracts the per-entity configs, B on the
+// old build republishes them, A retracts again, and upgrading B second
+// makes B's bundle replace A's whole fleet. go-mtec2mqtt's reviewer
+// demonstrated that this actually happens.
+func TestClientIDSeparatesSessionsAndNothingElse(t *testing.T) {
+	t.Parallel()
+
+	sc := surfaceScenarios()[2] // full.en
+	a := loadSurface(t, sc)
+
+	other := sc
+	other.name = "full.en.client-id"
+	other.yaml = sc.yaml + "MQTT_CLIENT_ID: unifi2mqtt-garage\n"
+	b := loadSurface(t, other)
+
+	if len(a.msgs) != len(b.msgs) {
+		t.Fatalf("MQTT_CLIENT_ID changed the message count: %d vs %d",
+			len(a.msgs), len(b.msgs))
+	}
+	for i := range a.msgs {
+		x, err := json.Marshal(a.msgs[i])
+		if err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		y, err := json.Marshal(b.msgs[i])
+		if err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		if !bytes.Equal(x, y) {
+			t.Errorf("MQTT_CLIENT_ID moved a published message: %s",
+				a.msgs[i].Topic)
+		}
+	}
+	// And the configs specifically, so a future availability change
+	// cannot make this pass for the wrong reason.
+	for i := range a.configs {
+		if a.configs[i].Topic != b.configs[i].Topic ||
+			a.configs[i].UniqueID != b.configs[i].UniqueID ||
+			len(a.configs[i].Availability) != len(b.configs[i].Availability) ||
+			a.configs[i].Availability[0].Topic != b.configs[i].Availability[0].Topic {
+			t.Errorf("MQTT_CLIENT_ID moved %s", a.configs[i].Topic)
+		}
+	}
+}
+
 func loadSurfaceWithRoot(t *testing.T, root string) surface {
 	t.Helper()
 	sc := surfaceScenarios()[2]
@@ -781,9 +975,9 @@ func TestSurfaceCensus(t *testing.T) {
 	want := map[string]census{
 		"minimal.en":  {92, 45, "binary_sensor=11 sensor=34"},
 		"minimal.de":  {92, 45, "binary_sensor=11 sensor=34"},
-		"full.en":     {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
-		"full.de":     {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
-		"nonascii.de": {147, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"full.en":     {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"full.de":     {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"nonascii.de": {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
 	}
 	for _, s := range allSurfaces(t) {
 		counts := map[string]int{}

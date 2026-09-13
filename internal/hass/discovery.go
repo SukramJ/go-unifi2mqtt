@@ -157,7 +157,14 @@ type entity struct {
 	// when it is first created.
 	DefaultEntityID string `json:"default_entity_id,omitempty"`
 
-	StateTopic          string `json:"state_topic"`
+	// StateTopic is omitted when empty because a button has none, and
+	// "state_topic" is not a key the MQTT button schema declares. Home
+	// Assistant's discovery schemas are extra=REMOVE_EXTRA, so an empty
+	// one is dropped on arrival today — but a validator reading the
+	// payload as a document refuses it, and once these entities are
+	// published as one device bundle a refusal costs the device its
+	// whole entity set rather than the one key.
+	StateTopic          string `json:"state_topic,omitempty"`
 	UnitOfMeasurement   string `json:"unit_of_measurement,omitempty"`
 	DeviceClass         string `json:"device_class,omitempty"`
 	StateClass          string `json:"state_class,omitempty"`
@@ -195,6 +202,17 @@ type spec struct {
 	icon        string
 	payloadOn   string
 	payloadOff  string
+	// valueTemplate maps the published value onto payloadOn/payloadOff
+	// for a binary sensor whose state topic carries something richer
+	// than two strings.
+	//
+	// Without one, a binary sensor can only match the values it names:
+	// a device state topic carrying ten model.DeviceState strings
+	// matches payload_on on exactly one of them and *nothing* on the
+	// other nine, so the entity can turn on and never off. A template
+	// that renders every input as one of the two payloads is the only
+	// shape that has no third outcome.
+	valueTemplate string
 	// deviceScoped marks entities whose availability must not depend on
 	// the device being online — the state sensor itself, above all.
 	bridgeAvailOnly bool
@@ -242,11 +260,23 @@ func deviceSpecs() []spec {
 		},
 		{
 			platform: PlatformBinarySensor, key: "reachable", stateSuffix: "state",
-			deviceClass: "connectivity", payloadOn: "ONLINE",
+			deviceClass: "connectivity",
 			// Anything that is not exactly ONLINE counts as unreachable,
 			// which is what an automation wants: ADOPTING and UPDATING
 			// are not states you can route traffic through.
-			payloadOff:      "",
+			//
+			// That has to be said with a template. The state topic
+			// carries ten model.DeviceState strings and not one of them
+			// is "OFF", so a bare payload_on: "ONLINE" matched the on
+			// side and nothing at all on the other nine values: the
+			// sensor turned on at the first ONLINE and could never
+			// report the device going away. It stayed *available* while
+			// doing it, because this entity is bridge-scoped on
+			// purpose, so nothing anywhere said the reading was stale.
+			valueTemplate: "{{ 'ON' if value == 'ONLINE' else 'OFF' }}",
+			payloadOn:     payloadON,
+			payloadOff:    payloadOFF,
+
 			bridgeAvailOnly: true,
 		},
 		{
@@ -296,8 +326,17 @@ func portSpecs(p *model.Port) []spec {
 			platform: PlatformBinarySensor, key: prefix + "link",
 			nameKey: "port_link", nameArg: idx,
 			stateSuffix: "port/" + idx + "/state",
-			deviceClass: "connectivity", payloadOn: "UP", payloadOff: "DOWN",
-			category: "diagnostic",
+			deviceClass: "connectivity",
+			// model.PortState is UP, DOWN *or* UNKNOWN, so payload_on
+			// "UP" / payload_off "DOWN" left the third value matching
+			// neither and the entity unable to report it — the same
+			// defect as the device "reachable" sensor, on a third
+			// surface. A port whose link state the console cannot
+			// report is not carrying traffic, so it reads as off.
+			valueTemplate: "{{ 'ON' if value == 'UP' else 'OFF' }}",
+			payloadOn:     payloadON,
+			payloadOff:    payloadOFF,
+			category:      "diagnostic",
 		},
 		{
 			platform: PlatformSensor, key: prefix + "speed",
@@ -367,6 +406,7 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 		Icon:                s.icon,
 		PayloadOn:           s.payloadOn,
 		PayloadOff:          s.payloadOff,
+		ValueTemplate:       s.valueTemplate,
 		JSONAttributesTopic: d.stateTopic(mac, "attributes"),
 		Availability:        d.availabilityFor(mac, s.bridgeAvailOnly),
 		AvailabilityMode:    "all",
@@ -378,7 +418,7 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 		return Entry{}, err
 	}
 	return Entry{
-		ConfigTopic: d.configTopic(s.platform, mac, s.key),
+		ConfigTopic: d.configTopic(s.platform, deviceID(mac), s.key),
 		Payload:     payload,
 	}, nil
 }
@@ -495,12 +535,50 @@ func collapseTokens(s string) string {
 // entity along with its history (CONCEPT.md §3.4).
 func deviceID(mac model.MAC) string { return idPrefix + "_" + mac.String() }
 
-// configTopic is where a discovery payload is published:
-// <prefix>/<platform>/unifi_<mac>/<key>/config
-func (d *Discovery) configTopic(p Platform, mac model.MAC, key string) string {
-	return strings.Join([]string{
-		d.baseTopic, string(p), deviceID(mac), key, "config",
-	}, "/")
+// LegacyConfigTopicForm records the retained per-entity config topic
+// form this bridge publishes, as the ADR 0070 migration will have to
+// state it. Nothing reads it today; step 6 is what reads it.
+//
+// It matters because retracting the per-entity configs is what makes
+// room for a device bundle, and a retraction that renders a form this
+// fleet is not on retracts nothing: the bundle lands while every
+// per-entity config is still retained, Home Assistant refuses it with
+// one "Received a conflicting MQTT discovery message" warning, and the
+// result is no entities and no error anywhere on the wire.
+//
+// Three things have to hold, and only the first is the form:
+//
+//  1. Five segments, <prefix>/<platform>/<node_id>/<object_id>/config.
+//     This is publisher.SupersededTopics' *default*
+//     (LegacyTopicWithNodeID), which inverts three of the four earlier
+//     phases: here the default is right and the escape hatch is wrong.
+//     publisher.LegacyTopicByUniqueID would retract nothing at all and
+//     must not be stated — Config.LegacyEntityTopics *replaces* the
+//     default rather than extending it, so naming it would turn a
+//     working retraction into none.
+//
+//  2. The node id is byte-equal to the payload's own
+//     device.identifiers[0] — unifi_<mac>, unifi_client_<key> or
+//     unifi_site_<site> — on every config this daemon writes. A bundle
+//     keyed on anything else, a slug of the device name above all,
+//     retracts nothing.
+//
+//  3. The component key is the **object-id segment**, which is not
+//     derivable from the unique_id: on the client ip and signal sensors
+//     and on every SSID switch the two differ. Deriving the component
+//     key from a unique_id suffix silently retracts nothing for those.
+//
+// TestConfigTopicFormIsTheFiveSegmentNodeIDForm renders both candidate
+// forms over the real builder output and requires that one reproduces
+// the published topic and the other does not.
+const LegacyConfigTopicForm = "<discovery_prefix>/<platform>/<node_id>/<object_id>/config"
+
+// configTopic is where a discovery payload is published. It is the one
+// composer for [LegacyConfigTopicForm]; every entity kind — device,
+// port, radio, control, client and site health — goes through it, so
+// there is exactly one place the form can move from.
+func (d *Discovery) configTopic(p Platform, nodeID, objectID string) string {
+	return strings.Join([]string{d.baseTopic, string(p), nodeID, objectID, "config"}, "/")
 }
 
 func (d *Discovery) stateTopic(mac model.MAC, suffix string) string {

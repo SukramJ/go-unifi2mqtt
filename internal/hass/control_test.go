@@ -61,6 +61,13 @@ func TestDeviceControls(t *testing.T) {
 // Nothing may be optimistic: the state comes back from the console
 // after the follow-up poll, so a failed command snaps the entity back
 // rather than leaving it lying about what happened.
+//
+// Absent is how that is expressed. Home Assistant's MQTT switch turns
+// optimistic mode on only when no state_topic is given, and every
+// switch here gives one, so an omitted key and an explicit false are
+// the same entity — while an explicit false on a button is a key that
+// platform does not declare at all. What this test refuses is the
+// value that would change behaviour.
 func TestControlsAreNeverOptimistic(t *testing.T) {
 	t.Parallel()
 
@@ -68,10 +75,66 @@ func TestControlsAreNeverOptimistic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeviceControls: %v", err)
 	}
+	controls := 0
 	for topic, payload := range decode(t, entries) {
-		if got, ok := payload["optimistic"]; !ok || got != false {
-			t.Errorf("%s optimistic = %v, want false", topic, got)
+		controls++
+		// Absent, not false: the key is a pointer nothing sets, so an
+		// optimistic control cannot be published by accident, and a
+		// deliberate one would have to state the value — at which point
+		// this test says so.
+		if got, ok := payload["optimistic"]; ok {
+			t.Errorf("%s states optimistic = %v; the platform default is "+
+				"already what this bridge wants", topic, got)
 		}
+	}
+	if controls == 0 {
+		t.Fatal("no control configs rendered; the test asserts nothing")
+	}
+}
+
+// TestButtonsCarryOnlyKeysTheButtonSchemaDeclares is the regression for
+// F2 of notes/adr0070-phase9-measurement.md.
+//
+// Every one of this bridge's button payloads used to carry
+// "state_topic": "" and "optimistic": false, neither of which the MQTT
+// button schema declares. Home Assistant drops both silently — its
+// discovery schemas are extra=REMOVE_EXTRA — so the buttons worked and
+// nothing said otherwise. A validator reading the payload as a document
+// refuses it, and once a device's entities are published as one bundle
+// a refusal costs that device every entity it has, not the button.
+func TestButtonsCarryOnlyKeysTheButtonSchemaDeclares(t *testing.T) {
+	t.Parallel()
+
+	// Keys the MQTT button schema does not declare, so Home Assistant
+	// drops them on arrival and a document validator refuses them.
+	notOnButton := []string{"state_topic", "optimistic"}
+
+	entries, err := newTestDiscovery(LangEN).DeviceControls(testDevice(), allControls())
+	if err != nil {
+		t.Fatalf("DeviceControls: %v", err)
+	}
+	buttons := 0
+	for topic, payload := range decode(t, entries) {
+		if !strings.HasPrefix(topic, "homeassistant/button/") {
+			continue
+		}
+		buttons++
+		for _, key := range notOnButton {
+			if v, ok := payload[key]; ok {
+				t.Errorf("%s carries %q = %#v, which platform button does not declare",
+					topic, key, v)
+			}
+		}
+		// The keys it does need must still be there, so the fix cannot
+		// pass by emptying the payload.
+		for _, key := range []string{"command_topic", "payload_press", "unique_id"} {
+			if _, ok := payload[key]; !ok {
+				t.Errorf("%s is missing %q", topic, key)
+			}
+		}
+	}
+	if buttons == 0 {
+		t.Fatal("no button configs rendered; the test asserts nothing")
 	}
 }
 

@@ -64,7 +64,7 @@ type classicClient interface {
 	Login(ctx context.Context) error
 	Health(ctx context.Context, siteRef string) (model.Health, error)
 	ClientDetails(ctx context.Context, siteRef string) (map[model.MAC]model.Client, error)
-	PortPower(ctx context.Context, siteRef string) (map[model.MAC]map[int]float64, error)
+	DeviceDetails(ctx context.Context, siteRef string) (map[model.MAC]model.DeviceDetail, error)
 	SetClientBlocked(ctx context.Context, siteRef string, mac model.MAC, blocked bool) error
 	SetLocate(ctx context.Context, siteRef string, mac model.MAC, on bool) error
 	SetWLANEnabled(ctx context.Context, siteRef, wlanID string, enabled bool) error
@@ -201,7 +201,12 @@ func (f *Facade) AuthorizeGuest(ctx context.Context, siteID, clientID string, mi
 // --- combined surface ---
 
 // DevicesWithDetails lists devices with ports, radios and uplinks,
-// enriched with PoE power draw when the classic layer can supply it.
+// enriched with the two fields only the classic API has: PoE power draw
+// and the locate LED's state.
+//
+// Both ride one `/stat/device` response, so both are gated on
+// CapPortPower — the capability that names that endpoint and the one
+// that degrades when it fails.
 func (f *Facade) DevicesWithDetails(ctx context.Context, siteID string) ([]model.Device, error) {
 	devices, err := f.integration.DevicesWithDetails(ctx, siteID)
 	if err != nil {
@@ -211,26 +216,27 @@ func (f *Facade) DevicesWithDetails(ctx context.Context, siteID string) ([]model
 		return devices, nil
 	}
 
-	power, err := f.classic.PortPower(ctx, f.siteRef)
+	details, err := f.classic.DeviceDetails(ctx, f.siteRef)
 	if err != nil {
 		// A failing enrichment must not fail the poll: the devices are
-		// fine, they just have no wattage.
+		// fine, they just have no wattage and no locate read-back.
 		f.degrade(CapPortPower, err)
 		return devices, nil
 	}
 	f.restore(CapPortPower)
 
 	for i := range devices {
-		byPort := power[devices[i].MAC]
-		if byPort == nil {
+		detail, ok := details[devices[i].MAC]
+		if !ok {
 			continue
 		}
+		devices[i].Locating = detail.Locating
 		for j := range devices[i].Ports {
 			p := &devices[i].Ports[j]
 			if p.PoE == nil {
 				continue
 			}
-			if w, ok := byPort[p.Idx]; ok {
+			if w, ok := detail.PortPowerW[p.Idx]; ok {
 				p.PoE.PowerW = w
 			}
 		}

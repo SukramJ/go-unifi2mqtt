@@ -60,6 +60,10 @@ const (
 	keyFirmware          = "firmware"
 	keyUpdateAvailable   = "update_available"
 	keyAttributes        = "attributes"
+	// keyLocate is the read-back of the locate LED, published only
+	// where the locate switch is announced — the control's state topic
+	// and nothing else reads it.
+	keyLocate = "locate"
 
 	keyPortState    = "state"
 	keyPortSpeed    = "speed"

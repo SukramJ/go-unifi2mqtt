@@ -109,8 +109,27 @@ type Device struct {
 	// "switching", "accessPoint".
 	Features []string
 
+	// Locating is the state of the locate LED, read back from the
+	// classic API's `/stat/device`. It is false without the classic
+	// layer, which is also exactly when the locate control is not
+	// offered — so nothing ever publishes this value as if it were
+	// known when it is not.
+	Locating bool
+
 	Ports  []Port
 	Radios []Radio
+}
+
+// DeviceDetail is what the classic API's `/stat/device` adds to a
+// device the Integration API already described. It lives here rather
+// than in internal/unifi/classic because internal/unifi consumes it and
+// classic imports internal/unifi's model, not the other way round.
+type DeviceDetail struct {
+	// PortPowerW is PoE draw in watts, keyed by port index, and holds
+	// an entry only for a port actually delivering power.
+	PortPowerW map[int]float64
+	// Locating is the state of the locate LED.
+	Locating bool
 }
 
 // DeviceStats is one sample from `/devices/{id}/statistics/latest`.

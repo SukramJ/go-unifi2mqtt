@@ -204,6 +204,8 @@ func applyEnv(cfg *Config, env Env) error {
 		"REFRESH_STATIC":       num(&cfg.RefreshStatic),
 		"FORCE_REPUBLISH":      num(&cfg.ForceRepublish),
 
+		"MQTT_CLIENT_ID": str(&cfg.MQTTClientID),
+
 		// Clients
 		"CLIENTS_ENABLE":         boolean(&cfg.Clients.Enable),
 		"CLIENTS_TYPES":          list(&cfg.Clients.Types),

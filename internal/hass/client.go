@@ -182,5 +182,5 @@ func (d *Discovery) clientDeviceInfo(cl *model.Client) deviceInfo {
 func clientDeviceID(key string) string { return idPrefix + "_client_" + key }
 
 func (d *Discovery) clientConfigTopic(p Platform, key, suffix string) string {
-	return d.baseTopic + "/" + string(p) + "/" + clientDeviceID(key) + "/" + suffix + "/config"
+	return d.configTopic(p, clientDeviceID(key), suffix)
 }

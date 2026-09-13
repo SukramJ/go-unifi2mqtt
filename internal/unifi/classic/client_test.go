@@ -360,36 +360,51 @@ func TestClientDetailsDecoding(t *testing.T) {
 	}
 }
 
-func TestPortPowerDecoding(t *testing.T) {
+func TestDeviceDetailDecoding(t *testing.T) {
 	t.Parallel()
 
 	srv := &unifiOS{body: `{"meta":{"rc":"ok"},"data":[
-		{"mac":"00:00:5e:00:53:02","_id":"sw","port_table":[
+		{"mac":"00:00:5e:00:53:02","_id":"sw","locating":true,"port_table":[
 			{"port_idx":1,"poe_power":"7.40","poe_enable":true},
 			{"port_idx":2,"poe_power":"0.00","poe_enable":false},
 			{"port_idx":3},
 			{"port_idx":4,"poe_power":"not-a-number"}
-		]}
+		]},
+		{"mac":"00:00:5e:00:53:03","_id":"ap","locating":false},
+		{"mac":"00:00:5e:00:53:04","_id":"old"}
 	]}`}
 	ts := httptest.NewServer(srv.handler(t))
 	t.Cleanup(ts.Close)
 
-	power, err := newClient(t, ts.URL).PortPower(t.Context(), siteRef)
+	details, err := newClient(t, ts.URL).DeviceDetails(t.Context(), siteRef)
 	if err != nil {
-		t.Fatalf("PortPower: %v", err)
+		t.Fatalf("DeviceDetails: %v", err)
 	}
 
-	byPort := power[model.MustParseMAC("00:00:5e:00:53:02")]
-	if got, want := byPort[1], 7.4; got != want {
+	sw := details[model.MustParseMAC("00:00:5e:00:53:02")]
+	if got, want := sw.PortPowerW[1], 7.4; got != want {
 		t.Errorf("port 1 = %v W, want %v", got, want)
 	}
 	// A port drawing nothing, one with no field, and one with garbage
 	// must all be absent rather than reported as 0 W — the distinction
 	// between "no power" and "no data" matters for the sensor.
 	for _, idx := range []int{2, 3, 4} {
-		if _, ok := byPort[idx]; ok {
+		if _, ok := sw.PortPowerW[idx]; ok {
 			t.Errorf("port %d has a power reading, want none", idx)
 		}
+	}
+
+	// The locate read-back: true, explicitly false, and the field
+	// absent entirely, which the classic API does rather than sending
+	// null and which must read as off rather than as an error.
+	if !sw.Locating {
+		t.Error("switch Locating = false, want true")
+	}
+	if details[model.MustParseMAC("00:00:5e:00:53:03")].Locating {
+		t.Error("ap Locating = true, want false")
+	}
+	if details[model.MustParseMAC("00:00:5e:00:53:04")].Locating {
+		t.Error("a device with no locating field reported the LED on")
 	}
 }
 

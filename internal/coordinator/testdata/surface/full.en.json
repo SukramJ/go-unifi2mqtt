@@ -31,9 +31,11 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
         "name": "Reachable",
-        "payload_on": "ONLINE",
+        "payload_off": "OFF",
+        "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005301/state",
-        "unique_id": "unifi_00005e005301_reachable"
+        "unique_id": "unifi_00005e005301_reachable",
+        "value_template": "{{ 'ON' if value == 'ONLINE' else 'OFF' }}"
       }
     },
     {
@@ -109,10 +111,11 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Port 1 link",
-        "payload_off": "DOWN",
-        "payload_on": "UP",
+        "payload_off": "OFF",
+        "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/port/1/state",
-        "unique_id": "unifi_00005e005302_port_1_link"
+        "unique_id": "unifi_00005e005302_port_1_link",
+        "value_template": "{{ 'ON' if value == 'UP' else 'OFF' }}"
       }
     },
     {
@@ -193,10 +196,11 @@
         "entity_category": "diagnostic",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Port 25 link",
-        "payload_off": "DOWN",
-        "payload_on": "UP",
+        "payload_off": "OFF",
+        "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/port/25/state",
-        "unique_id": "unifi_00005e005302_port_25_link"
+        "unique_id": "unifi_00005e005302_port_25_link",
+        "value_template": "{{ 'ON' if value == 'UP' else 'OFF' }}"
       }
     },
     {
@@ -230,9 +234,11 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
         "name": "Reachable",
-        "payload_on": "ONLINE",
+        "payload_off": "OFF",
+        "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/state",
-        "unique_id": "unifi_00005e005302_reachable"
+        "unique_id": "unifi_00005e005302_reachable",
+        "value_template": "{{ 'ON' if value == 'ONLINE' else 'OFF' }}"
       }
     },
     {
@@ -304,9 +310,11 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
         "name": "Reachable",
-        "payload_on": "ONLINE",
+        "payload_off": "OFF",
+        "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005303/state",
-        "unique_id": "unifi_00005e005303_reachable"
+        "unique_id": "unifi_00005e005303_reachable",
+        "value_template": "{{ 'ON' if value == 'ONLINE' else 'OFF' }}"
       }
     },
     {
@@ -377,9 +385,11 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
         "name": "Reachable",
-        "payload_on": "ONLINE",
+        "payload_off": "OFF",
+        "payload_on": "ON",
         "state_topic": "unifi/default/device/00005e005304/state",
-        "unique_id": "unifi_00005e005304_reachable"
+        "unique_id": "unifi_00005e005304_reachable",
+        "value_template": "{{ 'ON' if value == 'ONLINE' else 'OFF' }}"
       }
     },
     {
@@ -442,9 +452,11 @@
         "device_class": "connectivity",
         "json_attributes_topic": "unifi/default/health/attributes",
         "name": "WAN connection",
-        "payload_on": "ok",
+        "payload_off": "OFF",
+        "payload_on": "ON",
         "state_topic": "unifi/default/health/wan/state",
-        "unique_id": "unifi_site_default_wan_connectivity"
+        "unique_id": "unifi_site_default_wan_connectivity",
+        "value_template": "{{ 'ON' if value == 'ok' else 'OFF' }}"
       }
     },
     {
@@ -482,9 +494,7 @@
         "entity_category": "config",
         "icon": "mdi:restart",
         "name": "Restart",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005301_restart"
       }
     },
@@ -524,9 +534,7 @@
         "entity_category": "config",
         "icon": "mdi:power-cycle",
         "name": "Port 1 power-cycle",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005302_port_1_power_cycle"
       }
     },
@@ -566,9 +574,7 @@
         "entity_category": "config",
         "icon": "mdi:restart",
         "name": "Restart",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005302_restart"
       }
     },
@@ -608,9 +614,7 @@
         "entity_category": "config",
         "icon": "mdi:restart",
         "name": "Restart",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005303_restart"
       }
     },
@@ -649,9 +653,7 @@
         "entity_category": "config",
         "icon": "mdi:restart",
         "name": "Restart",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_00005e005304_restart"
       }
     },
@@ -684,9 +686,7 @@
         },
         "icon": "mdi:account-check",
         "name": "Authorize guest",
-        "optimistic": false,
         "payload_press": "PRESS",
-        "state_topic": "",
         "unique_id": "unifi_client_00005e005313_authorize"
       }
     },
@@ -2553,7 +2553,6 @@
         "entity_category": "config",
         "icon": "mdi:map-marker-radius",
         "name": "Locate",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/device/00005e005301/locate",
@@ -2596,7 +2595,6 @@
         "entity_category": "config",
         "icon": "mdi:map-marker-radius",
         "name": "Locate",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/device/00005e005302/locate",
@@ -2639,7 +2637,6 @@
         "entity_category": "config",
         "icon": "mdi:map-marker-radius",
         "name": "Locate",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/device/00005e005303/locate",
@@ -2681,7 +2678,6 @@
         "entity_category": "config",
         "icon": "mdi:map-marker-radius",
         "name": "Locate",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/device/00005e005304/locate",
@@ -2717,7 +2713,6 @@
         },
         "icon": "mdi:cancel",
         "name": "Blocked",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/client/00005e005311/blocked",
@@ -2753,7 +2748,6 @@
         },
         "icon": "mdi:cancel",
         "name": "Blocked",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/client/00005e005312/blocked",
@@ -2789,7 +2783,6 @@
         },
         "icon": "mdi:cancel",
         "name": "Blocked",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/client/00005e005313/blocked",
@@ -2819,7 +2812,6 @@
         },
         "icon": "mdi:wifi",
         "name": "HomeNet",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/wlan/wlan-1/enabled",
@@ -2849,7 +2841,6 @@
         },
         "icon": "mdi:wifi",
         "name": "IoT",
-        "optimistic": false,
         "state_off": "OFF",
         "state_on": "ON",
         "state_topic": "unifi/default/wlan/wlan-2/enabled",
@@ -3015,6 +3006,12 @@
       "text": "4.3.6"
     },
     {
+      "topic": "unifi/default/device/00005e005301/locate",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
+    },
+    {
       "topic": "unifi/default/device/00005e005301/memory_utilization",
       "qos": 0,
       "retain": true,
@@ -3076,6 +3073,12 @@
       "qos": 0,
       "retain": true,
       "text": "7.0.25"
+    },
+    {
+      "topic": "unifi/default/device/00005e005302/locate",
+      "qos": 0,
+      "retain": true,
+      "text": "ON"
     },
     {
       "topic": "unifi/default/device/00005e005302/memory_utilization",
@@ -3177,6 +3180,12 @@
       "text": "6.6.55"
     },
     {
+      "topic": "unifi/default/device/00005e005303/locate",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
+    },
+    {
       "topic": "unifi/default/device/00005e005303/memory_utilization",
       "qos": 0,
       "retain": true,
@@ -3253,6 +3262,12 @@
       "qos": 0,
       "retain": true,
       "text": "5.43.56"
+    },
+    {
+      "topic": "unifi/default/device/00005e005304/locate",
+      "qos": 0,
+      "retain": true,
+      "text": "OFF"
     },
     {
       "topic": "unifi/default/device/00005e005304/state",

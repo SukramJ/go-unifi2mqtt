@@ -5,6 +5,7 @@ package hass
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -484,9 +485,18 @@ func TestSensorMetadata(t *testing.T) {
 		{"homeassistant/sensor/unifi_00005e005302/uptime/config", "unit_of_measurement", "s"},
 		{"homeassistant/sensor/unifi_00005e005302/uplink_tx_bps/config", "device_class", "data_rate"},
 		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "device_class", "connectivity"},
-		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "payload_on", "ONLINE"},
+		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "payload_on", "ON"},
+		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "payload_off", "OFF"},
+		{
+			"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "value_template",
+			"{{ 'ON' if value == 'ONLINE' else 'OFF' }}",
+		},
 		{"homeassistant/binary_sensor/unifi_00005e005302/update_available/config", "device_class", "update"},
-		{"homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config", "payload_on", "UP"},
+		{"homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config", "payload_on", "ON"},
+		{
+			"homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config", "value_template",
+			"{{ 'ON' if value == 'UP' else 'OFF' }}",
+		},
 	}
 	for _, tt := range tests {
 		e, ok := byTopic[tt.topic]
@@ -540,4 +550,122 @@ func TestUnnamedDeviceGetsAFallbackName(t *testing.T) {
 	if got := block["name"].(string); !strings.Contains(got, "00:00:5e:00:53:02") {
 		t.Errorf("fallback device name = %q, want it to carry the MAC", got)
 	}
+}
+
+// TestEveryBinarySensorCanReportBothStates is the regression for F1 of
+// notes/adr0070-phase9-measurement.md.
+//
+// A binary sensor matches an inbound payload against payload_on and
+// payload_off and does nothing at all with anything else. The device
+// "reachable" sensor named payload_on: "ONLINE" and no payload_off — an
+// empty string, dropped by omitempty, leaving Home Assistant's schema
+// default of "OFF" — while the topic carries ten model.DeviceState
+// strings, none of which is "OFF". So the sensor turned on at the first
+// ONLINE and could match nothing on OFFLINE, ADOPTING, UPDATING or the
+// other six: a connectivity sensor that reports a permanently reachable
+// device whatever the console says, and stays available while doing it.
+//
+// The measurement could not settle whether Home Assistant leaves such
+// an entity latched or blanks it to "unknown". This test does not need
+// the answer: what it requires is that no third outcome is reachable at
+// all — every value the state topic can carry has to render as exactly
+// payload_on or payload_off. A value_template that maps the whole
+// domain onto the two payloads is the only shape with that property,
+// which is why this asserts over the real state vocabulary rather than
+// asserting that the two keys are merely present.
+func TestEveryBinarySensorCanReportBothStates(t *testing.T) {
+	t.Parallel()
+
+	// The complete vocabulary each binary sensor's state topic carries,
+	// keyed by the entity key. Transcribed from the publishing side:
+	// model.DeviceState, model.PortState, boolPayload and the classic
+	// health status strings.
+	vocabulary := map[string][]string{
+		"reachable": {
+			"ONLINE", "OFFLINE", "PENDING_ADOPTION", "UPDATING", "ADOPTING",
+			"DELETING", "CONNECTION_INTERRUPTED", "ISOLATED",
+			"U5G_INCORRECT_TOPOLOGY", "UNKNOWN",
+		},
+		"update_available": {"ON", "OFF"},
+		"port_link":        {"UP", "DOWN", "UNKNOWN"},
+		"port_poe":         {"ON", "OFF"},
+		"wan_connectivity": {"ok", "warning", "error", "unknown"},
+	}
+
+	entries, err := newTestDiscovery(LangEN).Device(testDevice())
+	if err != nil {
+		t.Fatalf("Device: %v", err)
+	}
+	health, err := newTestDiscovery(LangEN).Health("Default")
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	byTopic := decode(t, append(entries, health...))
+
+	checked := 0
+	for topic, payload := range byTopic {
+		if !strings.HasPrefix(topic, "homeassistant/binary_sensor/") {
+			continue
+		}
+		// port_3_link and port_12_poe share one vocabulary; the index
+		// is not part of what the sensor can report.
+		key := portIndexPattern.ReplaceAllString(strings.Split(topic, "/")[3], "port_")
+		values, ok := vocabulary[key]
+		if !ok {
+			t.Errorf("%s: no state vocabulary transcribed for %q; add it "+
+				"rather than leaving the sensor unchecked", topic, key)
+			continue
+		}
+		checked++
+
+		on, _ := payload["payload_on"].(string)
+		off, _ := payload["payload_off"].(string)
+		if on == "" || off == "" {
+			t.Errorf("%s: payload_on=%q payload_off=%q — a sensor missing "+
+				"either can only ever move one way", topic, on, off)
+			continue
+		}
+		tmpl, _ := payload["value_template"].(string)
+		for _, v := range values {
+			got := renderBinaryTemplate(tmpl, v)
+			if got != on && got != off {
+				t.Errorf("%s: state %q renders as %q, which matches neither "+
+					"payload_on %q nor payload_off %q — the entity cannot "+
+					"report it at all", topic, v, got, on, off)
+			}
+		}
+	}
+	// Four device-level binary sensors (reachable, update_available and
+	// the two ports' link sensors — only port 1 has PoE) plus the site
+	// WAN sensor.
+	const wantChecked = 6
+	if checked != wantChecked {
+		t.Errorf("checked %d binary sensors, want %d", checked, wantChecked)
+	}
+}
+
+// renderBinaryTemplate evaluates the one Jinja shape this bridge uses
+// for a binary sensor: {{ 'A' if value == 'X' else 'B' }}. An empty
+// template is the identity, which is what Home Assistant does.
+//
+// Deliberately not a general Jinja engine: it understands exactly the
+// form the specs are allowed to use, so a spec that reaches for
+// something else fails here rather than being waved through.
+var portIndexPattern = regexp.MustCompile(`^port_\d+_`)
+
+func renderBinaryTemplate(tmpl, value string) string {
+	if tmpl == "" {
+		return value
+	}
+	// Parse "{{ 'ON' if value == 'ONLINE' else 'OFF' }}" by its quotes.
+	parts := strings.Split(tmpl, "'")
+	if len(parts) != 7 || !strings.Contains(parts[2], "if value ==") ||
+		!strings.Contains(parts[4], "else") {
+		panic("unsupported value_template shape: " + tmpl)
+	}
+	on, match, off := parts[1], parts[3], parts[5]
+	if value == match {
+		return on
+	}
+	return off
 }

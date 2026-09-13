@@ -49,6 +49,7 @@ else
   export UNIFI_MQTT_PORT="1883"
 fi
 export UNIFI_MQTT_TOPIC="$(bashio::config 'mqtt_topic')"
+export UNIFI_MQTT_CLIENT_ID="$(bashio::config 'mqtt_client_id')"
 
 # --- Home Assistant discovery ---
 export UNIFI_HASS_ENABLE="$(bashio::config 'hass_enable')"

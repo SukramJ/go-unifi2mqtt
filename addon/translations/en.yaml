@@ -64,6 +64,14 @@ configuration:
     name: Topic root
     description: >-
       Root of the published topic tree, e.g. unifi/default/device/...
+  mqtt_client_id:
+    name: MQTT client id
+    description: >-
+      Identifier this add-on presents to the broker. Leave empty for
+      "unifi2mqtt-" followed by the topic root. Set it when two instances
+      share one broker: MQTT makes the broker disconnect the session it
+      already holds when a second client presents the same identifier, so
+      two on one id evict each other in a loop.
 
   hass_enable:
     name: Home Assistant discovery
