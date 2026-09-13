@@ -592,6 +592,53 @@ func (r *replayTransport) deliver(topic string, payload []byte, retained bool) {
 	}
 }
 
+// subscribeCommands puts every filter on the wire and routes a
+// delivery through to the command queue.
+//
+// Registering routes and never starting them is a daemon that accepts
+// no commands while logging that it subscribed six filters.
+func TestSubscribeCommandsStartsTheRouter(t *testing.T) {
+	t.Parallel()
+
+	h := newHarnessWith(t, controlConfig(t, ""), allCaps{})
+	t.Cleanup(h.c.Close)
+	sub := &fakeSubscriber{}
+	h.c.SetSubscriber(sub)
+
+	if err := h.c.subscribeCommands(t.Context()); err != nil {
+		t.Fatalf("subscribeCommands: %v", err)
+	}
+	sub.mu.Lock()
+	got := slices.Clone(sub.filters)
+	sub.mu.Unlock()
+	slices.Sort(got)
+	want := slices.Clone(h.c.commandFilters())
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("subscribed %v, want %v", got, want)
+	}
+
+	sub.mu.Lock()
+	handlers := slices.Clone(sub.handlers)
+	filters := slices.Clone(sub.filters)
+	sub.mu.Unlock()
+	topic := h.c.topics.device(gwMAC, cmdRestart)
+	for i, f := range filters {
+		if hapub.MatchFilter(f, topic) {
+			handlers[i](&mqtt.Message{Topic: topic, Payload: []byte("PRESS")})
+		}
+	}
+	h.c.router.WaitIdle()
+	select {
+	case cmd := <-h.c.commands:
+		if cmd.kind != cmdKindRestart {
+			t.Errorf("queued %v, want a restart", cmd.kind)
+		}
+	default:
+		t.Error("the delivery reached no handler; the router was never started")
+	}
+}
+
 // A self-echo fails the boot rather than warning.
 //
 // The check cannot be reached from the shipped catalogue — every
@@ -679,6 +726,42 @@ func TestTheWillWritesTheTopicEveryEntityReads(t *testing.T) {
 	for _, e := range entries {
 		if !strings.Contains(string(e.Payload), `"topic":"`+will.Topic+`"`) {
 			t.Fatalf("%s does not reference the will topic %q", e.ConfigTopic, will.Topic)
+		}
+	}
+}
+
+// The runtime derives its status topic from the layout rather than
+// taking a literal, so the will, the announcements and all 315
+// configs' availability lists cannot disagree.
+//
+// The mutation that replaces the layout with an *equivalent* literal
+// moves nothing observable and is recorded as equivalent; what it costs
+// is this guarantee — [hapub.New] refuses a StatusTopic that disagrees
+// with the layout, and a literal is refused by nobody. The derivation
+// is asserted over two roots so a layout that ignored its input would
+// be caught too.
+func TestTheRuntimeDerivesItsStatusTopicFromTheLayout(t *testing.T) {
+	t.Parallel()
+
+	for _, root := range []string{"unifi", "haus/netz"} {
+		cfg := testConfig()
+		cfg.MQTTTopic = root
+		c := New(Deps{
+			Cfg:    cfg,
+			Site:   testSite(),
+			Source: newFakeSource(),
+			Logger: slog.New(slog.DiscardHandler),
+			Now:    newFakeClock().now,
+		})
+		t.Cleanup(c.Close)
+
+		want := hass.NewLayout(c).Bridge()
+		if got := c.ha().BridgeTopic(); got != want {
+			t.Errorf("root %q: the runtime's status topic is %q, the layout says %q", root, got, want)
+		}
+		if want != c.AvailabilityTopic() {
+			t.Errorf("root %q: the layout says %q, the topic builder says %q",
+				root, want, c.AvailabilityTopic())
 		}
 	}
 }
