@@ -100,6 +100,7 @@ func (d *Discovery) renderTracker(key string, info deviceInfo) (Entry, error) {
 			},
 			AvailabilityMode: "all",
 			Device:           info,
+			Origin:           origin(),
 		},
 		// "router" tells Home Assistant this is network-presence rather
 		// than GPS, which is what makes it usable for the person
@@ -144,6 +145,7 @@ func (d *Discovery) renderClientSensor(key, suffix string, info deviceInfo, s sp
 		},
 		AvailabilityMode: "all",
 		Device:           info,
+		Origin:           origin(),
 	}
 
 	payload, err := json.Marshal(e)
@@ -158,9 +160,10 @@ func (d *Discovery) renderClientSensor(key, suffix string, info deviceInfo, s sp
 
 func (d *Discovery) clientDeviceInfo(cl *model.Client) deviceInfo {
 	info := deviceInfo{
-		Identifiers:  []string{clientDeviceID(cl.Key())},
-		Name:         cl.Name,
-		Manufacturer: "", // unknown for a network client
+		Identifiers: []string{clientDeviceID(cl.Key())},
+		Name:        cl.Name,
+		// No Manufacturer: it is unknown for a network client, and
+		// deviceInfo omits the key rather than publishing "" (F15).
 	}
 	if !cl.MAC.IsZero() {
 		info.Connections = [][]string{{"mac", cl.MAC.Colon()}}

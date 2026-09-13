@@ -31,7 +31,46 @@ func (stubTopics) WLANTopic(id, key string) string {
 func (stubTopics) AvailabilityTopic() string { return "unifi/bridge/status" }
 
 func newTestDiscovery(lang string) *Discovery {
-	return New(Config{BaseTopic: "homeassistant", Topics: stubTopics{}, Site: "default", Language: lang})
+	return New(Config{
+		BaseTopic: "homeassistant", Topics: stubTopics{},
+		Site: "default", SiteName: "Default", Language: lang,
+	})
+}
+
+// TestSiteNameFallsBackToTheAddressingToken covers the one branch no
+// scenario reaches.
+//
+// F14 made both the health plane and the SSID switches name the site
+// after Site.Name. A console that reports no display name would then
+// leave the device called "UniFi Site " — and the SSID switches, which
+// used Site.Internal unconditionally before F14, would be the half that
+// regressed. The fallback is what stops that, and without this test it
+// would be an untested branch.
+func TestSiteNameFallsBackToTheAddressingToken(t *testing.T) {
+	t.Parallel()
+
+	d := New(Config{
+		BaseTopic: "homeassistant", Topics: stubTopics{},
+		Site: "default", SiteName: "", Language: LangEN,
+	})
+	entries, err := d.Health()
+	if err != nil {
+		t.Fatalf("Health: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no health entries")
+	}
+	var body struct {
+		Device struct {
+			Name string `json:"name"`
+		} `json:"device"`
+	}
+	if err := json.Unmarshal(entries[0].Payload, &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if want := "UniFi Site default"; body.Device.Name != want {
+		t.Errorf("device.name = %q, want %q", body.Device.Name, want)
+	}
 }
 
 func testDevice() *model.Device {
@@ -310,7 +349,7 @@ func TestEntityIDSeedIsPublished(t *testing.T) {
 			e, err := d.WLANControl(&model.WLAN{ID: "w-1", Name: "HomeNet", Enabled: true})
 			return []Entry{e}, err
 		}},
-		{"Health", func() ([]Entry, error) { return d.Health("Default") }},
+		{"Health", func() ([]Entry, error) { return d.Health() }},
 	} {
 		got, err := build.fn()
 		if err != nil {
@@ -596,7 +635,7 @@ func TestEveryBinarySensorCanReportBothStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Device: %v", err)
 	}
-	health, err := newTestDiscovery(LangEN).Health("Default")
+	health, err := newTestDiscovery(LangEN).Health()
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}

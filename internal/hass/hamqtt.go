@@ -43,10 +43,12 @@ import (
 //     reads a topic. This bridge publishes bare scalars, so the
 //     envelope template would break all 297 state-reading entities at
 //     once — and it would look like a formatting detail in review.
-//   - A zero [discovery.Origin]. [discovery.RenderComponent] stamps an
-//     `origin` block whenever the origin has a name, and this bridge
-//     publishes none (measurement F7). Adding one is a payload addition
-//     on every config and belongs in its own step.
+//   - [HamqttOrigin]. [discovery.RenderComponent] stamps an `origin`
+//     block whenever the origin has a name. Until measurement F7 was
+//     fixed this bridge published none and the render passed a zero
+//     origin to match; it now publishes one on all 315 configs, because
+//     [discovery.Validate] refuses a *bundle* without `origin.name` and
+//     a refused bundle publishes no entities at all.
 //   - [hamqttContext.NodeID], [hamqttContext.UniqueID] and
 //     [hamqttContext.ObjectID] — see each method.
 //   - [hamqttContext.Availability], which is the whole of F8: the
@@ -63,6 +65,11 @@ import (
 // [discovery.StdContext] is fully configured and the override is the
 // only reason the ids come out as they do.
 const hamqttNamespace = idPrefix
+
+// HamqttOrigin is the origin block this bridge publishes, in the form
+// the library renders it. It is [OriginName] and nothing else — see
+// [originInfo] for why no sw_version or support_url.
+func HamqttOrigin() discovery.Origin { return discovery.Origin{Name: OriginName} }
 
 // hamqttEntity is one entity in the shared model.
 //
@@ -369,9 +376,6 @@ type HamqttFleet struct {
 	Clients []model.Client
 	// WLANs is the SSID catalogue.
 	WLANs []model.WLAN
-	// SiteName is the site's display name, which is what the health
-	// entities' device block carries.
-	SiteName string
 	// ClientOpts and ControlOpts gate the optional entities exactly as
 	// the coordinator gates them.
 	ClientOpts  ClientOptions
@@ -411,7 +415,7 @@ func (d *Discovery) RenderHamqtt(f HamqttFleet) ([]HamqttComponent, error) {
 	seen := make(map[string]bool, 128)
 	for _, g := range groups {
 		for _, e := range g.entities {
-			comp, err := discovery.RenderComponent(ctx, g.dev, e, discovery.Origin{})
+			comp, err := discovery.RenderComponent(ctx, g.dev, e, HamqttOrigin())
 			if err != nil {
 				return nil, fmt.Errorf("hass: render %q: %w", e.Key(), err)
 			}
@@ -476,13 +480,14 @@ func (d *Discovery) HamqttBundles(f HamqttFleet, origin discovery.Origin) ([]*di
 // HamqttDeviceBlockConflicts reports device identities that this bridge
 // announces under more than one device block.
 //
-// There is one today, and it is a step-6 gate rather than a curiosity:
-// the site device is "UniFi Site <Site.Name>" on its seven health
-// entities and "UniFi Site <Site.Internal>" on every SSID switch, so
-// "unifi_site_default" carries two different `name` values. Per-entity
-// that is only last-write-wins in Home Assistant's device registry; a
-// bundle has exactly one device block, so one of the two names has to
-// win visibly.
+// It must return nothing. There used to be one — the site device was
+// "UniFi Site <Site.Name>" on its seven health entities and "UniFi Site
+// <Site.Internal>" on every SSID switch, so "unifi_site_default"
+// carried two different `name` values. Per-entity that is only
+// last-write-wins in Home Assistant's device registry; a bundle has
+// exactly one device block, so one of the two would have won by
+// collection order. F14 made both read [Discovery.siteDeviceInfo]; this
+// is the assertion that they still do.
 func (d *Discovery) HamqttDeviceBlockConflicts(f HamqttFleet) map[string][]string {
 	groups := d.hamqttGroups(f)
 	names := map[string][]string{}
@@ -546,7 +551,7 @@ func (d *Discovery) hamqttGroups(f HamqttFleet) []*hamqttGroup {
 	}
 
 	if f.AnnounceHealth {
-		out = append(out, d.hamqttHealthGroup(f.SiteName))
+		out = append(out, d.hamqttHealthGroup())
 	}
 	return out
 }
@@ -867,13 +872,8 @@ func (d *Discovery) hamqttClientSensor(key, suffix, deviceName string, s spec) *
 
 // --- the site device --------------------------------------------------
 
-func (d *Discovery) hamqttHealthGroup(siteName string) *hamqttGroup {
-	info := deviceInfo{
-		Identifiers:  []string{siteDeviceID(d.site)},
-		Name:         "UniFi Site " + siteName,
-		Manufacturer: Manufacturer,
-		Model:        "Site",
-	}
+func (d *Discovery) hamqttHealthGroup() *hamqttGroup {
+	info := d.siteDeviceInfo()
 	g := &hamqttGroup{dev: hamqttDevice(info)}
 	specs := healthSpecs()
 	for i := range specs {
@@ -911,12 +911,9 @@ func (d *Discovery) hamqttHealthGroup(siteName string) *hamqttGroup {
 }
 
 func (d *Discovery) hamqttWLANGroup(w *model.WLAN) *hamqttGroup {
-	info := deviceInfo{
-		Identifiers:  []string{siteDeviceID(d.site)},
-		Name:         "UniFi Site " + d.site,
-		Manufacturer: Manufacturer,
-		Model:        "Site",
-	}
+	// The same block the health plane uses. Before F14 these two
+	// composed the site's name from two different fields.
+	info := d.siteDeviceInfo()
 	e := &hamqttEntity{
 		Basic: hamodel.Basic{
 			// The SSID switch lives on the *site* node with a

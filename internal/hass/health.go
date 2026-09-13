@@ -63,13 +63,11 @@ func healthSpecs() []spec {
 // Only called when the classic layer is available: without it these
 // topics never receive a value, and the entities would sit unavailable
 // forever (CONCEPT.md §3.3).
-func (d *Discovery) Health(siteName string) ([]Entry, error) {
-	info := deviceInfo{
-		Identifiers:  []string{siteDeviceID(d.site)},
-		Name:         "UniFi Site " + siteName,
-		Manufacturer: Manufacturer,
-		Model:        "Site",
-	}
+func (d *Discovery) Health() ([]Entry, error) {
+	// The site name is a property of the Discovery, not a parameter:
+	// taking it here and Site.Internal in WLANControl is exactly how
+	// the site came to be announced under two names (F14).
+	info := d.siteDeviceInfo()
 
 	specs := healthSpecs()
 	entries := make([]Entry, 0, len(specs))
@@ -96,6 +94,7 @@ func (d *Discovery) Health(siteName string) ([]Entry, error) {
 			},
 			AvailabilityMode: "all",
 			Device:           info,
+			Origin:           origin(),
 		}
 
 		payload, err := json.Marshal(e)

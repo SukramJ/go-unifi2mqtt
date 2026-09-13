@@ -29,7 +29,7 @@ func allEntries(t *testing.T) []Entry {
 		func() ([]Entry, error) { return d.DeviceControls(dev, opts) },
 		func() ([]Entry, error) { return d.Client(testClient(), ClientOptions{Signal: true}) },
 		func() ([]Entry, error) { return d.ClientControls(testClient(), opts) },
-		func() ([]Entry, error) { return d.Health("default") },
+		func() ([]Entry, error) { return d.Health() },
 	} {
 		entries, err := fn()
 		if err != nil {
