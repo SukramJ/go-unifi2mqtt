@@ -62,6 +62,25 @@ func TestAllDeviceStatesCoversTheConstBlock(t *testing.T) {
 		t.Errorf("allDeviceStates has %d entries but only %d distinct values",
 			len(allDeviceStates), len(listed))
 	}
+
+	// The accessor is the only link consumers see, so it has to hand
+	// over the whole list. Without this, a body that returned a slice
+	// of it would leave every downstream totality proof running over a
+	// silently shortened domain and still passing — verified: that
+	// mutation survived 0 of 6 runs of the discovery test until this
+	// assertion existed.
+	if got := AllDeviceStates(); !slices.Equal(got, allDeviceStates) {
+		t.Errorf("AllDeviceStates() = %v, want the whole declared list %v",
+			got, allDeviceStates)
+	}
+	// And a copy, not the backing array: a consumer that sorts or
+	// truncates its result must not edit the enum.
+	if got := AllDeviceStates(); len(got) > 0 {
+		got[0] = "MUTATED"
+		if allDeviceStates[0] == "MUTATED" {
+			t.Error("AllDeviceStates() aliases allDeviceStates; a caller can edit the enum")
+		}
+	}
 }
 
 // constDecl is one typed string constant as the source declares it.
