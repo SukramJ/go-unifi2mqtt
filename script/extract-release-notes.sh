@@ -58,12 +58,45 @@ if [ -n "$prev_header" ]; then
 	prev_version=$(printf '%s\n' "$prev_header" | sed -E 's/^# Version ([^ ]+).*$/\1/')
 fi
 
-# Emit the body, then optionally the compare link. The first release
-# has no predecessor — that's fine, just skip the link.
-printf '%s\n' "$body"
+# Assemble the full payload: the section body, then the compare link.
+# The first release has no predecessor — that's fine, just skip the link.
+payload="$body"
 
 if [ -n "$prev_version" ]; then
 	repo="${GITHUB_REPOSITORY:-SukramJ/go-unifi2mqtt}"
-	printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' \
-		"$repo" "$prev_version" "$VERSION"
+	link=$(printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s' \
+		"$repo" "$prev_version" "$VERSION")
+	payload="${payload}
+${link}"
 fi
+
+# GitHub rejects a release body over 125,000 characters with a 422, and
+# by then the tag is already on the remote — the release step is the
+# last thing that runs. Trim to a safe margin with a pointer to the full
+# entry instead of letting the upload fail after the fact.
+MAX_BYTES="${MAX_BYTES:-118000}"
+size=$(printf '%s\n' "$payload" | LC_ALL=C wc -c | tr -d '[:space:]')
+
+if [ "$size" -le "$MAX_BYTES" ]; then
+	printf '%s\n' "$payload"
+	exit 0
+fi
+
+repo="${GITHUB_REPOSITORY:-SukramJ/go-unifi2mqtt}"
+ref="${GITHUB_REF_NAME:-v$VERSION}"
+# Built with a double-quoted format argument so the ${...} expansions
+# below actually expand — a single-quoted printf format would emit them
+# literally.
+notice=$(printf '\n---\n\n*Release note trimmed to fit GitHub'\''s 125,000-character\nrelease-body limit (full section: %s bytes). The complete entry is in\n[changelog.md](https://github.com/%s/blob/%s/changelog.md).*\n' \
+	"$size" "$repo" "$ref")
+notice_bytes=$(printf '%s\n' "$notice" | LC_ALL=C wc -c | tr -d '[:space:]')
+keep=$((MAX_BYTES - notice_bytes))
+
+# Trim on a line boundary, counting bytes (LC_ALL=C), so the cut never
+# lands inside a multi-byte character or mid-sentence.
+printf '%s\n' "$payload" | LC_ALL=C awk -v max="$keep" '
+	{ n += length($0) + 1; if (n > max) exit; print }
+'
+printf '%s\n' "$notice"
+
+echo "warning: release notes for $VERSION trimmed from $size to ~$MAX_BYTES bytes" >&2

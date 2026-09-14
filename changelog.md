@@ -1,4 +1,4 @@
-# Version 1.2.0 (2026-09-13)
+# Version 1.2.0 (2026-09-14)
 
 The release that comes out of a full measurement of everything this
 bridge puts on an MQTT broker: every discovery payload, every topic,
@@ -11,10 +11,102 @@ discovery payloads gained an `origin` block.
 entity_id seed moved in this release, so every entity keeps its
 history, its area, its name and every automation pointing at it.
 
+Two things below change what you should expect from this bridge, and
+both are worth reading before you upgrade: the stale-config sweep now
+decides ownership differently, and this bridge deliberately publishes
+no Home Assistant device bundle. They lead the notes for that reason.
+
+## Stale-config cleanup only removes what this run published
+
+The startup cleanup used to remove any retained discovery config that
+*looked* like one of ours. Two UniFi consoles bridged to one broker
+publish byte-identical config topics, unique ids, availability topics
+and state topics for the whole site plane, so on such a setup "looks
+like mine" meant one console's bridge deleting the other console's
+entities out of Home Assistant — silently, because Home Assistant says
+nothing when entities disappear with their retained configs.
+
+The rule is now ownership by record: a config is removed only if **this
+run of the daemon published that exact topic**. The cost is stated
+rather than hidden — a config genuinely left behind by an *earlier*
+run, for example from a device you removed while the bridge was not
+running, is no longer removed either, because from the broker it is
+indistinguishable from a second console's live entity. Those are
+reported, never cleared, and **which of two log lines a config lands on
+decides whether clearing it by hand is safe**:
+
+- `coordinator.reconcile_unclaimed` (Info) lists configs this process
+  did not publish *and whose source is up to date* — the class that
+  would have announced them has reported in this run. If no second
+  UniFi console shares this broker and MQTT root, each can be cleared
+  with one empty retained publish.
+- `coordinator.reconcile_unclaimed_unready` (**Warn**) lists configs
+  whose source has **not** reported in this run, and names the silent
+  classes. These are **not safe to clear**: they may be this daemon's
+  own live entities, missing from the announced set only because their
+  source is down. Fix the source, restart, and read
+  `coordinator.reconcile_unclaimed` on a run where every source
+  reported.
+
+The split matters most at boot. Before it, the advice was
+unconditional, so a controller that was unreachable for the first few
+minutes of a run — rotated credentials, a controller upgrade, a
+three-minute outage — could report **every retained config this daemon
+itself publishes** as safely deletable. An operator following that log
+would have deleted their own live entities, and their history with
+them. `HASS_CLEANUP: false` still turns the whole sweep off.
+
+## This bridge deliberately publishes no Home Assistant device bundle
+
+Unlike its four sibling bridges, this one announces **one retained
+config per entity** and no device bundle. Home Assistant also accepts a
+single bundled config per device; that form was measured, built and
+proved byte-equal — and then deliberately not published.
+
+The reason is that two UniFi consoles cannot be told apart. The API's
+`internalReference` is `default` on every console, so two consoles on
+one broker produce byte-identical config topics, `unique_id`s,
+`device.identifiers`, node ids and state topics. Under the per-entity
+form they overwrite each other entity by entity; under a bundle they
+would replace each other's **entire entity set** at once, so a
+staggered upgrade of two consoles would delete a sibling's whole fleet.
+And every candidate identity that *would* separate them re-registers
+entities Home Assistant has already registered, orphaning their
+history, areas and automations behind a new key.
+
+An operator comparing this bridge against its siblings is not missing a
+feature — the bundle is withheld on purpose. The decision is recorded
+with notice rather than left to be re-derived:
+`notes/adr0070-phase9-measurement.md` states the exact condition that
+would make the bundle possible, namely an identity that is per console,
+stable across restarts and upgrades, known before the first publish,
+and **outside both registry keys** (`unique_id` and
+`device.identifiers`).
+
+## `CONCEPT.md` §6.5 promised an ownership guarantee that does not exist
+
+§6.5 stated ownership of a retained discovery config as a two-signal
+payload test — the `unifi_` id namespace plus this bridge's
+availability topic — and told the reader that rule is what stops two
+UniFi consoles on one broker from deleting each other's entities.
+
+That rule was removed earlier in this same release precisely because it
+does **not** separate two consoles: this repository's own test measured
+the guarantee to be false, and driven, one console's daemon deleted the
+other's SSID switch out of Home Assistant. An operator who read §6.5
+and concluded they were protected was reading a description of the
+mechanism that deletes their entities. §6.5 now describes the claim
+list that actually ships, and states its cost: genuine leftovers from
+an older topic shape are reported, never cleared.
+
+No behaviour changed here — the documentation was the defect.
+**Anyone who made a two-console decision on the strength of the old
+§6.5 should re-read it.**
+
 ## Devices, ports and the WAN can now report being *not* reachable
 
 The `reachable` connectivity sensor matched the value `ONLINE` and
-nothing at all on the nine other states a UniFi device can be in
+nothing at all on the ten other states a UniFi device can be in
 (`OFFLINE`, `UPDATING`, `ADOPTING`, `ISOLATED`, …). A Home Assistant
 binary sensor ignores a payload that matches neither of its two
 configured values, so the sensor turned *on* when a device first
@@ -52,27 +144,6 @@ nothing in either log said why.
 `MQTT_CLIENT_ID` (add-on: `mqtt_client_id`) sets it explicitly. Leaving
 it unset keeps exactly the identifier your installation presents today,
 so there is nothing to do unless you run two.
-
-## Stale-config cleanup only removes what this run published
-
-The startup cleanup used to remove any retained discovery config that
-*looked* like one of ours. Two UniFi consoles bridged to one broker
-publish byte-identical config topics, unique ids, availability topics
-and state topics for the whole site plane, so on such a setup "looks
-like mine" meant one console's bridge deleting the other console's
-entities out of Home Assistant — silently, because Home Assistant says
-nothing when entities disappear with their retained configs.
-
-The rule is now ownership by record: a config is removed only if **this
-run of the daemon published that exact topic**. The cost is stated
-rather than hidden — a config genuinely left behind by an *earlier*
-run, for example from a device you removed while the bridge was not
-running, is no longer removed either, because from the broker it is
-indistinguishable from a second console's live entity. Those are listed
-in the log once, as `coordinator.reconcile_unclaimed` with the full
-topic, and an operator who knows there is no second console can clear
-each with one empty retained publish. `HASS_CLEANUP: false` still turns
-the whole sweep off.
 
 ## Discovery payloads name their origin, and the site device has one name
 
@@ -132,13 +203,9 @@ fleet in a state nothing reported:
   explicitly rather than inherited: discovery and availability at
   QoS 1, state at QoS 0, exactly as before. `go-hamqtt` moves to 0.34.0
   and `go-mqtt` is at 1.5.1.
-- Discovery stays **one retained config per entity**. Home Assistant
-  also accepts a single "device bundle" config per device; that form
-  was measured, built, proved byte-equal and then deliberately not
-  published, because two UniFi consoles that cannot be told apart would
-  replace each other's whole entity set instead of overwriting it entity
-  by entity. The full reasoning is in the repository, in
-  `notes/adr0070-phase9-measurement.md`.
+- Discovery stays **one retained config per entity**; see "This bridge
+  deliberately publishes no Home Assistant device bundle" above for why
+  the bundled form was measured and then withheld.
 
 # Version 1.1.0 (2026-08-16)
 
