@@ -51,13 +51,36 @@ RELEASE_PAYLOAD  := config-template.yaml README.md LICENSE changelog.md
 help: ## show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
+# Tool versions, pinned to match .github/workflows/ci.yml. A local gate is
+# only usable if it reports what CI reports, so the two lists must be bumped
+# together — raise both, run `make check`, and fix or justify whatever the
+# new release finds in the same change.
+#
+# gofumpt is the sharpest case: it is a formatter, so an upstream release
+# rewraps untouched code. On @latest that turns CI red on a diff that did
+# not cause it, and leaves a developer's clean local run meaningless.
+#
+# golangci-lint, govulncheck and go-licenses are pinned for the same reason
+# even though CI does not run them yet: `make lint` / `make vuln` /
+# `make licenses` are the gates developers actually feel. Pinning the
+# govulncheck binary does not freeze the answer it gives — the vulnerability
+# database is resolved at run time, so a new advisory still turns the gate
+# red without a commit here.
+#
+# goimports stays on @latest deliberately: it has no gate of its own,
+# gofumpt is the formatting authority.
+GOFUMPT_VERSION       ?= v0.12.0
+GOLANGCI_LINT_VERSION ?= v2.13.2
+GOVULNCHECK_VERSION   ?= v1.8.0
+GOLICENSES_VERSION    ?= v1.6.0
+
 .PHONY: setup
 setup: hooks ## install developer tooling (gofumpt, goimports, golangci-lint, govulncheck, go-licenses) + git hooks
-	$(GO) install mvdan.cc/gofumpt@latest
+	$(GO) install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
 	$(GO) install golang.org/x/tools/cmd/goimports@latest
-	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-	$(GO) install golang.org/x/vuln/cmd/govulncheck@latest
-	$(GO) install github.com/google/go-licenses@latest
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	$(GO) install github.com/google/go-licenses@$(GOLICENSES_VERSION)
 
 .PHONY: hooks
 hooks: ## point git at the tracked hooks in .githooks/ (blocks direct commits on main)

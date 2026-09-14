@@ -27,6 +27,16 @@ concurrency:
 env:
   CGO_ENABLED: "0"
   GO_VERSION: "1.26"
+  # The tools below are pinned, not @latest. Dependabot tracks go.mod
+  # requires, not go-install lines in a workflow, so these are bumped by
+  # hand — deliberately: raise the version, run `make check`, and fix or
+  # justify whatever the new release finds in the same change. Floating on
+  # @latest makes these gates report on the calendar rather than on the
+  # diff, and turns an unrelated upstream release into a red CI on someone
+  # else's PR. gofumpt is the sharpest case: it is a formatter, so a new
+  # release rewraps untouched code and reds main overnight. Keep these in
+  # step with the versions `make setup` installs.
+  GOFUMPT_VERSION: "v0.12.0"
 
 jobs:
   lint:
@@ -42,7 +52,7 @@ jobs:
         run: go vet ./...
       - name: gofumpt
         run: |
-          go install mvdan.cc/gofumpt@latest
+          go install mvdan.cc/gofumpt@${{ env.GOFUMPT_VERSION }}
           diff=$(gofumpt -l .)
           if [ -n "$diff" ]; then
             echo "::error::gofumpt would rewrite:"
