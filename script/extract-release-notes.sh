@@ -62,10 +62,29 @@ fi
 # The first release has no predecessor — that's fine, just skip the link.
 payload="$body"
 
+# Changelog headers carry a bare version ("# Version 1.2.0"); the tags
+# they correspond to are v-prefixed ("v1.2.0"). Comparing the bare form
+# 404s, which is what every release before v1.2.1 shipped. Resolve each
+# side to a ref that actually exists, preferring the v-prefixed tag.
+tag_ref() {
+	if git rev-parse -q --verify "refs/tags/v$1" >/dev/null 2>&1; then
+		printf 'v%s' "$1"
+	elif git rev-parse -q --verify "refs/tags/$1" >/dev/null 2>&1; then
+		printf '%s' "$1"
+	else
+		# Not fetched (shallow clone, or the tag for the release being
+		# built is created by the push that triggers us). Assume the
+		# convention every tag in this repo follows.
+		printf 'v%s' "$1"
+	fi
+}
+
 if [ -n "$prev_version" ]; then
 	repo="${GITHUB_REPOSITORY:-SukramJ/go-unifi2mqtt}"
+	from_ref=$(tag_ref "$prev_version")
+	to_ref="${GITHUB_REF_NAME:-$(tag_ref "$VERSION")}"
 	link=$(printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s' \
-		"$repo" "$prev_version" "$VERSION")
+		"$repo" "$from_ref" "$to_ref")
 	payload="${payload}
 ${link}"
 fi
