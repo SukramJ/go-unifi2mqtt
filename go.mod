@@ -9,6 +9,6 @@ require (
 
 require (
 	github.com/SukramJ/go-ha-catalog v0.2.1
-	github.com/SukramJ/go-hamqtt v0.34.0
+	github.com/SukramJ/go-hamqtt v0.34.1
 	github.com/SukramJ/go-mqtt v1.5.1
 )
