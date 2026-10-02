@@ -71,7 +71,7 @@ func (c *Coordinator) refreshClients(ctx context.Context) error {
 	filter := newClientFilter(&c.cfg.Clients, networks, c.log)
 	kept := filter.Apply(clients)
 
-	now := c.now()
+	now := time.Now()
 	present := make(map[string]bool, len(kept))
 	for i := range kept {
 		present[kept[i].Key()] = true

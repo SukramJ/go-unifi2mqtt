@@ -58,7 +58,6 @@ type publisher struct {
 	// `out` directly, in the per-entity form, and the bundle is step 6.
 	state *hapub.StatePublisher
 	log   *slog.Logger
-	now   func() time.Time
 
 	// forceEvery is how often the next publish of every topic bypasses
 	// change detection. Zero disables forced republishing.
@@ -158,13 +157,11 @@ func newPublisher(
 	out Publisher,
 	commandFilters []string,
 	forceEvery time.Duration,
-	now func() time.Time,
 	log *slog.Logger,
 ) *publisher {
 	p := &publisher{
 		out:        out,
 		log:        log,
-		now:        now,
 		forceEvery: forceEvery,
 		lastConfig: make(map[string]entry),
 		sentAt:     make(map[string]time.Time),
@@ -188,7 +185,7 @@ func (p *publisher) publish(ctx context.Context, topic, payload string) error {
 	if p.state == nil {
 		return ErrNoPublisher
 	}
-	now := p.now()
+	now := time.Now()
 
 	p.mu.Lock()
 	at, known := p.sentAt[topic]
@@ -258,7 +255,7 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 		return ErrNoPublisher
 	}
 
-	now := p.now()
+	now := time.Now()
 	if payload != nil {
 		p.mu.Lock()
 		// Recorded before the skip check, not after: change detection

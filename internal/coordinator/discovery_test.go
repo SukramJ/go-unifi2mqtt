@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	mqtt "github.com/SukramJ/go-mqtt"
@@ -228,44 +229,49 @@ func TestRemovedPortClearsOnlyItsEntities(t *testing.T) {
 func TestHomeAssistantBirthTriggersRepublish(t *testing.T) {
 	t.Parallel()
 
-	sub := &fakeSubscriber{}
-	h := newHarness(t, hassConfig(t))
-	h.c.SetSubscriber(sub)
+	synctest.Test(t, func(t *testing.T) {
+		sub := &fakeSubscriber{}
+		h := newHarness(t, hassConfig(t))
+		h.c.SetSubscriber(sub)
 
-	if err := h.c.refreshStatic(t.Context()); err != nil {
-		t.Fatalf("refreshStatic: %v", err)
-	}
-	if err := h.c.watchHomeAssistant(t.Context(), sub); err != nil {
-		t.Fatalf("watchHomeAssistant: %v", err)
-	}
-	if got, want := sub.filters[0], "homeassistant/status"; got != want {
-		t.Errorf("subscribed to %q, want %q", got, want)
-	}
-
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	done := make(chan struct{})
-	go func() {
-		_ = h.c.rediscoverLoop(ctx)
-		close(done)
-	}()
-
-	h.broker.reset()
-	sub.deliver("online")
-
-	// The grace period is 1s in this config; poll until the republish
-	// lands rather than sleeping a fixed amount.
-	deadline := time.After(5 * time.Second)
-	for len(h.broker.topicsWithPrefix("homeassistant/")) == 0 {
-		select {
-		case <-deadline:
-			t.Fatal("discovery was not republished after the birth message")
-		case <-time.After(20 * time.Millisecond):
+		if err := h.c.refreshStatic(t.Context()); err != nil {
+			t.Fatalf("refreshStatic: %v", err)
 		}
-	}
+		if err := h.c.watchHomeAssistant(t.Context(), sub); err != nil {
+			t.Fatalf("watchHomeAssistant: %v", err)
+		}
+		if got, want := sub.filters[0], "homeassistant/status"; got != want {
+			t.Errorf("subscribed to %q, want %q", got, want)
+		}
 
-	cancel()
-	<-done
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan struct{})
+		go func() {
+			_ = h.c.rediscoverLoop(ctx)
+			close(done)
+		}()
+
+		h.broker.reset()
+		sub.deliver("online")
+
+		// HASS_BIRTH_GRACETIME is 1 s in hassConfig: one nanosecond
+		// short of it nothing is republished, at it the discovery goes
+		// out again.
+		time.Sleep(time.Second - time.Nanosecond)
+		synctest.Wait()
+		if got := h.broker.topicsWithPrefix("homeassistant/"); len(got) != 0 {
+			t.Errorf("discovery republished %d topics before the grace period ended", len(got))
+		}
+		time.Sleep(time.Nanosecond)
+		synctest.Wait()
+		if len(h.broker.topicsWithPrefix("homeassistant/")) == 0 {
+			t.Fatal("discovery was not republished after the birth message")
+		}
+
+		cancel()
+		<-done
+	})
 }
 
 // Anything other than "online" is not a birth message — an "offline"

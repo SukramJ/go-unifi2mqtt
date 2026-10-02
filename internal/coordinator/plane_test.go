@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	hapub "github.com/SukramJ/go-hamqtt/publisher"
@@ -85,7 +86,6 @@ func TestEveryPlanePublishReachesTheWireAtTheStatedQoS(t *testing.T) {
 		Source: newFakeSource(),
 		MQTT:   broker,
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 	ctx := t.Context()
@@ -135,7 +135,7 @@ func TestStateEncodingIsInertAndStatedAnyway(t *testing.T) {
 	t.Parallel()
 
 	broker := &fakeBroker{}
-	p := newPublisher(broker, nil, 0, newFakeClock().now, slog.New(slog.DiscardHandler))
+	p := newPublisher(broker, nil, 0, slog.New(slog.DiscardHandler))
 	if err := p.publish(t.Context(), "unifi/default/device/aa/state", "ONLINE"); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -159,45 +159,46 @@ func TestStateEncodingIsInertAndStatedAnyway(t *testing.T) {
 func TestEmptyStatePayloadIsEvictedAndStillDeduplicated(t *testing.T) {
 	t.Parallel()
 
-	broker := &fakeBroker{}
-	clock := newFakeClock()
-	p := newPublisher(broker, nil, time.Hour, clock.now, slog.New(slog.DiscardHandler))
-	const topic = "unifi/default/client/x/ip"
-	ctx := t.Context()
+	synctest.Test(t, func(t *testing.T) {
+		broker := &fakeBroker{}
+		p := newPublisher(broker, nil, time.Hour, slog.New(slog.DiscardHandler))
+		const topic = "unifi/default/client/x/ip"
+		ctx := t.Context()
 
-	for range 3 {
+		for range 3 {
+			if err := p.publish(ctx, topic, ""); err != nil {
+				t.Fatalf("publish: %v", err)
+			}
+		}
+		if n := broker.count(topic); n != 1 {
+			t.Errorf("an unchanged empty payload was published %d times, want 1", n)
+		}
+		if got, _ := broker.latest(topic); got != "" {
+			t.Errorf("payload = %q, want no bytes", got)
+		}
+
+		// A real value after an eviction must go out: the gate has to have
+		// forgotten the topic, not merely recorded an empty payload against
+		// it.
+		if err := p.publish(ctx, topic, "192.0.2.5"); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+		if got, _ := broker.latest(topic); got != "192.0.2.5" {
+			t.Errorf("payload after the eviction = %q, want the new value", got)
+		}
+
+		// And the forced republish still reaches the eviction path.
+		time.Sleep(time.Hour)
 		if err := p.publish(ctx, topic, ""); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
-	}
-	if n := broker.count(topic); n != 1 {
-		t.Errorf("an unchanged empty payload was published %d times, want 1", n)
-	}
-	if got, _ := broker.latest(topic); got != "" {
-		t.Errorf("payload = %q, want no bytes", got)
-	}
-
-	// A real value after an eviction must go out: the gate has to have
-	// forgotten the topic, not merely recorded an empty payload against
-	// it.
-	if err := p.publish(ctx, topic, "192.0.2.5"); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	if got, _ := broker.latest(topic); got != "192.0.2.5" {
-		t.Errorf("payload after the eviction = %q, want the new value", got)
-	}
-
-	// And the forced republish still reaches the eviction path.
-	clock.advance(2 * time.Hour)
-	if err := p.publish(ctx, topic, ""); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	if err := p.publish(ctx, topic, ""); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	if n := broker.count(topic); n != 3 {
-		t.Errorf("topic published %d times in total, want 3 (evict, value, forced evict)", n)
-	}
+		if err := p.publish(ctx, topic, ""); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+		if n := broker.count(topic); n != 3 {
+			t.Errorf("topic published %d times in total, want 3 (evict, value, forced evict)", n)
+		}
+	})
 }
 
 // --- the runtime is a factory ------------------------------------------
@@ -218,7 +219,6 @@ func TestOnConnectRebuildsTheDiscoveryRuntime(t *testing.T) {
 		Source: newFakeSource(),
 		MQTT:   broker,
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 
@@ -283,7 +283,6 @@ func TestTheDiscoveryRuntimeMemoDoesNotSurviveAConnection(t *testing.T) {
 				Source: newFakeSource(),
 				MQTT:   broker,
 				Logger: slog.New(slog.DiscardHandler),
-				Now:    newFakeClock().now,
 			})
 			t.Cleanup(c.Close)
 			ctx := t.Context()
@@ -324,7 +323,6 @@ func TestAReconnectOpensTheDedupGateAndKeepsTheClaims(t *testing.T) {
 		Source: newFakeSource(),
 		MQTT:   broker,
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 	ctx := t.Context()
@@ -514,7 +512,6 @@ func TestSubscriptionFiltersCannotOverlap(t *testing.T) {
 		Site:   testSite(),
 		Source: newFakeSource(),
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 
@@ -793,7 +790,6 @@ func TestTheWillWritesTheTopicEveryEntityReads(t *testing.T) {
 		Site:   testSite(),
 		Source: newFakeSource(),
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 
@@ -850,7 +846,6 @@ func TestTheRuntimeDerivesItsStatusTopicFromTheLayout(t *testing.T) {
 			Site:   testSite(),
 			Source: newFakeSource(),
 			Logger: slog.New(slog.DiscardHandler),
-			Now:    newFakeClock().now,
 		})
 		t.Cleanup(c.Close)
 
@@ -882,7 +877,6 @@ func TestTheRuntimeIsScopedToTheConfiguredDiscoveryPrefix(t *testing.T) {
 		Site:   testSite(),
 		Source: newFakeSource(),
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 
@@ -905,7 +899,6 @@ func TestThePlanesRefuseToSubscribeWithoutASubscriber(t *testing.T) {
 		Source: newFakeSource(),
 		MQTT:   &fakeBroker{},
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 	c.reconcileWindow = 10 * time.Millisecond
@@ -934,7 +927,6 @@ func TestTheAvailabilityMarkerDoesNotGoThroughTheBreaker(t *testing.T) {
 		Source: newFakeSource(),
 		MQTT:   gated,
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 	c.SetDirectPublisher(direct)
@@ -1259,7 +1251,6 @@ func TestTheRuntimeConfigStatesTheLegacyTopicForm(t *testing.T) {
 		Source: newFakeSource(),
 		MQTT:   &fakeBroker{},
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 
@@ -1301,7 +1292,6 @@ func TestOnlyTheAvailabilityMarkerBypassesTheBreaker(t *testing.T) {
 		Source: newFakeSource(),
 		MQTT:   gated,
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	t.Cleanup(c.Close)
 	c.SetDirectPublisher(direct)

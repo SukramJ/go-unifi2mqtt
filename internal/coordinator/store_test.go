@@ -35,7 +35,6 @@ func TestStoreIsFedByThePollLoops(t *testing.T) {
 		Store:  store,
 		Info:   model.ControllerInfo{ApplicationVersion: "10.5.67"},
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 
 	c.primeStore()
@@ -84,7 +83,7 @@ func TestStoreRecordsLoopOutcomes(t *testing.T) {
 
 	c := New(Deps{
 		Cfg: testConfig(), Site: testSite(), Source: src, MQTT: &fakeBroker{},
-		Store: store, Logger: slog.New(slog.DiscardHandler), Now: newFakeClock().now,
+		Store: store, Logger: slog.New(slog.DiscardHandler),
 	})
 
 	// loop() runs its function once and then blocks on the ticker, so
@@ -128,7 +127,7 @@ func TestNoStoreIsSafe(t *testing.T) {
 	c := New(Deps{
 		Cfg: testConfig(), Site: testSite(), Source: src, MQTT: &fakeBroker{},
 		// Store deliberately nil.
-		Logger: slog.New(slog.DiscardHandler), Now: newFakeClock().now,
+		Logger: slog.New(slog.DiscardHandler),
 	})
 
 	c.primeStore()
