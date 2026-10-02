@@ -126,22 +126,20 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 		uid := idPrefix + "_client_" + key + "_blocked"
 		seed := entityIDSeed(info.Name, "blocked")
 		e := controlEntity{
-			entity: entity{
-				Name:            name("client_blocked", d.lang),
-				UniqueID:        uid,
-				DefaultEntityID: string(PlatformSwitch) + "." + seed,
-				StateTopic:      d.topics.ClientTopic(key, "blocked"),
-				Icon:            "mdi:cancel",
-				Availability: []availabilityEntry{
-					{Topic: d.topics.AvailabilityTopic()},
-				},
-				AvailabilityMode: "all",
-				Device:           info,
-				Origin:           origin(),
+			Name:            name("client_blocked", d.lang),
+			UniqueID:        uid,
+			DefaultEntityID: string(PlatformSwitch) + "." + seed,
+			StateTopic:      d.topics.ClientTopic(key, "blocked"),
+			Icon:            "mdi:cancel",
+			Availability: []availabilityEntry{
+				{Topic: d.topics.AvailabilityTopic()},
 			},
-			CommandTopic: d.topics.ClientTopic(key, "blocked/set"),
-			StateOn:      payloadON,
-			StateOff:     payloadOFF,
+			AvailabilityMode: "all",
+			Device:           info,
+			Origin:           origin(),
+			CommandTopic:     d.topics.ClientTopic(key, "blocked/set"),
+			StateOn:          payloadON,
+			StateOff:         payloadOFF,
 		}
 		payload, err := json.Marshal(e)
 		if err != nil {
@@ -157,22 +155,20 @@ func (d *Discovery) ClientControls(cl *model.Client, opts ControlOptions) ([]Ent
 		uid := idPrefix + "_client_" + key + "_authorize"
 		seed := entityIDSeed(info.Name, "authorize")
 		e := controlEntity{
-			entity: entity{
-				Name:            name("client_authorize", d.lang),
-				UniqueID:        uid,
-				DefaultEntityID: string(PlatformButton) + "." + seed,
-				// No StateTopic: a button has none, and "state_topic" is
-				// not a key the MQTT button schema declares.
-				Icon: "mdi:account-check",
-				Availability: []availabilityEntry{
-					{Topic: d.topics.AvailabilityTopic()},
-				},
-				AvailabilityMode: "all",
-				Device:           info,
-				Origin:           origin(),
+			Name:            name("client_authorize", d.lang),
+			UniqueID:        uid,
+			DefaultEntityID: string(PlatformButton) + "." + seed,
+			// No StateTopic: a button has none, and "state_topic" is
+			// not a key the MQTT button schema declares.
+			Icon: "mdi:account-check",
+			Availability: []availabilityEntry{
+				{Topic: d.topics.AvailabilityTopic()},
 			},
-			CommandTopic: d.topics.ClientTopic(key, "cmd/authorize"),
-			PayloadPress: "PRESS",
+			AvailabilityMode: "all",
+			Device:           info,
+			Origin:           origin(),
+			CommandTopic:     d.topics.ClientTopic(key, "cmd/authorize"),
+			PayloadPress:     "PRESS",
 		}
 		payload, err := json.Marshal(e)
 		if err != nil {
@@ -193,24 +189,22 @@ func (d *Discovery) WLANControl(w *model.WLAN) (Entry, error) {
 	info := d.siteDeviceInfo()
 
 	e := controlEntity{
-		entity: entity{
-			// The SSID is the useful label here; the generic "Enabled"
-			// would produce a page full of identical names.
-			Name:            w.Name,
-			UniqueID:        uid,
-			DefaultEntityID: string(PlatformSwitch) + "." + seed,
-			StateTopic:      d.topics.WLANTopic(w.ID, "enabled"),
-			Icon:            "mdi:wifi",
-			Availability: []availabilityEntry{
-				{Topic: d.topics.AvailabilityTopic()},
-			},
-			AvailabilityMode: "all",
-			Device:           info,
-			Origin:           origin(),
+		// The SSID is the useful label here; the generic "Enabled"
+		// would produce a page full of identical names.
+		Name:            w.Name,
+		UniqueID:        uid,
+		DefaultEntityID: string(PlatformSwitch) + "." + seed,
+		StateTopic:      d.topics.WLANTopic(w.ID, "enabled"),
+		Icon:            "mdi:wifi",
+		Availability: []availabilityEntry{
+			{Topic: d.topics.AvailabilityTopic()},
 		},
-		CommandTopic: d.topics.WLANTopic(w.ID, "enabled/set"),
-		StateOn:      payloadON,
-		StateOff:     payloadOFF,
+		AvailabilityMode: "all",
+		Device:           info,
+		Origin:           origin(),
+		CommandTopic:     d.topics.WLANTopic(w.ID, "enabled/set"),
+		StateOn:          payloadON,
+		StateOff:         payloadOFF,
 	}
 
 	payload, err := json.Marshal(e)
@@ -235,25 +229,23 @@ func (d *Discovery) button(
 	uid := idPrefix + "_" + mac.String() + "_" + key
 	seed := entityIDSeed(info.Name, key)
 	e := controlEntity{
-		entity: entity{
-			Name:            name(nameKey, d.lang),
-			UniqueID:        uid,
-			DefaultEntityID: string(PlatformButton) + "." + seed,
-			Icon:            icon,
-			EntityCategory:  category,
-			Availability: []availabilityEntry{
-				{Topic: d.topics.AvailabilityTopic()},
-				{
-					Topic:         d.topics.DeviceTopic(mac, "state"),
-					ValueTemplate: "{{ 'online' if value == 'ONLINE' else 'offline' }}",
-				},
+		Name:            name(nameKey, d.lang),
+		UniqueID:        uid,
+		DefaultEntityID: string(PlatformButton) + "." + seed,
+		Icon:            icon,
+		EntityCategory:  category,
+		Availability: []availabilityEntry{
+			{Topic: d.topics.AvailabilityTopic()},
+			{
+				Topic:         d.topics.DeviceTopic(mac, "state"),
+				ValueTemplate: "{{ 'online' if value == 'ONLINE' else 'offline' }}",
 			},
-			AvailabilityMode: "all",
-			Device:           info,
-			Origin:           origin(),
 		},
-		CommandTopic: commandTopic,
-		PayloadPress: "PRESS",
+		AvailabilityMode: "all",
+		Device:           info,
+		Origin:           origin(),
+		CommandTopic:     commandTopic,
+		PayloadPress:     "PRESS",
 	}
 
 	payload, err := json.Marshal(e)
@@ -272,31 +264,29 @@ func (d *Discovery) deviceSwitch(
 	uid := idPrefix + "_" + mac.String() + "_" + key
 	seed := entityIDSeed(info.Name, key)
 	e := controlEntity{
-		entity: entity{
-			Name:     name(nameKey, d.lang),
-			UniqueID: uid,
-			// PlatformSwitch, matching the config topic this entity is published
-			// on. A cross-domain seed is not usable by the platform that reads it,
-			// so the entity falls back to deriving its id from the localised name —
-			// which is the exact failure the seed exists to prevent.
-			DefaultEntityID: string(PlatformSwitch) + "." + seed,
-			StateTopic:      stateTopic,
-			Icon:            icon,
-			EntityCategory:  "config",
-			Availability: []availabilityEntry{
-				{Topic: d.topics.AvailabilityTopic()},
-				{
-					Topic:         d.topics.DeviceTopic(mac, "state"),
-					ValueTemplate: "{{ 'online' if value == 'ONLINE' else 'offline' }}",
-				},
+		Name:     name(nameKey, d.lang),
+		UniqueID: uid,
+		// PlatformSwitch, matching the config topic this entity is published
+		// on. A cross-domain seed is not usable by the platform that reads it,
+		// so the entity falls back to deriving its id from the localised name —
+		// which is the exact failure the seed exists to prevent.
+		DefaultEntityID: string(PlatformSwitch) + "." + seed,
+		StateTopic:      stateTopic,
+		Icon:            icon,
+		EntityCategory:  "config",
+		Availability: []availabilityEntry{
+			{Topic: d.topics.AvailabilityTopic()},
+			{
+				Topic:         d.topics.DeviceTopic(mac, "state"),
+				ValueTemplate: "{{ 'online' if value == 'ONLINE' else 'offline' }}",
 			},
-			AvailabilityMode: "all",
-			Device:           info,
-			Origin:           origin(),
 		},
-		CommandTopic: commandTopic,
-		StateOn:      payloadON,
-		StateOff:     payloadOFF,
+		AvailabilityMode: "all",
+		Device:           info,
+		Origin:           origin(),
+		CommandTopic:     commandTopic,
+		StateOn:          payloadON,
+		StateOff:         payloadOFF,
 	}
 
 	payload, err := json.Marshal(e)

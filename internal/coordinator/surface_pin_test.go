@@ -339,7 +339,6 @@ func buildSurface(t *testing.T, sc surfaceScenario) surfaceDoc {
 	}
 
 	broker := &fakeBroker{}
-	clock := newFakeClock()
 	c := New(Deps{
 		Cfg:          cfg,
 		Site:         model.Site{ID: "site-uuid", Name: "Default", Internal: "default"},
@@ -348,7 +347,6 @@ func buildSurface(t *testing.T, sc surfaceScenario) surfaceDoc {
 		Capabilities: caps,
 		Info:         model.ControllerInfo{ApplicationVersion: "10.5.67"},
 		Logger:       slog.New(slog.DiscardHandler),
-		Now:          clock.now,
 	})
 
 	ctx := context.Background()

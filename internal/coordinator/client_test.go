@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
@@ -96,43 +97,46 @@ func TestClientPresencePublished(t *testing.T) {
 func TestPresenceSurvivesAMissedPoll(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t, clientConfig(t, ""))
-	withClients(t, h)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		h := newHarness(t, clientConfig(t, ""))
+		withClients(t, h)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
+		}
 
-	// The phone drops out while roaming.
-	h.src.mu.Lock()
-	h.src.clients = h.src.clients[1:]
-	h.src.mu.Unlock()
+		// The phone drops out while roaming.
+		h.src.mu.Lock()
+		h.src.clients = h.src.clients[1:]
+		h.src.mu.Unlock()
 
-	h.broker.reset()
-	h.clock.advance(30 * time.Second)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
-	if got, ok := h.broker.latest("unifi/default/client/00005e005310/state"); ok {
-		t.Errorf("presence flipped to %q after one missed poll, want it held at home", got)
-	}
+		h.broker.reset()
+		time.Sleep(30 * time.Second)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
+		}
+		if got, ok := h.broker.latest("unifi/default/client/00005e005310/state"); ok {
+			t.Errorf("presence flipped to %q after one missed poll, want it held at home", got)
+		}
 
-	// Still inside the grace period.
-	h.clock.advance(4 * time.Minute)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
-	if got, ok := h.broker.latest("unifi/default/client/00005e005310/state"); ok {
-		t.Errorf("presence flipped to %q before AWAY_TIMEOUT, want it held", got)
-	}
+		// One nanosecond inside the grace period: AWAY_TIMEOUT is 300 s and
+		// the client was last seen at the first poll.
+		time.Sleep(5*time.Minute - 30*time.Second - time.Nanosecond)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
+		}
+		if got, ok := h.broker.latest("unifi/default/client/00005e005310/state"); ok {
+			t.Errorf("presence flipped to %q before AWAY_TIMEOUT, want it held", got)
+		}
 
-	// Past it: now the client is genuinely away.
-	h.clock.advance(2 * time.Minute)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
-	if got, _ := h.broker.latest("unifi/default/client/00005e005310/state"); got != "not_home" {
-		t.Errorf("presence = %q after the grace period, want not_home", got)
-	}
+		// At the timeout itself: now the client is genuinely away.
+		time.Sleep(time.Nanosecond)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
+		}
+		if got, _ := h.broker.latest("unifi/default/client/00005e005310/state"); got != "not_home" {
+			t.Errorf("presence = %q after the grace period, want not_home", got)
+		}
+	})
 }
 
 // A client that returns during the grace period must never have gone
@@ -140,39 +144,41 @@ func TestPresenceSurvivesAMissedPoll(t *testing.T) {
 func TestReturningClientNeverGoesAway(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t, clientConfig(t, ""))
-	withClients(t, h)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
-
-	full := h.src.clients
-	h.src.mu.Lock()
-	h.src.clients = full[1:]
-	h.src.mu.Unlock()
-
-	h.clock.advance(2 * time.Minute)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
-
-	h.src.mu.Lock()
-	h.src.clients = full
-	h.src.mu.Unlock()
-
-	h.broker.reset()
-	h.clock.advance(30 * time.Second)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
-
-	h.broker.mu.Lock()
-	defer h.broker.mu.Unlock()
-	for _, m := range h.broker.msgs {
-		if strings.HasSuffix(m.topic, "client/00005e005310/state") && m.payload == "not_home" {
-			t.Error("a client that returned within the grace period was still marked away")
+	synctest.Test(t, func(t *testing.T) {
+		h := newHarness(t, clientConfig(t, ""))
+		withClients(t, h)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
 		}
-	}
+
+		full := h.src.clients
+		h.src.mu.Lock()
+		h.src.clients = full[1:]
+		h.src.mu.Unlock()
+
+		time.Sleep(2 * time.Minute)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
+		}
+
+		h.src.mu.Lock()
+		h.src.clients = full
+		h.src.mu.Unlock()
+
+		h.broker.reset()
+		time.Sleep(30 * time.Second)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
+		}
+
+		h.broker.mu.Lock()
+		defer h.broker.mu.Unlock()
+		for _, m := range h.broker.msgs {
+			if strings.HasSuffix(m.topic, "client/00005e005310/state") && m.payload == "not_home" {
+				t.Error("a client that returned within the grace period was still marked away")
+			}
+		}
+	})
 }
 
 // An away client's IP is stale by definition; publishing the last known
@@ -180,30 +186,32 @@ func TestReturningClientNeverGoesAway(t *testing.T) {
 func TestAwayClientDropsItsIP(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t, clientConfig(t, ""))
-	withClients(t, h)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		h := newHarness(t, clientConfig(t, ""))
+		withClients(t, h)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
+		}
 
-	h.src.mu.Lock()
-	h.src.clients = nil
-	h.src.mu.Unlock()
+		h.src.mu.Lock()
+		h.src.clients = nil
+		h.src.mu.Unlock()
 
-	h.clock.advance(10 * time.Minute)
-	if err := h.c.refreshClients(t.Context()); err != nil {
-		t.Fatalf("refreshClients: %v", err)
-	}
+		time.Sleep(10 * time.Minute)
+		if err := h.c.refreshClients(t.Context()); err != nil {
+			t.Fatalf("refreshClients: %v", err)
+		}
 
-	if got, _ := h.broker.latest("unifi/default/client/00005e005310/ip"); got != "" {
-		t.Errorf("ip = %q for an away client, want it cleared", got)
-	}
-	// The tracker itself must stay: a device_tracker that disappears
-	// makes automations referencing it error out, rather than simply
-	// seeing "away".
-	if got, _ := h.broker.latest("unifi/default/client/00005e005310/state"); got != "not_home" {
-		t.Errorf("state = %q, want not_home", got)
-	}
+		if got, _ := h.broker.latest("unifi/default/client/00005e005310/ip"); got != "" {
+			t.Errorf("ip = %q for an away client, want it cleared", got)
+		}
+		// The tracker itself must stay: a device_tracker that disappears
+		// makes automations referencing it error out, rather than simply
+		// seeing "away".
+		if got, _ := h.broker.latest("unifi/default/client/00005e005310/state"); got != "not_home" {
+			t.Errorf("state = %q, want not_home", got)
+		}
+	})
 }
 
 func TestClientDiscoveryAnnouncedOnce(t *testing.T) {

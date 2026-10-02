@@ -110,9 +110,6 @@ type Deps struct {
 	Store *state.Store
 	// Logger receives diagnostics; nil uses slog.Default().
 	Logger *slog.Logger
-	// Now supplies wall-clock time. Tests inject a fixed or steerable
-	// clock; nil uses time.Now.
-	Now func() time.Time
 }
 
 // Coordinator is the UniFi → MQTT data-flow root.
@@ -124,7 +121,6 @@ type Coordinator struct {
 	caps   Capabilities
 	info   model.ControllerInfo
 	log    *slog.Logger
-	now    func() time.Time
 	topics topicBuilder
 	pub    *publisher
 	store  *state.Store
@@ -244,10 +240,6 @@ func New(d Deps) *Coordinator {
 	if log == nil {
 		log = slog.Default()
 	}
-	now := d.Now
-	if now == nil {
-		now = time.Now
-	}
 
 	caps := d.Capabilities
 	if caps == nil {
@@ -264,9 +256,8 @@ func New(d Deps) *Coordinator {
 		info:              d.Info,
 		sub:               d.Subscriber,
 		log:               log,
-		now:               now,
 		topics:            topics,
-		pub:               newPublisher(d.MQTT, commandFilters(topics), d.Cfg.ForceRepublishDuration(), now, log),
+		pub:               newPublisher(d.MQTT, commandFilters(topics), d.Cfg.ForceRepublishDuration(), log),
 		details:           make(map[model.MAC]model.Device),
 		seen:              make(map[model.MAC]bool),
 		announced:         make(map[model.MAC][]string),
@@ -545,7 +536,7 @@ func (c *Coordinator) loopWithNudge(
 		switch {
 		case err == nil:
 			if c.store != nil {
-				c.store.PollSucceeded(name, c.now())
+				c.store.PollSucceeded(name, time.Now())
 			}
 			return nil
 		case ctx.Err() != nil:
@@ -558,7 +549,7 @@ func (c *Coordinator) loopWithNudge(
 			c.log.Warn("coordinator.loop_error",
 				slog.String("loop", name), slog.String("err", err.Error()))
 			if c.store != nil {
-				c.store.PollFailed(name, err, c.now())
+				c.store.PollFailed(name, err, time.Now())
 			}
 			c.publishError(ctx, name, err)
 			return nil
@@ -786,7 +777,7 @@ func (c *Coordinator) refreshDeviceStats(ctx context.Context) error {
 				return nil
 			}
 			if c.store != nil {
-				c.store.SetDeviceStats(d.MAC, stats, c.now())
+				c.store.SetDeviceStats(d.MAC, stats, time.Now())
 			}
 			if err := c.publishDeviceStats(gctx, d.MAC, &stats); err != nil {
 				c.log.Warn("coordinator.device_stats_publish_failed",
@@ -835,7 +826,7 @@ func (c *Coordinator) publishError(ctx context.Context, loop string, cause error
 		Loop string `json:"loop"`
 		Err  string `json:"error"`
 		At   string `json:"at"`
-	}{Loop: loop, Err: cause.Error(), At: c.now().UTC().Format(time.RFC3339)})
+	}{Loop: loop, Err: cause.Error(), At: time.Now().UTC().Format(time.RFC3339)})
 	if err != nil {
 		return
 	}

@@ -243,7 +243,7 @@ func TestHamqttObjectIDReproducesTheComposition(t *testing.T) {
 	for _, tc := range cases {
 		dev := hamqttDevice(deviceInfo{Identifiers: []string{"unifi_x"}, Name: tc.deviceName})
 		e := &hamqttEntity{
-			Basic:    hamodel.Basic{EntityKey: tc.key, EntityPlatform: hacatalog.PlatformSensor},
+			EntityKey: tc.key, EntityPlatform: hacatalog.PlatformSensor,
 			seedName: tc.deviceName,
 			seedKey:  tc.key,
 		}
@@ -277,7 +277,7 @@ func TestHamqttUniqueIDIsThisBridgesFormula(t *testing.T) {
 	// "<node_id>_<object_id>": the topic segment is "ip", the id says
 	// "client_ip".
 	e := &hamqttEntity{
-		Basic:   hamodel.Basic{EntityKey: "ip", EntityPlatform: hacatalog.PlatformSensor},
+		EntityKey: "ip", EntityPlatform: hacatalog.PlatformSensor,
 		uidBase: "unifi_client_00005e005311",
 		uidKey:  "client_ip",
 	}

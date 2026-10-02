@@ -5,6 +5,7 @@ package hass
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -347,13 +348,11 @@ func (c hamqttContext) Availability(dev *hamodel.Device, e hamodel.Entity) []dis
 func (d *Discovery) newHamqttContext() hamqttContext {
 	layout := hamqttLayout{topics: d.topics}
 	return hamqttContext{
-		StdContext: discovery.StdContext{
-			Layout:    layout,
-			Namespace: hamqttNamespace,
-			Lang:      d.lang,
-			// Raw, not the zero value. See the file header.
-			Enc: discovery.RawEncoding,
-		},
+		Layout:    layout,
+		Namespace: hamqttNamespace,
+		Lang:      d.lang,
+		// Raw, not the zero value. See the file header.
+		Enc:    discovery.RawEncoding,
 		layout: layout,
 	}
 }
@@ -508,12 +507,7 @@ func (d *Discovery) HamqttDeviceBlockConflicts(f HamqttFleet) map[string][]strin
 }
 
 func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, v)
 }
 
 // hamqttGroup is one device and the entities announced on it.
@@ -626,28 +620,26 @@ func (d *Discovery) hamqttDeviceEntity(s *spec, mac, deviceName string) *hamqttE
 	}
 
 	e := &hamqttEntity{
-		Basic: hamodel.Basic{
-			EntityKey:      s.key,
-			EntityPlatform: hacatalog.Platform(s.platform),
-			Description: hamodel.Description{
-				Name:          hamodel.L(label),
-				DeviceClass:   hamodel.DeviceClass(s.deviceClass),
-				StateClass:    hacatalog.StateClass(s.stateClass),
-				Unit:          hamodel.Unit(s.unit),
-				Icon:          s.icon,
-				Category:      hacatalog.EntityCategory(s.category),
-				ValueTemplate: s.valueTemplate,
-				// A sibling of the state topic, composed through the
-				// same Topics implementation rather than by string
-				// surgery on the slot.
-				JSONAttributesTopic: d.topics.DeviceTopic(mustMAC(mac), "attributes"),
-			},
-			Binds: []hamodel.Binding{{
-				Role: hamodel.RoleState,
-				Slot: deviceSlot(mac, s.stateSuffix),
-				Mode: hamodel.Read,
-			}},
+		EntityKey:      s.key,
+		EntityPlatform: hacatalog.Platform(s.platform),
+		Description: hamodel.Description{
+			Name:          hamodel.L(label),
+			DeviceClass:   hamodel.DeviceClass(s.deviceClass),
+			StateClass:    hacatalog.StateClass(s.stateClass),
+			Unit:          hamodel.Unit(s.unit),
+			Icon:          s.icon,
+			Category:      hacatalog.EntityCategory(s.category),
+			ValueTemplate: s.valueTemplate,
+			// A sibling of the state topic, composed through the
+			// same Topics implementation rather than by string
+			// surgery on the slot.
+			JSONAttributesTopic: d.topics.DeviceTopic(mustMAC(mac), "attributes"),
 		},
+		Binds: []hamodel.Binding{{
+			Role: hamodel.RoleState,
+			Slot: deviceSlot(mac, s.stateSuffix),
+			Mode: hamodel.Read,
+		}},
 		uidBase:  idPrefix + "_" + mac,
 		uidKey:   s.key,
 		seedName: deviceName,
@@ -680,18 +672,16 @@ func (d *Discovery) hamqttDeviceControls(
 	}
 	if opts.DeviceLocate {
 		e := &hamqttEntity{
-			Basic: hamodel.Basic{
-				EntityKey:      "locate",
-				EntityPlatform: hacatalog.PlatformSwitch,
-				Description: hamodel.Description{
-					Name:     hamodel.L(name("device_locate", d.lang)),
-					Icon:     "mdi:map-marker-radius",
-					Category: hacatalog.EntityCategory("config"),
-				},
-				Binds: []hamodel.Binding{
-					{Role: hamodel.RoleState, Slot: deviceSlot(mac, "locate"), Mode: hamodel.Read},
-					{Role: hamodel.RoleCommand, Slot: deviceSlot(mac, "cmd/locate/set"), Mode: hamodel.Write},
-				},
+			EntityKey:      "locate",
+			EntityPlatform: hacatalog.PlatformSwitch,
+			Description: hamodel.Description{
+				Name:     hamodel.L(name("device_locate", d.lang)),
+				Icon:     "mdi:map-marker-radius",
+				Category: hacatalog.EntityCategory("config"),
+			},
+			Binds: []hamodel.Binding{
+				{Role: hamodel.RoleState, Slot: deviceSlot(mac, "locate"), Mode: hamodel.Read},
+				{Role: hamodel.RoleCommand, Slot: deviceSlot(mac, "cmd/locate/set"), Mode: hamodel.Write},
 			},
 			uidBase:       idPrefix + "_" + mac,
 			uidKey:        "locate",
@@ -722,20 +712,18 @@ func (d *Discovery) hamqttDeviceButton(
 	mac, deviceName, key, label string, cmdPath []string, icon string,
 ) *hamqttEntity {
 	return &hamqttEntity{
-		Basic: hamodel.Basic{
-			EntityKey:      key,
-			EntityPlatform: hacatalog.PlatformButton,
-			Description: hamodel.Description{
-				Name:     hamodel.L(label),
-				Icon:     icon,
-				Category: hacatalog.EntityCategory("config"),
-			},
-			Binds: []hamodel.Binding{{
-				Role: hamodel.RoleCommand,
-				Slot: hamodel.Slot{Scope: []string{scopeDevice}, Address: mac, Path: cmdPath},
-				Mode: hamodel.Write,
-			}},
+		EntityKey:      key,
+		EntityPlatform: hacatalog.PlatformButton,
+		Description: hamodel.Description{
+			Name:     hamodel.L(label),
+			Icon:     icon,
+			Category: hacatalog.EntityCategory("config"),
 		},
+		Binds: []hamodel.Binding{{
+			Role: hamodel.RoleCommand,
+			Slot: hamodel.Slot{Scope: []string{scopeDevice}, Address: mac, Path: cmdPath},
+			Mode: hamodel.Write,
+		}},
 		uidBase:       idPrefix + "_" + mac,
 		uidKey:        key,
 		seedName:      deviceName,
@@ -755,20 +743,18 @@ func (d *Discovery) hamqttClientGroup(
 	g := &hamqttGroup{dev: hamqttDevice(info)}
 
 	tracker := &hamqttEntity{
-		Basic: hamodel.Basic{
-			EntityKey:      "presence",
-			EntityPlatform: hacatalog.PlatformDeviceTracker,
-			Description: hamodel.Description{
-				Name: hamodel.L(name("client_presence", d.lang)),
-				// The tracker reports being away, so it stays available
-				// while the client is not.
-				Availability:        hamodel.BridgeOnly(),
-				JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
-			},
-			Binds: []hamodel.Binding{{
-				Role: hamodel.RoleState, Slot: clientSlot(key, "state"), Mode: hamodel.Read,
-			}},
+		EntityKey:      "presence",
+		EntityPlatform: hacatalog.PlatformDeviceTracker,
+		Description: hamodel.Description{
+			Name: hamodel.L(name("client_presence", d.lang)),
+			// The tracker reports being away, so it stays available
+			// while the client is not.
+			Availability:        hamodel.BridgeOnly(),
+			JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
 		},
+		Binds: []hamodel.Binding{{
+			Role: hamodel.RoleState, Slot: clientSlot(key, "state"), Mode: hamodel.Read,
+		}},
 		uidBase:       idPrefix + "_client_" + key,
 		uidKey:        "presence",
 		seedName:      info.Name,
@@ -793,18 +779,16 @@ func (d *Discovery) hamqttClientGroup(
 
 	if ctl.ClientBlock && !cl.MAC.IsZero() {
 		g.entities = append(g.entities, &hamqttEntity{
-			Basic: hamodel.Basic{
-				EntityKey:      "blocked",
-				EntityPlatform: hacatalog.PlatformSwitch,
-				Description: hamodel.Description{
-					Name:         hamodel.L(name("client_blocked", d.lang)),
-					Icon:         "mdi:cancel",
-					Availability: hamodel.BridgeOnly(),
-				},
-				Binds: []hamodel.Binding{
-					{Role: hamodel.RoleState, Slot: clientSlot(key, "blocked"), Mode: hamodel.Read},
-					{Role: hamodel.RoleCommand, Slot: clientSlot(key, "blocked/set"), Mode: hamodel.Write},
-				},
+			EntityKey:      "blocked",
+			EntityPlatform: hacatalog.PlatformSwitch,
+			Description: hamodel.Description{
+				Name:         hamodel.L(name("client_blocked", d.lang)),
+				Icon:         "mdi:cancel",
+				Availability: hamodel.BridgeOnly(),
+			},
+			Binds: []hamodel.Binding{
+				{Role: hamodel.RoleState, Slot: clientSlot(key, "blocked"), Mode: hamodel.Read},
+				{Role: hamodel.RoleCommand, Slot: clientSlot(key, "blocked/set"), Mode: hamodel.Write},
 			},
 			uidBase:       idPrefix + "_client_" + key,
 			uidKey:        "blocked",
@@ -816,20 +800,18 @@ func (d *Discovery) hamqttClientGroup(
 	}
 	if ctl.GuestAuthorize && cl.IsGuest {
 		g.entities = append(g.entities, &hamqttEntity{
-			Basic: hamodel.Basic{
-				EntityKey:      "authorize",
-				EntityPlatform: hacatalog.PlatformButton,
-				Description: hamodel.Description{
-					Name:         hamodel.L(name("client_authorize", d.lang)),
-					Icon:         "mdi:account-check",
-					Availability: hamodel.BridgeOnly(),
-				},
-				Binds: []hamodel.Binding{{
-					Role: hamodel.RoleCommand,
-					Slot: clientSlot(key, "cmd/authorize"),
-					Mode: hamodel.Write,
-				}},
+			EntityKey:      "authorize",
+			EntityPlatform: hacatalog.PlatformButton,
+			Description: hamodel.Description{
+				Name:         hamodel.L(name("client_authorize", d.lang)),
+				Icon:         "mdi:account-check",
+				Availability: hamodel.BridgeOnly(),
 			},
+			Binds: []hamodel.Binding{{
+				Role: hamodel.RoleCommand,
+				Slot: clientSlot(key, "cmd/authorize"),
+				Mode: hamodel.Write,
+			}},
 			uidBase:       idPrefix + "_client_" + key,
 			uidKey:        "authorize",
 			seedName:      info.Name,
@@ -843,26 +825,24 @@ func (d *Discovery) hamqttClientGroup(
 
 func (d *Discovery) hamqttClientSensor(key, suffix, deviceName string, s spec) *hamqttEntity {
 	return &hamqttEntity{
-		Basic: hamodel.Basic{
-			// The component key is the topic's object-id segment, which
-			// for these two sensors is NOT the unique id's suffix —
-			// "ip" against "client_ip". That is 2 of the 21 configs F5
-			// names, and getting it wrong retracts nothing at step 6.
-			EntityKey:      suffix,
-			EntityPlatform: hacatalog.Platform(s.platform),
-			Description: hamodel.Description{
-				Name:                hamodel.L(name(s.nameKey, d.lang)),
-				DeviceClass:         hamodel.DeviceClass(s.deviceClass),
-				StateClass:          hacatalog.StateClass(s.stateClass),
-				Unit:                hamodel.Unit(s.unit),
-				Icon:                s.icon,
-				Category:            hacatalog.EntityCategory(s.category),
-				JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
-			},
-			Binds: []hamodel.Binding{{
-				Role: hamodel.RoleState, Slot: clientSlot(key, s.stateSuffix), Mode: hamodel.Read,
-			}},
+		// The component key is the topic's object-id segment, which
+		// for these two sensors is NOT the unique id's suffix —
+		// "ip" against "client_ip". That is 2 of the 21 configs F5
+		// names, and getting it wrong retracts nothing at step 6.
+		EntityKey:      suffix,
+		EntityPlatform: hacatalog.Platform(s.platform),
+		Description: hamodel.Description{
+			Name:                hamodel.L(name(s.nameKey, d.lang)),
+			DeviceClass:         hamodel.DeviceClass(s.deviceClass),
+			StateClass:          hacatalog.StateClass(s.stateClass),
+			Unit:                hamodel.Unit(s.unit),
+			Icon:                s.icon,
+			Category:            hacatalog.EntityCategory(s.category),
+			JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
 		},
+		Binds: []hamodel.Binding{{
+			Role: hamodel.RoleState, Slot: clientSlot(key, s.stateSuffix), Mode: hamodel.Read,
+		}},
 		uidBase:       idPrefix + "_client_" + key,
 		uidKey:        s.key,
 		seedName:      deviceName,
@@ -880,24 +860,22 @@ func (d *Discovery) hamqttHealthGroup() *hamqttGroup {
 	for i := range specs {
 		s := &specs[i]
 		e := &hamqttEntity{
-			Basic: hamodel.Basic{
-				EntityKey:      s.key,
-				EntityPlatform: hacatalog.Platform(s.platform),
-				Description: hamodel.Description{
-					Name:                hamodel.L(name(s.nameKey, d.lang)),
-					DeviceClass:         hamodel.DeviceClass(s.deviceClass),
-					StateClass:          hacatalog.StateClass(s.stateClass),
-					Unit:                hamodel.Unit(s.unit),
-					Icon:                s.icon,
-					Category:            hacatalog.EntityCategory(s.category),
-					ValueTemplate:       s.valueTemplate,
-					Availability:        hamodel.BridgeOnly(),
-					JSONAttributesTopic: d.topics.HealthTopic("attributes"),
-				},
-				Binds: []hamodel.Binding{{
-					Role: hamodel.RoleState, Slot: healthSlot(s.stateSuffix), Mode: hamodel.Read,
-				}},
+			EntityKey:      s.key,
+			EntityPlatform: hacatalog.Platform(s.platform),
+			Description: hamodel.Description{
+				Name:                hamodel.L(name(s.nameKey, d.lang)),
+				DeviceClass:         hamodel.DeviceClass(s.deviceClass),
+				StateClass:          hacatalog.StateClass(s.stateClass),
+				Unit:                hamodel.Unit(s.unit),
+				Icon:                s.icon,
+				Category:            hacatalog.EntityCategory(s.category),
+				ValueTemplate:       s.valueTemplate,
+				Availability:        hamodel.BridgeOnly(),
+				JSONAttributesTopic: d.topics.HealthTopic("attributes"),
 			},
+			Binds: []hamodel.Binding{{
+				Role: hamodel.RoleState, Slot: healthSlot(s.stateSuffix), Mode: hamodel.Read,
+			}},
 			uidBase:  idPrefix + "_site_" + d.site,
 			uidKey:   s.key,
 			seedName: info.Name,
@@ -916,24 +894,22 @@ func (d *Discovery) hamqttWLANGroup(w *model.WLAN) *hamqttGroup {
 	// composed the site's name from two different fields.
 	info := d.siteDeviceInfo()
 	e := &hamqttEntity{
-		Basic: hamodel.Basic{
-			// The SSID switch lives on the *site* node with a
-			// "wlan_<id>" object-id segment while its unique id is
-			// namespaced under "unifi_wlan_<id>". Those are 2 of the 21
-			// configs where unique_id != "<node_id>_<object_id>".
-			EntityKey:      "wlan_" + w.ID,
-			EntityPlatform: hacatalog.PlatformSwitch,
-			Description: hamodel.Description{
-				// The SSID is the label; a generic "Enabled" would fill
-				// the device page with identical names.
-				Name:         hamodel.L(w.Name),
-				Icon:         "mdi:wifi",
-				Availability: hamodel.BridgeOnly(),
-			},
-			Binds: []hamodel.Binding{
-				{Role: hamodel.RoleState, Slot: wlanSlot(w.ID, "enabled"), Mode: hamodel.Read},
-				{Role: hamodel.RoleCommand, Slot: wlanSlot(w.ID, "enabled/set"), Mode: hamodel.Write},
-			},
+		// The SSID switch lives on the *site* node with a
+		// "wlan_<id>" object-id segment while its unique id is
+		// namespaced under "unifi_wlan_<id>". Those are 2 of the 21
+		// configs where unique_id != "<node_id>_<object_id>".
+		EntityKey:      "wlan_" + w.ID,
+		EntityPlatform: hacatalog.PlatformSwitch,
+		Description: hamodel.Description{
+			// The SSID is the label; a generic "Enabled" would fill
+			// the device page with identical names.
+			Name:         hamodel.L(w.Name),
+			Icon:         "mdi:wifi",
+			Availability: hamodel.BridgeOnly(),
+		},
+		Binds: []hamodel.Binding{
+			{Role: hamodel.RoleState, Slot: wlanSlot(w.ID, "enabled"), Mode: hamodel.Read},
+			{Role: hamodel.RoleCommand, Slot: wlanSlot(w.ID, "enabled/set"), Mode: hamodel.Write},
 		},
 		uidBase: idPrefix + "_wlan_" + w.ID,
 		uidKey:  "enabled",

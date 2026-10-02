@@ -9,9 +9,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	mqtt "github.com/SukramJ/go-mqtt"
@@ -54,7 +56,7 @@ func (b *fakeBroker) Publish(_ context.Context, topic string, payload []byte, qo
 func (b *fakeBroker) latest(topic string) (string, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	for i := len(b.msgs) - 1; i >= 0; i-- {
+	for i := range slices.Backward(b.msgs) {
 		if b.msgs[i].topic == topic {
 			return b.msgs[i].payload, true
 		}
@@ -342,29 +344,6 @@ type harness struct {
 	c      *Coordinator
 	broker *fakeBroker
 	src    *fakeSource
-	clock  *fakeClock
-}
-
-// fakeClock lets tests move time without sleeping.
-type fakeClock struct {
-	mu sync.Mutex
-	t  time.Time
-}
-
-func newFakeClock() *fakeClock {
-	return &fakeClock{t: time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)}
-}
-
-func (c *fakeClock) now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.t
-}
-
-func (c *fakeClock) advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.t = c.t.Add(d)
 }
 
 func newHarness(t *testing.T, cfg *config.Config) *harness {
@@ -409,7 +388,6 @@ func newHarnessLogging(t *testing.T, cfg *config.Config, caps Capabilities, log 
 	}
 
 	broker := &fakeBroker{}
-	clock := newFakeClock()
 
 	c := New(Deps{
 		Cfg:          cfg,
@@ -419,9 +397,8 @@ func newHarnessLogging(t *testing.T, cfg *config.Config, caps Capabilities, log 
 		Capabilities: caps,
 		Info:         model.ControllerInfo{ApplicationVersion: "10.5.67"},
 		Logger:       log,
-		Now:          clock.now,
 	})
-	return &harness{c: c, broker: broker, src: src, clock: clock}
+	return &harness{c: c, broker: broker, src: src}
 }
 
 // --- tests -----------------------------------------------------------
@@ -556,34 +533,36 @@ func TestChangeDetectionSuppressesIdenticalPayloads(t *testing.T) {
 func TestForcedRepublish(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig()
-	cfg.ForceRepublish = 600
-	h := newHarness(t, cfg)
+	synctest.Test(t, func(t *testing.T) {
+		cfg := testConfig()
+		cfg.ForceRepublish = 600
+		h := newHarness(t, cfg)
 
-	if err := h.c.refreshDevices(t.Context()); err != nil {
-		t.Fatalf("refreshDevices: %v", err)
-	}
-	first := h.broker.total()
+		if err := h.c.refreshDevices(t.Context()); err != nil {
+			t.Fatalf("refreshDevices: %v", err)
+		}
+		first := h.broker.total()
 
-	// Before the deadline: still suppressed.
-	h.clock.advance(599 * time.Second)
-	h.broker.reset()
-	if err := h.c.refreshDevices(t.Context()); err != nil {
-		t.Fatalf("refreshDevices: %v", err)
-	}
-	if got := h.broker.total(); got != 0 {
-		t.Errorf("published %d messages before the force deadline, want 0", got)
-	}
+		// One nanosecond before the deadline: still suppressed.
+		time.Sleep(600*time.Second - time.Nanosecond)
+		h.broker.reset()
+		if err := h.c.refreshDevices(t.Context()); err != nil {
+			t.Fatalf("refreshDevices: %v", err)
+		}
+		if got := h.broker.total(); got != 0 {
+			t.Errorf("published %d messages before the force deadline, want 0", got)
+		}
 
-	// After it: everything again.
-	h.clock.advance(2 * time.Second)
-	h.broker.reset()
-	if err := h.c.refreshDevices(t.Context()); err != nil {
-		t.Fatalf("refreshDevices: %v", err)
-	}
-	if got := h.broker.total(); got != first {
-		t.Errorf("forced republish sent %d messages, want all %d", got, first)
-	}
+		// At the deadline: everything again.
+		time.Sleep(time.Nanosecond)
+		h.broker.reset()
+		if err := h.c.refreshDevices(t.Context()); err != nil {
+			t.Fatalf("refreshDevices: %v", err)
+		}
+		if got := h.broker.total(); got != first {
+			t.Errorf("forced republish sent %d messages, want all %d", got, first)
+		}
+	})
 }
 
 func TestDeviceStatsSkipsOfflineDevices(t *testing.T) {
@@ -927,7 +906,6 @@ func TestOnConnectWithoutPublisherDoesNotPanic(t *testing.T) {
 		Source: newFakeSource(),
 		// MQTT deliberately unset.
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 
 	// Must log and carry on rather than dereference a nil publisher.
@@ -942,7 +920,7 @@ func TestOnConnectWithoutPublisherDoesNotPanic(t *testing.T) {
 func TestPublishWithoutPublisherReportsAnError(t *testing.T) {
 	t.Parallel()
 
-	p := newPublisher(nil, nil, 0, newFakeClock().now, slog.New(slog.DiscardHandler))
+	p := newPublisher(nil, nil, 0, slog.New(slog.DiscardHandler))
 	if err := p.publish(t.Context(), "a", "v"); !errors.Is(err, ErrNoPublisher) {
 		t.Errorf("publish error = %v, want ErrNoPublisher", err)
 	}
@@ -962,7 +940,6 @@ func TestSetPublisherTakesEffect(t *testing.T) {
 		Site:   testSite(),
 		Source: newFakeSource(),
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	c.SetPublisher(broker)
 

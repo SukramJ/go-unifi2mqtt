@@ -208,10 +208,8 @@ func TestReconcileUnsubscribes(t *testing.T) {
 	sub.mu.Lock()
 	defer sub.mu.Unlock()
 	want := sweepWindow(h.c)
-	for _, f := range sub.unsubscribed {
-		if f == want {
-			return
-		}
+	if slices.Contains(sub.unsubscribed, want) {
+		return
 	}
 	t.Errorf("unsubscribed = %v, want %s among them", sub.unsubscribed, want)
 }

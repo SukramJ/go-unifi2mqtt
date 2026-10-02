@@ -142,7 +142,6 @@ func buildHamqttInputs(t *testing.T, sc surfaceScenario) hass.HamqttFleet {
 		Capabilities: caps,
 		Info:         model.ControllerInfo{ApplicationVersion: "10.5.67"},
 		Logger:       slog.New(slog.DiscardHandler),
-		Now:          newFakeClock().now,
 	})
 
 	ctx := context.Background()
@@ -203,7 +202,6 @@ func scenarioDiscovery(t *testing.T, sc surfaceScenario) *hass.Discovery {
 		Source: newFakeSource(),
 		MQTT:   failingPublisher{t: t},
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    newFakeClock().now,
 	})
 	return hass.New(c.DiscoveryConfig(cfg.HASSBaseTopic, cfg.Language))
 }

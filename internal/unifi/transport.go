@@ -225,8 +225,7 @@ func retryable(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*APIError](err); ok {
 		return apiErr.Retryable()
 	}
 	// Anything else that got this far is a network-level failure:
@@ -401,8 +400,7 @@ func parseRetryAfter(v string) time.Duration {
 // but keeping URLs out of error strings on principle means a future
 // query parameter cannot quietly start leaking.
 func unwrapURLError(err error) error {
-	var ue *url.Error
-	if errors.As(err, &ue) {
+	if ue, ok := errors.AsType[*url.Error](err); ok {
 		return ue.Err
 	}
 	return err

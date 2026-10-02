@@ -194,26 +194,22 @@ func TestConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range 50 {
 				s.SetDevices(devices())
 				s.SetDeviceStats(sw, model.DeviceStats{CPUPct: float64(i)}, t0)
 				s.SetClient(model.Client{MAC: ap, Name: "c"}, true, t0)
 				s.PollSucceeded("devices", t0)
 			}
-		}()
+		})
 	}
 	for range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 50 {
 				snap := s.Snapshot()
 				_ = len(snap.Devices) + len(snap.Clients)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

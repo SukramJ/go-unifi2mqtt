@@ -1,3 +1,52 @@
+# Version 1.3.0 (2026-10-02)
+
+A toolchain and dependency release. The daemon and the add-on image are
+now built with Go 1.27.1, and the three libraries this bridge is built on
+move to their Go 1.27 releases. There is no new feature and no
+operator-visible behaviour change that we know of: nothing that reaches
+the MQTT broker, Home Assistant or the add-on options moved.
+
+**Nothing re-registers.** No `unique_id`, device identifier, entity_id
+seed, topic or discovery payload changed, so every entity keeps its
+history, its area, its name and every automation pointing at it.
+
+## Built with Go 1.27.1
+
+The binary, the Docker image and the Home Assistant add-on image are
+built with Go 1.27.1 (the builder stage is `golang:1.27.1-alpine`), and
+`go.mod` now requires Go 1.27.1. CI, the CodeQL workflow and the release
+workflow use the same toolchain. If you build from source, you need Go
+1.27 or newer.
+
+## Library updates
+
+- `go-mqtt` 1.5.1 → 1.6.0
+- `go-ha-catalog` 0.2.1 → 0.3.0
+- `go-hamqtt` 0.34.1 → 0.35.0
+
+go-mqtt 1.6.0 and go-hamqtt 0.35.0 state, in their own changelogs, that
+they require Go 1.27, that no exported signature and nothing on the wire
+changes, and that go-hamqtt's discovery field table is regenerated from
+catalog snapshot 2026.9.4 with only its provenance line changing, not a
+field. The test suite, including the byte-for-byte discovery goldens,
+passes on the new versions.
+
+## Internal changes
+
+These do not alter what the bridge publishes; they are listed so the
+release notes account for the whole diff.
+
+- The Go 1.27 `go fix` modernizers were applied across the coordinator,
+  the Home Assistant layer and the UniFi clients (mechanical rewrites to
+  current idioms).
+- The coordinator no longer carries an injected clock. Its code paths
+  read the real clock, and the time-dependent tests were rewritten to
+  run on `testing/synctest`; many coordinator, discovery, publish, plane
+  and reconcile tests were touched as a result, and some assertions were
+  restructured around the new time source.
+- `paginate` in the UniFi Integration API client is now a generic method
+  of the client instead of a separate helper.
+
 # Version 1.2.0 (2026-09-14)
 
 The release that comes out of a full measurement of everything this

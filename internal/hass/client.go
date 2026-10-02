@@ -86,22 +86,20 @@ func (d *Discovery) renderTracker(key string, info deviceInfo) (Entry, error) {
 	uid := idPrefix + "_client_" + key + "_presence"
 	seed := entityIDSeed(info.Name, "presence")
 	e := clientEntity{
-		entity: entity{
-			Name:            name("client_presence", d.lang),
-			UniqueID:        uid,
-			DefaultEntityID: string(PlatformDeviceTracker) + "." + seed,
-			// The tracker is the entity that reports being away, so its
-			// availability must not depend on the client being present —
-			// only on the bridge running.
-			StateTopic:          d.topics.ClientTopic(key, "state"),
-			JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
-			Availability: []availabilityEntry{
-				{Topic: d.topics.AvailabilityTopic()},
-			},
-			AvailabilityMode: "all",
-			Device:           info,
-			Origin:           origin(),
+		Name:            name("client_presence", d.lang),
+		UniqueID:        uid,
+		DefaultEntityID: string(PlatformDeviceTracker) + "." + seed,
+		// The tracker is the entity that reports being away, so its
+		// availability must not depend on the client being present —
+		// only on the bridge running.
+		StateTopic:          d.topics.ClientTopic(key, "state"),
+		JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
+		Availability: []availabilityEntry{
+			{Topic: d.topics.AvailabilityTopic()},
 		},
+		AvailabilityMode: "all",
+		Device:           info,
+		Origin:           origin(),
 		// "router" tells Home Assistant this is network-presence rather
 		// than GPS, which is what makes it usable for the person
 		// integration without a location.
