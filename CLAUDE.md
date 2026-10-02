@@ -28,7 +28,7 @@ web UI. Only the optional WebSocket accelerator (phase 9) remains.
 
 ## Key Characteristics
 
-- **Language**: Go 1.26+ (see `go.mod` / CI `GO_VERSION`).
+- **Language**: Go 1.27+ (see `go.mod` / CI `GO_VERSION`).
 - **Module path**: `github.com/SukramJ/go-unifi2mqtt`.
 - **License: MIT.** Every Go source file starts with:
   ```go
