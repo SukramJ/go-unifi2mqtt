@@ -1,9 +1,9 @@
-github.com/SukramJ/go-ha-catalog v0.2.1 h1:uuEiTU62grZTuqTZ2x44sJR2+r9Zqxk4pLKkUkIsTpM=
-github.com/SukramJ/go-ha-catalog v0.2.1/go.mod h1:Kjo2ncy7GBZ1lDa70GLTEjr4lxgj8bYk1os1HgnONTI=
-github.com/SukramJ/go-hamqtt v0.34.1 h1:FLDHVYM16br7tASVw05wOf5amfpEYxnqNrmbW0sybPo=
-github.com/SukramJ/go-hamqtt v0.34.1/go.mod h1:X9NObZM7WTlmqzEz6PHXqj2AA93bFiEg+QQdWOC2wT8=
-github.com/SukramJ/go-mqtt v1.5.1 h1:6T+kb17i6WrVvGfIY4IR9MS1qqh8AOxXbMBJ9zxKBHE=
-github.com/SukramJ/go-mqtt v1.5.1/go.mod h1:VYpxzNQSbOiPO1xtW0nrL6uSYtjf58hGkYGJ6ebjxXA=
+github.com/SukramJ/go-ha-catalog v0.3.0 h1:yyb0JmvWN9TsNT6Ev9KACCV+KFK5a/va/Dhg50igUrA=
+github.com/SukramJ/go-ha-catalog v0.3.0/go.mod h1:z+G41LzF/Aj6xeoT0CqXylm7TxFhScqt118+h1vPwA8=
+github.com/SukramJ/go-hamqtt v0.35.0 h1:BMnzcvDfuNxTQgvXJOj8diwSrbxh7rRHI4+9EPddevw=
+github.com/SukramJ/go-hamqtt v0.35.0/go.mod h1:b6CdvdS46D35zj2vZlUaEvTsjfYm4FWmiaq0vCy/e/Y=
+github.com/SukramJ/go-mqtt v1.6.0 h1:8qGuMm4BFM5xB0Lb8+GeHkTceiYDQ1YWqsmdXkQ6nKo=
+github.com/SukramJ/go-mqtt v1.6.0/go.mod h1:5d2rA0gppys68MuhP8RoCtb/yorzYwVFP3Myb1HhsaA=
 golang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=
 golang.org/x/sync v0.23.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
