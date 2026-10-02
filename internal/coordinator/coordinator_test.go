@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -54,7 +55,7 @@ func (b *fakeBroker) Publish(_ context.Context, topic string, payload []byte, qo
 func (b *fakeBroker) latest(topic string) (string, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	for i := len(b.msgs) - 1; i >= 0; i-- {
+	for i := range slices.Backward(b.msgs) {
 		if b.msgs[i].topic == topic {
 			return b.msgs[i].payload, true
 		}

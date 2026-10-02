@@ -6,6 +6,7 @@ package coordinator
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
@@ -362,9 +363,7 @@ func (c *Coordinator) collectRetainedConfigs(ctx context.Context) (map[string][]
 	mu.Lock()
 	defer mu.Unlock()
 	out := make(map[string][]byte, len(retained))
-	for k, v := range retained {
-		out[k] = v
-	}
+	maps.Copy(out, retained)
 	return out, nil
 }
 

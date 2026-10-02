@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -56,7 +57,7 @@ func (c *logCapture) Handle(_ context.Context, r slog.Record) error {
 func (c *logCapture) find(msg string) (capturedRecord, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := len(c.records) - 1; i >= 0; i-- {
+	for i := range slices.Backward(c.records) {
 		if c.records[i].msg == msg {
 			return c.records[i], true
 		}
