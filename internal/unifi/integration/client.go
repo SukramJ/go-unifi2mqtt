@@ -141,7 +141,7 @@ func (c *Client) Info(ctx context.Context) (model.ControllerInfo, error) {
 
 // Sites lists the sites on this console.
 func (c *Client) Sites(ctx context.Context) ([]model.Site, error) {
-	raw, err := paginate[site](ctx, c, c.path("/v1/sites"))
+	raw, err := c.paginate[site](ctx, c.path("/v1/sites"))
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (c *Client) ResolveSite(ctx context.Context, name string) (model.Site, erro
 // update flag, so this alone feeds most device sensors; ports, radios
 // and the uplink need [Client.Device] per device.
 func (c *Client) Devices(ctx context.Context, siteID string) ([]model.Device, error) {
-	raw, err := paginate[deviceOverview](ctx, c, c.path("/v1/sites/"+siteID+"/devices"))
+	raw, err := c.paginate[deviceOverview](ctx, c.path("/v1/sites/"+siteID+"/devices"))
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (c *Client) DeviceStats(ctx context.Context, siteID, deviceID string) (mode
 
 // Clients lists the site's connected clients.
 func (c *Client) Clients(ctx context.Context, siteID string) ([]model.Client, error) {
-	raw, err := paginate[clientOverview](ctx, c, c.path("/v1/sites/"+siteID+"/clients"))
+	raw, err := c.paginate[clientOverview](ctx, c.path("/v1/sites/"+siteID+"/clients"))
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func (c *Client) Clients(ctx context.Context, siteID string) ([]model.Client, er
 // only its subnets: a transient failure on one VLAN must not take down
 // the whole catalogue.
 func (c *Client) Networks(ctx context.Context, siteID string) ([]model.Network, error) {
-	raw, err := paginate[networkOverview](ctx, c, c.path("/v1/sites/"+siteID+"/networks"))
+	raw, err := c.paginate[networkOverview](ctx, c.path("/v1/sites/"+siteID+"/networks"))
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +331,7 @@ func (c *Client) network(ctx context.Context, siteID, networkID string) (model.N
 
 // WLANs lists the site's SSID catalogue.
 func (c *Client) WLANs(ctx context.Context, siteID string) ([]model.WLAN, error) {
-	raw, err := paginate[wifiBroadcastOverview](ctx, c, c.path("/v1/sites/"+siteID+"/wifi/broadcasts"))
+	raw, err := c.paginate[wifiBroadcastOverview](ctx, c.path("/v1/sites/"+siteID+"/wifi/broadcasts"))
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +389,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 // when it is done without relying on a short page — which matters
 // because a page can legitimately come back short of `limit` while more
 // results remain.
-func paginate[T any](ctx context.Context, c *Client, path string) ([]T, error) {
+func (c *Client) paginate[T any](ctx context.Context, path string) ([]T, error) {
 	var out []T
 
 	for offset, pages := 0, 0; ; pages++ {
