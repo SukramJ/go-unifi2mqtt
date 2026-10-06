@@ -5,19 +5,25 @@ package coordinator
 
 import (
 	"context"
-	"encoding/json"
-	"strconv"
+	"math"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 )
 
 // Value publication.
 //
-// Every entity-shaped value gets its own scalar topic rather than being
-// packed into one JSON blob: Home Assistant then needs a plain
-// state_topic per sensor instead of a value_template maze
+// Every entity-shaped value gets its own status item rather than being
+// packed into one JSON blob: Home Assistant then needs one state_topic
+// per sensor reading `value_json.val` instead of a value_template maze
 // (CONCEPT.md §5.6). What is useful to see but pointless as its own
-// entity goes into the accompanying `attributes` object.
+// entity goes into the accompanying `attributes` item, whose `val` is
+// the object.
+//
+// Each value is handed over as the Go value its `val` should be: a
+// boolean as a JSON boolean, a count or a rate as a JSON number, a
+// state as its English token. The publisher wraps it in the
+// `{"val","ts","lc"}` status object (mqtt-smarthome 2.0 §5.2). nil
+// means "no value" and clears the retained item.
 //
 // A publish failure on one value is returned to the caller, which logs
 // it and moves on — losing one sensor for one cycle is better than
@@ -27,15 +33,18 @@ import (
 // values, ports and radios.
 func (c *Coordinator) publishDevice(ctx context.Context, d *model.Device) error {
 	values := []struct {
-		key     string
-		payload string
+		key   string
+		value any
 	}{
 		{keyState, string(d.State)},
+		// Reachability as the boolean `online` item every non-state
+		// entity of the device reads as its second availability entry.
+		{keyOnline, d.State.IsOnline()},
 		{keyFirmware, d.Firmware},
-		{keyUpdateAvailable, boolPayload(d.UpdateAvail)},
+		{keyUpdateAvailable, d.UpdateAvail},
 	}
 	for _, v := range values {
-		if err := c.pub.publish(ctx, c.topics.device(d.MAC, v.key), v.payload); err != nil {
+		if err := c.pub.publish(ctx, c.topics.device(d.MAC, v.key), v.value); err != nil {
 			return err
 		}
 	}
@@ -93,11 +102,7 @@ func (c *Coordinator) publishDeviceAttributes(ctx context.Context, d *model.Devi
 		attrs.AdoptedAt = d.AdoptedAt.UTC().Format("2006-01-02T15:04:05Z")
 	}
 
-	payload, err := json.Marshal(attrs)
-	if err != nil {
-		return err
-	}
-	return c.pub.publish(ctx, c.topics.device(d.MAC, keyAttributes), string(payload))
+	return c.pub.publish(ctx, c.topics.device(d.MAC, keyAttributes), attrs)
 }
 
 // publishDeviceStats publishes one statistics sample.
@@ -107,24 +112,24 @@ func (c *Coordinator) publishDeviceAttributes(ctx context.Context, d *model.Devi
 // band since the API gives radios no other identifier.
 func (c *Coordinator) publishDeviceStats(ctx context.Context, mac model.MAC, s *model.DeviceStats) error {
 	values := []struct {
-		key     string
-		payload string
+		key   string
+		value any
 	}{
-		{keyUptime, strconv.FormatInt(int64(s.Uptime.Seconds()), 10)},
-		{keyCPUUtilization, formatPct(s.CPUPct)},
-		{keyMemoryUtilization, formatPct(s.MemoryPct)},
-		{keyUplinkTxBps, strconv.FormatUint(s.UplinkTxBps, 10)},
-		{keyUplinkRxBps, strconv.FormatUint(s.UplinkRxBps, 10)},
+		{keyUptime, int64(s.Uptime.Seconds())},
+		{keyCPUUtilization, roundPct(s.CPUPct)},
+		{keyMemoryUtilization, roundPct(s.MemoryPct)},
+		{keyUplinkTxBps, s.UplinkTxBps},
+		{keyUplinkRxBps, s.UplinkRxBps},
 	}
 	for _, v := range values {
-		if err := c.pub.publish(ctx, c.topics.device(mac, v.key), v.payload); err != nil {
+		if err := c.pub.publish(ctx, c.topics.device(mac, v.key), v.value); err != nil {
 			return err
 		}
 	}
 
 	for freq, pct := range s.RadioTxRetry {
 		topic := c.topics.radio(mac, freq, keyRadioTxRetries)
-		if err := c.pub.publish(ctx, topic, formatPct(pct)); err != nil {
+		if err := c.pub.publish(ctx, topic, roundPct(pct)); err != nil {
 			return err
 		}
 	}
@@ -136,16 +141,16 @@ func (c *Coordinator) publishPort(ctx context.Context, mac model.MAC, p *model.P
 	if err := c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortState), string(p.State)); err != nil {
 		return err
 	}
-	if err := c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortSpeed), itoa(p.SpeedMbps)); err != nil {
+	if err := c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortSpeed), p.SpeedMbps); err != nil {
 		return err
 	}
 	// A port without PoE hardware gets no PoE topic at all — publishing
-	// OFF there would create a Home Assistant entity for a capability
+	// false there would create a Home Assistant entity for a capability
 	// the port does not have.
 	if p.PoE == nil {
 		return nil
 	}
-	if err := c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortPoE), boolPayload(p.PoE.Enabled)); err != nil {
+	if err := c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortPoE), p.PoE.Enabled); err != nil {
 		return err
 	}
 
@@ -156,8 +161,7 @@ func (c *Coordinator) publishPort(ctx context.Context, mac model.MAC, p *model.P
 	if p.PoE.PowerW <= 0 {
 		return nil
 	}
-	return c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortPoEPower),
-		strconv.FormatFloat(p.PoE.PowerW, 'f', 1, 64))
+	return c.pub.publish(ctx, c.topics.port(mac, p.Idx, keyPortPoEPower), roundOne(p.PoE.PowerW))
 }
 
 // publishLocate publishes the locate LED's read-back.
@@ -177,12 +181,12 @@ func (c *Coordinator) publishLocate(ctx context.Context, d *model.Device) error 
 	if !c.controlOptions().DeviceLocate {
 		return nil
 	}
-	return c.pub.publish(ctx, c.topics.device(d.MAC, keyLocate), boolPayload(d.Locating))
+	return c.pub.publish(ctx, c.topics.device(d.MAC, keyLocate), d.Locating)
 }
 
 // publishRadio publishes one radio's channel.
 func (c *Coordinator) publishRadio(ctx context.Context, mac model.MAC, r *model.Radio) error {
-	return c.pub.publish(ctx, c.topics.radio(mac, r.FrequencyGHz, keyRadioChannel), itoa(r.Channel))
+	return c.pub.publish(ctx, c.topics.radio(mac, r.FrequencyGHz, keyRadioChannel), r.Channel)
 }
 
 // publishWLANs publishes the SSID catalogue and, when the toggle is
@@ -192,7 +196,7 @@ func (c *Coordinator) publishWLANs(ctx context.Context, wlans []model.WLAN) erro
 
 	for i := range wlans {
 		w := &wlans[i]
-		if err := c.pub.publish(ctx, c.topics.wlan(w.ID, keyWLANEnabled), boolPayload(w.Enabled)); err != nil {
+		if err := c.pub.publish(ctx, c.topics.wlan(w.ID, keyWLANEnabled), w.Enabled); err != nil {
 			return err
 		}
 		if err := c.pub.publish(ctx, c.topics.wlan(w.ID, keyWLANName), w.Name); err != nil {
@@ -212,11 +216,14 @@ func (c *Coordinator) publishWLANs(ctx context.Context, wlans []model.WLAN) erro
 	return nil
 }
 
-// formatPct renders a percentage with one decimal.
+// roundPct rounds a percentage to one decimal.
 //
 // Fixed precision matters for change detection: the console reports
-// values like 12.500000001, and formatting with %v would make an
-// identical reading look different on every poll and republish forever.
-func formatPct(v float64) string {
-	return strconv.FormatFloat(v, 'f', 1, 64)
-}
+// values like 12.500000001, and the gate compares the rendered `val`,
+// so an unrounded reading would look different on every poll and
+// republish forever.
+func roundPct(v float64) float64 { return roundOne(v) }
+
+// roundOne rounds to one decimal, the precision every fractional value
+// of this bridge is published with.
+func roundOne(v float64) float64 { return math.Round(v*10) / 10 }

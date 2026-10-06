@@ -123,8 +123,21 @@ type Config struct {
 	MQTTPort     int    `yaml:"MQTT_PORT"`
 	MQTTLogin    string `yaml:"MQTT_LOGIN"`
 	MQTTPassword Secret `yaml:"MQTT_PASSWORD"`
-	// MQTTTopic is the root of the published topic tree.
+	// MQTTTopic is the instance name, `<name>` in every
+	// `<name>/<function>/<item...>` topic (mqtt-smarthome 2.0 §3). It is
+	// the only thing that keeps two instances on one broker apart —
+	// nothing checks it — and the default `unifi` is also the default
+	// instance name of hobbyquaker's Node.js adapter unifi2mqtt.
 	MQTTTopic string `yaml:"MQTT_TOPIC"`
+	// MQTTMaintenance enables the mqtt-smarthome maintenance topics
+	// (`<name>/maintenance/…`: runtime log level, restart, process
+	// statistics). On by default, as spec §7 recommends; anyone allowed
+	// to publish on the broker can then restart the daemon, so an
+	// unsecured broker wants it off.
+	MQTTMaintenance bool `yaml:"MQTT_MAINTENANCE"`
+	// MQTTStatsInterval is the period of `<name>/maintenance/stats` in
+	// seconds; 0 switches the topic off.
+	MQTTStatsInterval int `yaml:"MQTT_STATS_INTERVAL"`
 	// MQTTSSL dials tls:// instead of tcp://.
 	MQTTSSL bool `yaml:"MQTT_SSL"`
 	// MQTTClientID is the identifier this daemon presents to the broker.
@@ -173,10 +186,6 @@ type Config struct {
 	RefreshClients     int `yaml:"REFRESH_CLIENTS"`
 	RefreshHealth      int `yaml:"REFRESH_HEALTH"`
 	RefreshStatic      int `yaml:"REFRESH_STATIC"`
-	// ForceRepublish is how often every value is republished even when
-	// unchanged, so a subscriber without retained support cannot drift
-	// permanently stale (CONCEPT.md §8.3).
-	ForceRepublish int `yaml:"FORCE_REPUBLISH"`
 
 	// --- Nested blocks ---
 
@@ -324,9 +333,6 @@ func (c *Config) RefreshHealthDuration() time.Duration { return secs(c.RefreshHe
 
 // RefreshStaticDuration is the catalogue poll interval.
 func (c *Config) RefreshStaticDuration() time.Duration { return secs(c.RefreshStatic) }
-
-// ForceRepublishDuration is the unconditional republish interval.
-func (c *Config) ForceRepublishDuration() time.Duration { return secs(c.ForceRepublish) }
 
 // HASSBirthGracetimeDuration is the delay after Home Assistant's birth
 // message.

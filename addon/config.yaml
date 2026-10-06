@@ -77,7 +77,14 @@ options:
   mqtt_port: 1883
   mqtt_login: ""
   mqtt_password: ""
+  # The instance name, first level of every topic. The only thing that
+  # keeps two instances on one broker apart — and also the default name
+  # of hobbyquaker's Node.js unifi2mqtt; see DOCS.md.
   mqtt_topic: unifi
+  # mqtt-smarthome maintenance topics (log level, restart, stats). See
+  # DOCS.md for the security note.
+  mqtt_maintenance: true
+  mqtt_stats_interval: 60
   # Empty means "unifi2mqtt-" + mqtt_topic. Set it when two add-on
   # instances share one broker: two clients on one identifier evict each
   # other from the broker in a loop.
@@ -152,6 +159,8 @@ schema:
   mqtt_login: "str?"
   mqtt_password: "password?"
   mqtt_topic: str
+  mqtt_maintenance: bool
+  mqtt_stats_interval: int(0,86400)
   mqtt_client_id: "str?"
   hass_enable: bool
   refresh_devices: int(5,3600)

@@ -64,15 +64,15 @@ func TestHealthPublished(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"unifi/default/health/wan/state":      "ok",
-		"unifi/default/health/wan/ip":         "203.0.113.7",
-		"unifi/default/health/wan/latency_ms": "12",
-		"unifi/default/health/wan/rx_bps":     "18400000",
-		"unifi/default/health/wlan/state":     "warning",
-		"unifi/default/health/vpn/state":      "unknown",
+		"unifi/status/default/health/wan/state":      "ok",
+		"unifi/status/default/health/wan/ip":         "203.0.113.7",
+		"unifi/status/default/health/wan/latency_ms": "12",
+		"unifi/status/default/health/wan/rx_bps":     "18400000",
+		"unifi/status/default/health/wlan/state":     "warning",
+		"unifi/status/default/health/vpn/state":      "unknown",
 		// user + guest + iot
-		"unifi/default/health/clients/total": "60",
-		"unifi/default/health/clients/guest": "3",
+		"unifi/status/default/health/clients/total": "60",
+		"unifi/status/default/health/clients/guest": "3",
 	}
 	for topic, wantPayload := range want {
 		got, ok := h.broker.latest(topic)
@@ -94,11 +94,11 @@ func TestHealthPublished(t *testing.T) {
 	if err := h2.c.refreshHealth(t.Context()); err != nil {
 		t.Fatalf("refreshHealth: %v", err)
 	}
-	if got, _ := h2.broker.latest("unifi/default/health/wan/latency_ms"); got != "" {
+	if got, _ := h2.broker.latest("unifi/status/default/health/wan/latency_ms"); got != "" {
 		t.Errorf("latency = %q with no data, want empty so HA shows unknown", got)
 	}
 
-	raw, ok := h.broker.latest("unifi/default/health/attributes")
+	raw, ok := h.broker.latest("unifi/status/default/health/attributes")
 	if !ok {
 		t.Fatal("no health attributes")
 	}
@@ -123,7 +123,7 @@ func TestHealthWithoutClassicLayerIsQuiet(t *testing.T) {
 	if err := h.c.refreshHealth(t.Context()); err != nil {
 		t.Errorf("refreshHealth returned %v, want nil for an unavailable capability", err)
 	}
-	if got := h.broker.topicsWithPrefix("unifi/default/health/"); len(got) != 0 {
+	if got := h.broker.topicsWithPrefix("unifi/status/default/health/"); len(got) != 0 {
 		t.Errorf("published %d health topics without the classic layer", len(got))
 	}
 	// No entities either: they would point at topics that never receive

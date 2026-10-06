@@ -5,9 +5,7 @@ package coordinator
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strconv"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
@@ -59,29 +57,29 @@ func (c *Coordinator) refreshHealth(ctx context.Context) error {
 
 func (c *Coordinator) publishHealth(ctx context.Context, h *model.Health) error {
 	values := []struct {
-		key     string
-		payload string
+		key   string
+		value any
 	}{
 		{keyWANState, h.WAN.Status},
-		{keyWANIP, addrString(h.WANIP)},
-		// Published empty when the controller reports no latency at all,
-		// so Home Assistant shows "unknown" rather than a measured 0 ms.
+		{keyWANIP, optString(addrString(h.WANIP))},
+		// Cleared when the controller reports no latency at all, so Home
+		// Assistant shows "unknown" rather than a measured 0 ms.
 		{keyWANLatency, optInt(h.LatencyMs)},
-		{keyWANRx, strconv.FormatUint(h.RxBps, 10)},
-		{keyWANTx, strconv.FormatUint(h.TxBps, 10)},
+		{keyWANRx, h.RxBps},
+		{keyWANTx, h.TxBps},
 		{keyLANState, h.LAN.Status},
 		{keyWLANState, h.WLAN.Status},
 		{keyVPNState, h.VPN.Status},
-		{keyClientsTotal, strconv.Itoa(h.NumUser + h.NumGuest + h.NumIoT)},
-		{keyClientsGuest, strconv.Itoa(h.NumGuest)},
+		{keyClientsTotal, h.NumUser + h.NumGuest + h.NumIoT},
+		{keyClientsGuest, h.NumGuest},
 	}
 	for _, v := range values {
-		if err := c.pub.publish(ctx, c.topics.health(v.key), v.payload); err != nil {
+		if err := c.pub.publish(ctx, c.topics.health(v.key), v.value); err != nil {
 			return err
 		}
 	}
 
-	payload, err := json.Marshal(healthAttrs{
+	return c.pub.publish(ctx, c.topics.health(keyAttributes), healthAttrs{
 		WANStatus:  h.WAN.Status,
 		LANStatus:  h.LAN.Status,
 		WLANStatus: h.WLAN.Status,
@@ -96,10 +94,6 @@ func (c *Coordinator) publishHealth(ctx context.Context, h *model.Health) error 
 		NumSwitch:  h.NumSwitch,
 		NumGateway: h.NumGateway,
 	})
-	if err != nil {
-		return err
-	}
-	return c.pub.publish(ctx, c.topics.health(keyAttributes), string(payload))
 }
 
 // healthAttrs is the JSON object bound as json_attributes_topic.
@@ -119,12 +113,23 @@ type healthAttrs struct {
 	NumGateway int    `json:"gateways"`
 }
 
-// optInt renders an optional integer, empty when absent.
-func optInt(p *int) string {
+// optInt is an optional integer as a status value: nil, which clears
+// the item, when absent.
+func optInt(p *int) any {
 	if p == nil {
-		return ""
+		return nil
 	}
-	return strconv.Itoa(*p)
+	return *p
+}
+
+// optString is an optional string as a status value: nil, which clears
+// the item, when empty. A status object carrying `""` would show an
+// empty state in Home Assistant where "unknown" is the truth.
+func optString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func addrString(a interface{ IsValid() bool }) string {

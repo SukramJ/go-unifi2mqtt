@@ -43,54 +43,36 @@ type Publisher interface {
 // Publishing only on change is what keeps a broker with many
 // subscribers from carrying pointless traffic: a site with 12 devices
 // and 121 clients produces hundreds of topics, and almost none of them
-// change between two polls. The periodic forced republish exists
-// because "only on change" alone would leave a subscriber that missed a
-// message — or one that does not use retained values — permanently
-// stale (CONCEPT.md §8.3).
+// change between two polls. mqtt-smarthome 2.0 §3.2 makes it a rule —
+// an adapter "MUST NOT republish unchanged state" — and a subscriber
+// that missed a message is served by the retained value and by the full
+// replay on every broker reconnect ([publisher.republish]), not by a
+// periodic refresh (CONCEPT.md §8.3).
 //
 // It is safe for concurrent use: several poll loops publish at once.
 type publisher struct {
 	out Publisher
-	// state is the go-hamqtt state plane: the dedup gate, the retained
-	// publish and the index a removed device's topics are dropped from,
-	// all at [StateQoS]. ADR 0070 phase 9 step 5 moved every state
-	// publish onto it; the discovery configs below still go out through
-	// `out` directly, in the per-entity form, and the bundle is step 6.
+	// state is the go-hamqtt state plane: the dedup gate on `val`, the
+	// `{"val","ts","lc"}` status object, the retained publish and the
+	// index a removed device's topics are dropped from, all at
+	// [StateQoS]. The discovery configs below still go out through
+	// `out` directly, in the per-entity form.
 	state *hapub.StatePublisher
 	log   *slog.Logger
 
-	// forceEvery is how often the next publish of every topic bypasses
-	// change detection. Zero disables forced republishing.
-	forceEvery time.Duration
-
 	mu sync.Mutex
 	// lastConfig holds the discovery config payload last sent per topic.
-	// The state plane's equivalent lives inside [hapub.StatePublisher];
-	// this half stays here until step 6 moves discovery too.
+	// The state plane's equivalent lives inside [hapub.StatePublisher].
 	lastConfig map[string]entry
-	// sentAt is when each state topic last actually went out, and it is
-	// the whole of what this type still owns on the state plane.
-	//
-	// The library's dedup gate has no notion of age, and the forced
-	// periodic republish needs one: a subscriber that missed a message,
-	// or one that does not use retained values, would otherwise stay
-	// permanently stale (CONCEPT.md §8.3). The timestamp is per topic
-	// rather than a single global deadline on purpose. A global one
-	// would be consumed by whichever publish happened to run first after
-	// it expired, and every other topic in that cycle would still be
-	// suppressed — turning "republish everything every 10 minutes" into
-	// "republish one topic every 10 minutes". Per-topic ages also spread
-	// the forced traffic out instead of bunching it into one burst.
-	sentAt map[string]time.Time
-	// emptied is the state topics whose last publish carried no bytes.
+	// emptied is the state topics whose last publish carried no value.
 	//
 	// An empty retained payload is a retraction, so it goes out through
 	// [hapub.StatePublisher.Evict] — which has no dedup gate, by design,
 	// because eviction is normally a one-shot. Here it is not: an absent
 	// client publishes an empty `ip` and an empty `signal` on every poll
-	// for as long as it stays away, and before this step change
-	// detection suppressed the repeats. This set is what keeps that
-	// true, for a fleet where "away" is the steady state of most of it.
+	// for as long as it stays away, and change detection has always
+	// suppressed the repeats. This set is what keeps that true, for a
+	// fleet where "away" is the steady state of most of it.
 	emptied map[string]bool
 	// configs is the set of discovery config topics currently announced.
 	//
@@ -125,7 +107,6 @@ type publisher struct {
 // entry is one topic's last publication.
 type entry struct {
 	payload []byte
-	at      time.Time
 }
 
 // statePlaneTransport is the publish-only [hapub.Transport] the state
@@ -156,87 +137,74 @@ func (t statePlaneTransport) Publish(
 func newPublisher(
 	out Publisher,
 	commandFilters []string,
-	forceEvery time.Duration,
+	clock func() time.Time,
 	log *slog.Logger,
 ) *publisher {
 	p := &publisher{
 		out:        out,
 		log:        log,
-		forceEvery: forceEvery,
 		lastConfig: make(map[string]entry),
-		sentAt:     make(map[string]time.Time),
 		emptied:    make(map[string]bool),
 		configs:    make(map[string]bool),
 		published:  make(map[string]bool),
 	}
-	p.state = newStatePlane(hagomqtt.Split(statePlaneTransport{p}, nil), commandFilters, log)
+	p.state = newStatePlane(hagomqtt.Split(statePlaneTransport{p}, nil), commandFilters, clock, log)
 	return p
 }
 
-// publish sends payload to topic unless an identical payload was
-// already sent and no forced republish is due.
+// publish writes one status item unless its value is unchanged.
 //
-// The comparison is [hapub.StatePublisher]'s hash-dedup gate; what this
-// method adds is the age check the library has no notion of, and the
-// empty-payload branch. Errors are returned rather than logged here:
-// the caller knows whether a failed publish should abort its poll (it
-// should not) or be counted.
-func (p *publisher) publish(ctx context.Context, topic, payload string) error {
+// value is the item's `val` — a JSON boolean, number, string or a
+// structured value — and the comparison is [hapub.StatePublisher]'s
+// gate on it, never on the timestamps. A nil value means "no value" and
+// clears the retained item instead (spec §5.1), once: repeats of an
+// empty item are suppressed here, because the library's eviction has no
+// gate. Errors are returned rather than logged here: the caller knows
+// whether a failed publish should abort its poll (it should not) or be
+// counted.
+func (p *publisher) publish(ctx context.Context, topic string, value any) error {
 	if p.state == nil {
 		return ErrNoPublisher
 	}
-	now := time.Now()
 
-	p.mu.Lock()
-	at, known := p.sentAt[topic]
-	stale := known && p.staleLocked(at, now)
-	wasEmpty := p.emptied[topic]
-	p.mu.Unlock()
-
-	// An empty retained payload deletes the value rather than writing
-	// one, which the library refuses through Publish and says on purpose
-	// through Evict. The bytes on the wire are identical either way.
-	if payload == "" {
-		if wasEmpty && !stale {
+	if value == nil {
+		p.mu.Lock()
+		wasEmpty := p.emptied[topic]
+		p.mu.Unlock()
+		if wasEmpty {
 			return nil
 		}
+		// An empty retained payload deletes the value rather than
+		// writing one, which the library refuses through PublishStatus
+		// and says on purpose through Evict.
 		if err := p.state.Evict(ctx, topic); err != nil {
 			return err
 		}
 		p.mu.Lock()
-		p.sentAt[topic] = now
 		p.emptied[topic] = true
 		p.mu.Unlock()
 		return nil
 	}
 
-	// Forgetting is how an age check is expressed against a gate that
-	// only knows payloads: the next publish then goes out because the
-	// gate has nothing to compare against, not because anything changed.
-	if stale {
-		p.state.Forget(topic)
-	}
-	written, err := p.state.Publish(ctx, topic, []byte(payload))
+	written, err := p.state.PublishStatus(ctx, topic, hapub.Observation{Value: value})
 	if err != nil {
 		return err
 	}
-	if !written {
-		return nil
+	if written {
+		p.mu.Lock()
+		delete(p.emptied, topic)
+		p.mu.Unlock()
 	}
-	p.mu.Lock()
-	p.sentAt[topic] = now
-	delete(p.emptied, topic)
-	p.mu.Unlock()
 	return nil
 }
 
-// staleLocked reports whether an unchanged topic is old enough to be
-// republished anyway. Must be called with the mutex held.
-func (p *publisher) staleLocked(at, now time.Time) bool {
-	if p.forceEvery <= 0 {
-		return false
+// pulse writes one non-retained status item — an event, which has no
+// gate and no memory (spec §3.2).
+func (p *publisher) pulse(ctx context.Context, topic string, value any) error {
+	if p.state == nil {
+		return ErrNoPublisher
 	}
-	return !now.Before(at.Add(p.forceEvery))
+	return p.state.PulseStatus(ctx, topic, hapub.Observation{Value: value})
 }
 
 // publishConfig sends a Home Assistant discovery config.
@@ -255,7 +223,6 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 		return ErrNoPublisher
 	}
 
-	now := time.Now()
 	if payload != nil {
 		p.mu.Lock()
 		// Recorded before the skip check, not after: change detection
@@ -266,7 +233,7 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 		// a live entity.
 		p.configs[topic] = true
 		prev, known := p.lastConfig[topic]
-		skip := known && bytes.Equal(prev.payload, payload) && !p.staleLocked(prev.at, now)
+		skip := known && bytes.Equal(prev.payload, payload)
 		p.mu.Unlock()
 		if skip {
 			return nil
@@ -284,7 +251,7 @@ func (p *publisher) publishConfig(ctx context.Context, topic string, payload []b
 	}
 
 	p.mu.Lock()
-	p.lastConfig[topic] = entry{payload: payload, at: now}
+	p.lastConfig[topic] = entry{payload: payload}
 	// Recorded only now, and never removed: what the broker accepted,
 	// never what was merely attempted. configs answers "is this a live
 	// entity of ours" and is recorded before the send, because change
@@ -340,9 +307,8 @@ func (p *publisher) forget(prefix string) []string {
 	}
 
 	p.mu.Lock()
-	for topic := range p.sentAt {
+	for topic := range p.emptied {
 		if strings.HasPrefix(topic, prefix) {
-			delete(p.sentAt, topic)
 			delete(p.emptied, topic)
 		}
 	}
@@ -358,23 +324,32 @@ func (p *publisher) forget(prefix string) []string {
 	return slices.Compact(dropped)
 }
 
-// clear drops all remembered payloads, forcing the next poll to
-// republish everything. Called after a broker reconnect, because a
+// clear drops the remembered discovery payloads, so the next announce
+// re-sends every config. Called after a broker reconnect, because a
 // broker that lost its retained store (or a different broker entirely)
-// would otherwise never receive the values change detection is
+// would otherwise never receive the configs change detection is
 // suppressing.
+//
+// The state plane is not touched here: [publisher.republish] replays
+// it whole on the same reconnect, and keeping its memory is what keeps
+// each item's `lc` — the moment its value last changed — across the
+// drop.
 func (p *publisher) clear() {
-	if p.state != nil {
-		// Reset opens the gate and keeps the index, which is what a
-		// reconnect needs: forgetting the fleet as well would leave
-		// [publisher.forget] and the eviction path with no worklist.
-		p.state.Reset()
-	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	clear(p.lastConfig)
-	clear(p.sentAt)
-	clear(p.emptied)
+}
+
+// republish re-sends every remembered status item unchanged, original
+// `ts` included, and reports how many went out — spec §3.2's "again
+// after every broker reconnect, so the broker's retained state is
+// complete". An emptied item needs no replay: absent on the broker is
+// what it already is.
+func (p *publisher) republish(ctx context.Context) (int, error) {
+	if p.state == nil {
+		return 0, ErrNoPublisher
+	}
+	return p.state.Republish(ctx)
 }
 
 // knownTopics returns the topics with a remembered payload, sorted.

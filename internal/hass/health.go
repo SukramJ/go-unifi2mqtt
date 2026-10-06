@@ -23,7 +23,7 @@ func healthSpecs() []spec {
 			// smaller surface: the subsystem status is "ok", "warning",
 			// "error" or "unknown", none of which is "OFF", so a bare
 			// payload_on: "ok" could turn the sensor on and never off.
-			valueTemplate: "{{ 'ON' if value == 'ok' else 'OFF' }}",
+			valueTemplate: "{{ 'ON' if value_json.val == 'ok' else 'OFF' }}",
 			payloadOn:     payloadON,
 			payloadOff:    payloadOFF,
 		},
@@ -76,25 +76,24 @@ func (d *Discovery) Health() ([]Entry, error) {
 		uid := idPrefix + "_site_" + d.site + "_" + s.key
 		seed := entityIDSeed(info.Name, s.key)
 		e := entity{
-			Name:                name(s.nameKey, d.lang),
-			UniqueID:            uid,
-			DefaultEntityID:     string(s.platform) + "." + seed,
-			StateTopic:          d.topics.HealthTopic(s.stateSuffix),
-			UnitOfMeasurement:   s.unit,
-			DeviceClass:         s.deviceClass,
-			StateClass:          s.stateClass,
-			EntityCategory:      s.category,
-			Icon:                s.icon,
-			PayloadOn:           s.payloadOn,
-			PayloadOff:          s.payloadOff,
-			ValueTemplate:       s.valueTemplate,
-			JSONAttributesTopic: d.topics.HealthTopic("attributes"),
-			Availability: []availabilityEntry{
-				{Topic: d.topics.AvailabilityTopic()},
-			},
-			AvailabilityMode: "all",
-			Device:           info,
-			Origin:           origin(),
+			Name:                   name(s.nameKey, d.lang),
+			UniqueID:               uid,
+			DefaultEntityID:        string(s.platform) + "." + seed,
+			StateTopic:             d.topics.HealthTopic(s.stateSuffix),
+			UnitOfMeasurement:      s.unit,
+			DeviceClass:            s.deviceClass,
+			StateClass:             s.stateClass,
+			EntityCategory:         s.category,
+			Icon:                   s.icon,
+			PayloadOn:              s.payloadOn,
+			PayloadOff:             s.payloadOff,
+			ValueTemplate:          valueTemplateFor(s.platform, s.valueTemplate),
+			JSONAttributesTopic:    d.topics.HealthTopic("attributes"),
+			JSONAttributesTemplate: attributesTemplate,
+			Availability:           []availabilityEntry{d.bridgeAvailability()},
+			AvailabilityMode:       "all",
+			Device:                 info,
+			Origin:                 origin(),
 		}
 
 		payload, err := json.Marshal(e)

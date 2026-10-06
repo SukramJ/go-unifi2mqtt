@@ -8,7 +8,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -29,16 +32,17 @@
           "sw_version": "4.3.6"
         },
         "device_class": "connectivity",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "Erreichbar",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "payload_off": "OFF",
         "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005301/state",
+        "state_topic": "unifi/status/default/device/00005e005301/state",
         "unique_id": "unifi_00005e005301_reachable",
-        "value_template": "{{ 'ON' if value == 'ONLINE' else 'OFF' }}"
+        "value_template": "{{ 'ON' if value_json.val == 'ONLINE' else 'OFF' }}"
       }
     },
     {
@@ -48,7 +52,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -70,15 +77,17 @@
         },
         "device_class": "update",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "Update verfügbar",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "payload_off": "OFF",
-        "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005301/update_available",
-        "unique_id": "unifi_00005e005301_update_available"
+        "payload_off": "false",
+        "payload_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005301/update_available",
+        "unique_id": "unifi_00005e005301_update_available",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -88,11 +97,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -115,16 +129,17 @@
         },
         "device_class": "connectivity",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Port 1 Verbindung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "payload_off": "OFF",
         "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005302/port/1/state",
+        "state_topic": "unifi/status/default/device/00005e005302/port/1/state",
         "unique_id": "unifi_00005e005302_port_1_link",
-        "value_template": "{{ 'ON' if value == 'UP' else 'OFF' }}"
+        "value_template": "{{ 'ON' if value_json.val == 'UP' else 'OFF' }}"
       }
     },
     {
@@ -134,11 +149,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -161,15 +181,17 @@
         },
         "device_class": "power",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Port 1 PoE",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "payload_off": "OFF",
-        "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005302/port/1/poe",
-        "unique_id": "unifi_00005e005302_port_1_poe"
+        "payload_off": "false",
+        "payload_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005302/port/1/poe",
+        "unique_id": "unifi_00005e005302_port_1_poe",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -179,11 +201,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -206,16 +233,17 @@
         },
         "device_class": "connectivity",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Port 25 Verbindung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "payload_off": "OFF",
         "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005302/port/25/state",
+        "state_topic": "unifi/status/default/device/00005e005302/port/25/state",
         "unique_id": "unifi_00005e005302_port_25_link",
-        "value_template": "{{ 'ON' if value == 'UP' else 'OFF' }}"
+        "value_template": "{{ 'ON' if value_json.val == 'UP' else 'OFF' }}"
       }
     },
     {
@@ -225,7 +253,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -247,16 +278,17 @@
           "via_device": "unifi_00005e005301"
         },
         "device_class": "connectivity",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Erreichbar",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "payload_off": "OFF",
         "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005302/state",
+        "state_topic": "unifi/status/default/device/00005e005302/state",
         "unique_id": "unifi_00005e005302_reachable",
-        "value_template": "{{ 'ON' if value == 'ONLINE' else 'OFF' }}"
+        "value_template": "{{ 'ON' if value_json.val == 'ONLINE' else 'OFF' }}"
       }
     },
     {
@@ -266,7 +298,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -289,15 +324,17 @@
         },
         "device_class": "update",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Update verfügbar",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "payload_off": "OFF",
-        "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005302/update_available",
-        "unique_id": "unifi_00005e005302_update_available"
+        "payload_off": "false",
+        "payload_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005302/update_available",
+        "unique_id": "unifi_00005e005302_update_available",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -307,7 +344,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -329,16 +369,17 @@
           "via_device": "unifi_00005e005302"
         },
         "device_class": "connectivity",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Erreichbar",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "payload_off": "OFF",
         "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005303/state",
+        "state_topic": "unifi/status/default/device/00005e005303/state",
         "unique_id": "unifi_00005e005303_reachable",
-        "value_template": "{{ 'ON' if value == 'ONLINE' else 'OFF' }}"
+        "value_template": "{{ 'ON' if value_json.val == 'ONLINE' else 'OFF' }}"
       }
     },
     {
@@ -348,7 +389,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -371,15 +415,17 @@
         },
         "device_class": "update",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Update verfügbar",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "payload_off": "OFF",
-        "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005303/update_available",
-        "unique_id": "unifi_00005e005303_update_available"
+        "payload_off": "false",
+        "payload_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005303/update_available",
+        "unique_id": "unifi_00005e005303_update_available",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -389,7 +435,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -410,16 +459,17 @@
           "sw_version": "5.43.56"
         },
         "device_class": "connectivity",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "Erreichbar",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "payload_off": "OFF",
         "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005304/state",
+        "state_topic": "unifi/status/default/device/00005e005304/state",
         "unique_id": "unifi_00005e005304_reachable",
-        "value_template": "{{ 'ON' if value == 'ONLINE' else 'OFF' }}"
+        "value_template": "{{ 'ON' if value_json.val == 'ONLINE' else 'OFF' }}"
       }
     },
     {
@@ -429,7 +479,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -451,15 +504,17 @@
         },
         "device_class": "update",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "Update verfügbar",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "payload_off": "OFF",
-        "payload_on": "ON",
-        "state_topic": "unifi/default/device/00005e005304/update_available",
-        "unique_id": "unifi_00005e005304_update_available"
+        "payload_off": "false",
+        "payload_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005304/update_available",
+        "unique_id": "unifi_00005e005304_update_available",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -469,7 +524,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -483,16 +541,17 @@
           "name": "UniFi Site Default"
         },
         "device_class": "connectivity",
-        "json_attributes_topic": "unifi/default/health/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/health/attributes",
         "name": "WAN-Verbindung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "payload_off": "OFF",
         "payload_on": "ON",
-        "state_topic": "unifi/default/health/wan/state",
+        "state_topic": "unifi/status/default/health/wan/state",
         "unique_id": "unifi_site_default_wan_connectivity",
-        "value_template": "{{ 'ON' if value == 'ok' else 'OFF' }}"
+        "value_template": "{{ 'ON' if value_json.val == 'ok' else 'OFF' }}"
       }
     },
     {
@@ -502,15 +561,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005301/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005301/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005301/cmd/restart",
+        "command_topic": "unifi/set/default/device/00005e005301/cmd/restart",
         "default_entity_id": "button.gateway_restart",
         "device": {
           "connections": [
@@ -544,15 +608,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005302/port/1/cmd/power_cycle",
+        "command_topic": "unifi/set/default/device/00005e005302/port/1/cmd/power_cycle",
         "default_entity_id": "button.switch_garage_port_1_power_cycle",
         "device": {
           "connections": [
@@ -587,15 +656,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005302/cmd/restart",
+        "command_topic": "unifi/set/default/device/00005e005302/cmd/restart",
         "default_entity_id": "button.switch_garage_restart",
         "device": {
           "connections": [
@@ -630,15 +704,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005303/cmd/restart",
+        "command_topic": "unifi/set/default/device/00005e005303/cmd/restart",
         "default_entity_id": "button.ap_restart",
         "device": {
           "connections": [
@@ -673,15 +752,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005304/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005304/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005304/cmd/restart",
+        "command_topic": "unifi/set/default/device/00005e005304/cmd/restart",
         "default_entity_id": "button.old_ap_restart",
         "device": {
           "connections": [
@@ -715,11 +799,14 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/client/00005e005313/cmd/authorize",
+        "command_topic": "unifi/set/default/client/00005e005313/cmd/authorize",
         "default_entity_id": "button.guest_tablet_authorize",
         "device": {
           "connections": [
@@ -750,7 +837,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -768,7 +858,8 @@
           "name": "Phone",
           "via_device": "unifi_00005e005303"
         },
-        "json_attributes_topic": "unifi/default/client/00005e005311/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/client/00005e005311/attributes",
         "name": "Anwesenheit",
         "origin": {
           "name": "go-unifi2mqtt"
@@ -776,8 +867,9 @@
         "payload_home": "home",
         "payload_not_home": "not_home",
         "source_type": "router",
-        "state_topic": "unifi/default/client/00005e005311/state",
-        "unique_id": "unifi_client_00005e005311_presence"
+        "state_topic": "unifi/status/default/client/00005e005311/state",
+        "unique_id": "unifi_client_00005e005311_presence",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -787,7 +879,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -805,7 +900,8 @@
           "name": "NAS",
           "via_device": "unifi_00005e005302"
         },
-        "json_attributes_topic": "unifi/default/client/00005e005312/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/client/00005e005312/attributes",
         "name": "Anwesenheit",
         "origin": {
           "name": "go-unifi2mqtt"
@@ -813,8 +909,9 @@
         "payload_home": "home",
         "payload_not_home": "not_home",
         "source_type": "router",
-        "state_topic": "unifi/default/client/00005e005312/state",
-        "unique_id": "unifi_client_00005e005312_presence"
+        "state_topic": "unifi/status/default/client/00005e005312/state",
+        "unique_id": "unifi_client_00005e005312_presence",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -824,7 +921,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -842,7 +942,8 @@
           "name": "Guest Tablet",
           "via_device": "unifi_00005e005303"
         },
-        "json_attributes_topic": "unifi/default/client/00005e005313/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/client/00005e005313/attributes",
         "name": "Anwesenheit",
         "origin": {
           "name": "go-unifi2mqtt"
@@ -850,8 +951,9 @@
         "payload_home": "home",
         "payload_not_home": "not_home",
         "source_type": "router",
-        "state_topic": "unifi/default/client/00005e005313/state",
-        "unique_id": "unifi_client_00005e005313_presence"
+        "state_topic": "unifi/status/default/client/00005e005313/state",
+        "unique_id": "unifi_client_00005e005313_presence",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -861,11 +963,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005301/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005301/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -887,15 +994,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:cpu-64-bit",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "CPU-Auslastung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005301/cpu_utilization",
+        "state_topic": "unifi/status/default/device/00005e005301/cpu_utilization",
         "unique_id": "unifi_00005e005301_cpu_utilization",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -905,7 +1014,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -927,13 +1039,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:chip",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "Firmware",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005301/firmware",
-        "unique_id": "unifi_00005e005301_firmware"
+        "state_topic": "unifi/status/default/device/00005e005301/firmware",
+        "unique_id": "unifi_00005e005301_firmware",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -943,11 +1057,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005301/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005301/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -969,15 +1088,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:memory",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "Speicherauslastung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005301/memory_utilization",
+        "state_topic": "unifi/status/default/device/00005e005301/memory_utilization",
         "unique_id": "unifi_00005e005301_memory_utilization",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -987,7 +1108,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -1008,13 +1132,15 @@
           "sw_version": "4.3.6"
         },
         "icon": "mdi:lan-connect",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "Status",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005301/state",
-        "unique_id": "unifi_00005e005301_state"
+        "state_topic": "unifi/status/default/device/00005e005301/state",
+        "unique_id": "unifi_00005e005301_state",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1024,11 +1150,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005301/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005301/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1050,15 +1181,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "Uplink Empfangsrate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005301/uplink_rx_bps",
+        "state_topic": "unifi/status/default/device/00005e005301/uplink_rx_bps",
         "unique_id": "unifi_00005e005301_uplink_rx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1068,11 +1201,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005301/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005301/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1094,15 +1232,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "Uplink Senderate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005301/uplink_tx_bps",
+        "state_topic": "unifi/status/default/device/00005e005301/uplink_tx_bps",
         "unique_id": "unifi_00005e005301_uplink_tx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1112,11 +1252,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005301/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005301/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1138,15 +1283,17 @@
         },
         "device_class": "duration",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005301/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005301/attributes",
         "name": "Betriebszeit",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005301/uptime",
+        "state_topic": "unifi/status/default/device/00005e005301/uptime",
         "unique_id": "unifi_00005e005301_uptime",
-        "unit_of_measurement": "s"
+        "unit_of_measurement": "s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1156,11 +1303,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1183,15 +1335,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:cpu-64-bit",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "CPU-Auslastung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005302/cpu_utilization",
+        "state_topic": "unifi/status/default/device/00005e005302/cpu_utilization",
         "unique_id": "unifi_00005e005302_cpu_utilization",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1201,7 +1355,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -1224,13 +1381,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:chip",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Firmware",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005302/firmware",
-        "unique_id": "unifi_00005e005302_firmware"
+        "state_topic": "unifi/status/default/device/00005e005302/firmware",
+        "unique_id": "unifi_00005e005302_firmware",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1240,11 +1399,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1267,15 +1431,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:memory",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Speicherauslastung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005302/memory_utilization",
+        "state_topic": "unifi/status/default/device/00005e005302/memory_utilization",
         "unique_id": "unifi_00005e005302_memory_utilization",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1285,11 +1451,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1312,15 +1483,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Port 1 Geschwindigkeit",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005302/port/1/speed",
+        "state_topic": "unifi/status/default/device/00005e005302/port/1/speed",
         "unique_id": "unifi_00005e005302_port_1_speed",
-        "unit_of_measurement": "Mbit/s"
+        "unit_of_measurement": "Mbit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1330,11 +1503,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1357,15 +1535,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Port 25 Geschwindigkeit",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005302/port/25/speed",
+        "state_topic": "unifi/status/default/device/00005e005302/port/25/speed",
         "unique_id": "unifi_00005e005302_port_25_speed",
-        "unit_of_measurement": "Mbit/s"
+        "unit_of_measurement": "Mbit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1375,7 +1555,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -1397,13 +1580,15 @@
           "via_device": "unifi_00005e005301"
         },
         "icon": "mdi:lan-connect",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Status",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005302/state",
-        "unique_id": "unifi_00005e005302_state"
+        "state_topic": "unifi/status/default/device/00005e005302/state",
+        "unique_id": "unifi_00005e005302_state",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1413,11 +1598,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1440,15 +1630,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Uplink Empfangsrate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005302/uplink_rx_bps",
+        "state_topic": "unifi/status/default/device/00005e005302/uplink_rx_bps",
         "unique_id": "unifi_00005e005302_uplink_rx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1458,11 +1650,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1485,15 +1682,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Uplink Senderate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005302/uplink_tx_bps",
+        "state_topic": "unifi/status/default/device/00005e005302/uplink_tx_bps",
         "unique_id": "unifi_00005e005302_uplink_tx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1503,11 +1702,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1530,15 +1734,17 @@
         },
         "device_class": "duration",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005302/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005302/attributes",
         "name": "Betriebszeit",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005302/uptime",
+        "state_topic": "unifi/status/default/device/00005e005302/uptime",
         "unique_id": "unifi_00005e005302_uptime",
-        "unit_of_measurement": "s"
+        "unit_of_measurement": "s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1548,11 +1754,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1575,15 +1786,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:cpu-64-bit",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "CPU-Auslastung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005303/cpu_utilization",
+        "state_topic": "unifi/status/default/device/00005e005303/cpu_utilization",
         "unique_id": "unifi_00005e005303_cpu_utilization",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1593,7 +1806,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -1616,13 +1832,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:chip",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Firmware",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005303/firmware",
-        "unique_id": "unifi_00005e005303_firmware"
+        "state_topic": "unifi/status/default/device/00005e005303/firmware",
+        "unique_id": "unifi_00005e005303_firmware",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1632,11 +1850,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1659,15 +1882,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:memory",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Speicherauslastung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005303/memory_utilization",
+        "state_topic": "unifi/status/default/device/00005e005303/memory_utilization",
         "unique_id": "unifi_00005e005303_memory_utilization",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1677,11 +1902,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1704,13 +1934,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:wifi",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Funk 2.4 GHz Kanal",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005303/radio/2g4/channel",
-        "unique_id": "unifi_00005e005303_radio_2g4_channel"
+        "state_topic": "unifi/status/default/device/00005e005303/radio/2g4/channel",
+        "unique_id": "unifi_00005e005303_radio_2g4_channel",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1720,11 +1952,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1746,15 +1983,17 @@
           "via_device": "unifi_00005e005302"
         },
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Funk 2.4 GHz Sendewiederholungen",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005303/radio/2g4/tx_retries",
+        "state_topic": "unifi/status/default/device/00005e005303/radio/2g4/tx_retries",
         "unique_id": "unifi_00005e005303_radio_2g4_tx_retries",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1764,11 +2003,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1791,13 +2035,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:wifi",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Funk 5 GHz Kanal",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005303/radio/5g/channel",
-        "unique_id": "unifi_00005e005303_radio_5g_channel"
+        "state_topic": "unifi/status/default/device/00005e005303/radio/5g/channel",
+        "unique_id": "unifi_00005e005303_radio_5g_channel",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1807,11 +2053,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1833,15 +2084,17 @@
           "via_device": "unifi_00005e005302"
         },
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Funk 5 GHz Sendewiederholungen",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005303/radio/5g/tx_retries",
+        "state_topic": "unifi/status/default/device/00005e005303/radio/5g/tx_retries",
         "unique_id": "unifi_00005e005303_radio_5g_tx_retries",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1851,7 +2104,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -1873,13 +2129,15 @@
           "via_device": "unifi_00005e005302"
         },
         "icon": "mdi:lan-connect",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Status",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005303/state",
-        "unique_id": "unifi_00005e005303_state"
+        "state_topic": "unifi/status/default/device/00005e005303/state",
+        "unique_id": "unifi_00005e005303_state",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1889,11 +2147,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1916,15 +2179,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Uplink Empfangsrate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005303/uplink_rx_bps",
+        "state_topic": "unifi/status/default/device/00005e005303/uplink_rx_bps",
         "unique_id": "unifi_00005e005303_uplink_rx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1934,11 +2199,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -1961,15 +2231,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Uplink Senderate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005303/uplink_tx_bps",
+        "state_topic": "unifi/status/default/device/00005e005303/uplink_tx_bps",
         "unique_id": "unifi_00005e005303_uplink_tx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -1979,11 +2251,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2006,15 +2283,17 @@
         },
         "device_class": "duration",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005303/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005303/attributes",
         "name": "Betriebszeit",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005303/uptime",
+        "state_topic": "unifi/status/default/device/00005e005303/uptime",
         "unique_id": "unifi_00005e005303_uptime",
-        "unit_of_measurement": "s"
+        "unit_of_measurement": "s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2024,11 +2303,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005304/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005304/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2050,15 +2334,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:cpu-64-bit",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "CPU-Auslastung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005304/cpu_utilization",
+        "state_topic": "unifi/status/default/device/00005e005304/cpu_utilization",
         "unique_id": "unifi_00005e005304_cpu_utilization",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2068,7 +2354,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -2090,13 +2379,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:chip",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "Firmware",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005304/firmware",
-        "unique_id": "unifi_00005e005304_firmware"
+        "state_topic": "unifi/status/default/device/00005e005304/firmware",
+        "unique_id": "unifi_00005e005304_firmware",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2106,11 +2397,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005304/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005304/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2132,15 +2428,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:memory",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "Speicherauslastung",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005304/memory_utilization",
+        "state_topic": "unifi/status/default/device/00005e005304/memory_utilization",
         "unique_id": "unifi_00005e005304_memory_utilization",
-        "unit_of_measurement": "%"
+        "unit_of_measurement": "%",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2150,7 +2448,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -2171,13 +2472,15 @@
           "sw_version": "5.43.56"
         },
         "icon": "mdi:lan-connect",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "Status",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/device/00005e005304/state",
-        "unique_id": "unifi_00005e005304_state"
+        "state_topic": "unifi/status/default/device/00005e005304/state",
+        "unique_id": "unifi_00005e005304_state",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2187,11 +2490,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005304/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005304/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2213,15 +2521,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "Uplink Empfangsrate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005304/uplink_rx_bps",
+        "state_topic": "unifi/status/default/device/00005e005304/uplink_rx_bps",
         "unique_id": "unifi_00005e005304_uplink_rx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2231,11 +2541,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005304/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005304/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2257,15 +2572,17 @@
         },
         "device_class": "data_rate",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "Uplink Senderate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005304/uplink_tx_bps",
+        "state_topic": "unifi/status/default/device/00005e005304/uplink_tx_bps",
         "unique_id": "unifi_00005e005304_uplink_tx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2275,11 +2592,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005304/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005304/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2301,15 +2623,17 @@
         },
         "device_class": "duration",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/device/00005e005304/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/device/00005e005304/attributes",
         "name": "Betriebszeit",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/device/00005e005304/uptime",
+        "state_topic": "unifi/status/default/device/00005e005304/uptime",
         "unique_id": "unifi_00005e005304_uptime",
-        "unit_of_measurement": "s"
+        "unit_of_measurement": "s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2319,11 +2643,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/client/00005e005311/state",
-            "value_template": "{{ 'online' if value == 'home' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/client/00005e005311/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2343,13 +2672,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:ip-network",
-        "json_attributes_topic": "unifi/default/client/00005e005311/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/client/00005e005311/attributes",
         "name": "IP-Adresse",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/client/00005e005311/ip",
-        "unique_id": "unifi_client_00005e005311_client_ip"
+        "state_topic": "unifi/status/default/client/00005e005311/ip",
+        "unique_id": "unifi_client_00005e005311_client_ip",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2359,11 +2690,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/client/00005e005311/state",
-            "value_template": "{{ 'online' if value == 'home' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/client/00005e005311/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2383,15 +2719,17 @@
         },
         "device_class": "signal_strength",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/client/00005e005311/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/client/00005e005311/attributes",
         "name": "Signalstärke",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/client/00005e005311/signal",
+        "state_topic": "unifi/status/default/client/00005e005311/signal",
         "unique_id": "unifi_client_00005e005311_client_signal",
-        "unit_of_measurement": "dBm"
+        "unit_of_measurement": "dBm",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2401,11 +2739,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/client/00005e005312/state",
-            "value_template": "{{ 'online' if value == 'home' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/client/00005e005312/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2425,13 +2768,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:ip-network",
-        "json_attributes_topic": "unifi/default/client/00005e005312/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/client/00005e005312/attributes",
         "name": "IP-Adresse",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/client/00005e005312/ip",
-        "unique_id": "unifi_client_00005e005312_client_ip"
+        "state_topic": "unifi/status/default/client/00005e005312/ip",
+        "unique_id": "unifi_client_00005e005312_client_ip",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2441,11 +2786,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/client/00005e005313/state",
-            "value_template": "{{ 'online' if value == 'home' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/client/00005e005313/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2465,13 +2815,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:ip-network",
-        "json_attributes_topic": "unifi/default/client/00005e005313/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/client/00005e005313/attributes",
         "name": "IP-Adresse",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/client/00005e005313/ip",
-        "unique_id": "unifi_client_00005e005313_client_ip"
+        "state_topic": "unifi/status/default/client/00005e005313/ip",
+        "unique_id": "unifi_client_00005e005313_client_ip",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2481,11 +2833,16 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/client/00005e005313/state",
-            "value_template": "{{ 'online' if value == 'home' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/client/00005e005313/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
@@ -2505,15 +2862,17 @@
         },
         "device_class": "signal_strength",
         "entity_category": "diagnostic",
-        "json_attributes_topic": "unifi/default/client/00005e005313/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/client/00005e005313/attributes",
         "name": "Signalstärke",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/client/00005e005313/signal",
+        "state_topic": "unifi/status/default/client/00005e005313/signal",
         "unique_id": "unifi_client_00005e005313_client_signal",
-        "unit_of_measurement": "dBm"
+        "unit_of_measurement": "dBm",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2523,7 +2882,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -2538,14 +2900,16 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:account-question",
-        "json_attributes_topic": "unifi/default/health/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/health/attributes",
         "name": "Gast-Clients",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/health/clients/guest",
-        "unique_id": "unifi_site_default_clients_guest"
+        "state_topic": "unifi/status/default/health/clients/guest",
+        "unique_id": "unifi_site_default_clients_guest",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2555,7 +2919,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -2569,14 +2936,16 @@
           "name": "UniFi Site Default"
         },
         "icon": "mdi:account-multiple",
-        "json_attributes_topic": "unifi/default/health/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/health/attributes",
         "name": "Clients",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/health/clients/total",
-        "unique_id": "unifi_site_default_clients_total"
+        "state_topic": "unifi/status/default/health/clients/total",
+        "unique_id": "unifi_site_default_clients_total",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2586,7 +2955,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -2601,13 +2973,15 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:ip-network-outline",
-        "json_attributes_topic": "unifi/default/health/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/health/attributes",
         "name": "WAN-IP-Adresse",
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_topic": "unifi/default/health/wan/ip",
-        "unique_id": "unifi_site_default_wan_ip"
+        "state_topic": "unifi/status/default/health/wan/ip",
+        "unique_id": "unifi_site_default_wan_ip",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2617,7 +2991,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -2632,15 +3009,17 @@
         },
         "entity_category": "diagnostic",
         "icon": "mdi:timer-outline",
-        "json_attributes_topic": "unifi/default/health/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/health/attributes",
         "name": "WAN-Latenz",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/health/wan/latency_ms",
+        "state_topic": "unifi/status/default/health/wan/latency_ms",
         "unique_id": "unifi_site_default_wan_latency",
-        "unit_of_measurement": "ms"
+        "unit_of_measurement": "ms",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2650,7 +3029,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -2664,15 +3046,17 @@
           "name": "UniFi Site Default"
         },
         "device_class": "data_rate",
-        "json_attributes_topic": "unifi/default/health/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/health/attributes",
         "name": "WAN Empfangsrate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/health/wan/rx_bps",
+        "state_topic": "unifi/status/default/health/wan/rx_bps",
         "unique_id": "unifi_site_default_wan_rx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2682,7 +3066,10 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
@@ -2696,15 +3083,17 @@
           "name": "UniFi Site Default"
         },
         "device_class": "data_rate",
-        "json_attributes_topic": "unifi/default/health/attributes",
+        "json_attributes_template": "{{ value_json.val | tojson }}",
+        "json_attributes_topic": "unifi/status/default/health/attributes",
         "name": "WAN Senderate",
         "origin": {
           "name": "go-unifi2mqtt"
         },
         "state_class": "measurement",
-        "state_topic": "unifi/default/health/wan/tx_bps",
+        "state_topic": "unifi/status/default/health/wan/tx_bps",
         "unique_id": "unifi_site_default_wan_tx_bps",
-        "unit_of_measurement": "bit/s"
+        "unit_of_measurement": "bit/s",
+        "value_template": "{{ value_json.val }}"
       }
     },
     {
@@ -2714,15 +3103,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005301/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005301/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005301/cmd/locate/set",
+        "command_topic": "unifi/set/default/device/00005e005301/cmd/locate",
         "default_entity_id": "switch.gateway_locate",
         "device": {
           "connections": [
@@ -2745,10 +3139,11 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/device/00005e005301/locate",
-        "unique_id": "unifi_00005e005301_locate"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005301/locate",
+        "unique_id": "unifi_00005e005301_locate",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -2758,15 +3153,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005302/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005302/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005302/cmd/locate/set",
+        "command_topic": "unifi/set/default/device/00005e005302/cmd/locate",
         "default_entity_id": "switch.switch_garage_locate",
         "device": {
           "connections": [
@@ -2790,10 +3190,11 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/device/00005e005302/locate",
-        "unique_id": "unifi_00005e005302_locate"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005302/locate",
+        "unique_id": "unifi_00005e005302_locate",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -2803,15 +3204,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005303/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005303/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005303/cmd/locate/set",
+        "command_topic": "unifi/set/default/device/00005e005303/cmd/locate",
         "default_entity_id": "switch.ap_locate",
         "device": {
           "connections": [
@@ -2835,10 +3241,11 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/device/00005e005303/locate",
-        "unique_id": "unifi_00005e005303_locate"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005303/locate",
+        "unique_id": "unifi_00005e005303_locate",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -2848,15 +3255,20 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           },
           {
-            "topic": "unifi/default/device/00005e005304/state",
-            "value_template": "{{ 'online' if value == 'ONLINE' else 'offline' }}"
+            "payload_available": "true",
+            "payload_not_available": "false",
+            "topic": "unifi/status/default/device/00005e005304/online",
+            "value_template": "{{ value_json.val | lower }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/device/00005e005304/cmd/locate/set",
+        "command_topic": "unifi/set/default/device/00005e005304/cmd/locate",
         "default_entity_id": "switch.old_ap_locate",
         "device": {
           "connections": [
@@ -2879,10 +3291,11 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/device/00005e005304/locate",
-        "unique_id": "unifi_00005e005304_locate"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/device/00005e005304/locate",
+        "unique_id": "unifi_00005e005304_locate",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -2892,11 +3305,14 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/client/00005e005311/blocked/set",
+        "command_topic": "unifi/set/default/client/00005e005311/blocked",
         "default_entity_id": "switch.phone_blocked",
         "device": {
           "connections": [
@@ -2916,10 +3332,11 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/client/00005e005311/blocked",
-        "unique_id": "unifi_client_00005e005311_blocked"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/client/00005e005311/blocked",
+        "unique_id": "unifi_client_00005e005311_blocked",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -2929,11 +3346,14 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/client/00005e005312/blocked/set",
+        "command_topic": "unifi/set/default/client/00005e005312/blocked",
         "default_entity_id": "switch.nas_blocked",
         "device": {
           "connections": [
@@ -2953,10 +3373,11 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/client/00005e005312/blocked",
-        "unique_id": "unifi_client_00005e005312_blocked"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/client/00005e005312/blocked",
+        "unique_id": "unifi_client_00005e005312_blocked",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -2966,11 +3387,14 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/client/00005e005313/blocked/set",
+        "command_topic": "unifi/set/default/client/00005e005313/blocked",
         "default_entity_id": "switch.guest_tablet_blocked",
         "device": {
           "connections": [
@@ -2990,10 +3414,11 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/client/00005e005313/blocked",
-        "unique_id": "unifi_client_00005e005313_blocked"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/client/00005e005313/blocked",
+        "unique_id": "unifi_client_00005e005313_blocked",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -3003,11 +3428,14 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/wlan/wlan-1/enabled/set",
+        "command_topic": "unifi/set/default/wlan/wlan-1/enabled",
         "default_entity_id": "switch.unifi_wlan_homenet",
         "device": {
           "identifiers": [
@@ -3022,10 +3450,11 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/wlan/wlan-1/enabled",
-        "unique_id": "unifi_wlan_wlan-1_enabled"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/wlan/wlan-1/enabled",
+        "unique_id": "unifi_wlan_wlan-1_enabled",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
@@ -3035,11 +3464,14 @@
       "json": {
         "availability": [
           {
-            "topic": "unifi/bridge/status"
+            "payload_available": "online",
+            "payload_not_available": "offline",
+            "topic": "unifi/connected",
+            "value_template": "{{ 'online' if value | int(0) \u003e= 2 else 'offline' }}"
           }
         ],
         "availability_mode": "all",
-        "command_topic": "unifi/default/wlan/wlan-2/enabled/set",
+        "command_topic": "unifi/set/default/wlan/wlan-2/enabled",
         "default_entity_id": "switch.unifi_wlan_iot",
         "device": {
           "identifiers": [
@@ -3054,549 +3486,929 @@
         "origin": {
           "name": "go-unifi2mqtt"
         },
-        "state_off": "OFF",
-        "state_on": "ON",
-        "state_topic": "unifi/default/wlan/wlan-2/enabled",
-        "unique_id": "unifi_wlan_wlan-2_enabled"
+        "state_off": "false",
+        "state_on": "true",
+        "state_topic": "unifi/status/default/wlan/wlan-2/enabled",
+        "unique_id": "unifi_wlan_wlan-2_enabled",
+        "value_template": "{{ value_json.val | lower }}"
       }
     },
     {
-      "topic": "unifi/bridge/info",
+      "topic": "unifi/connected",
+      "qos": 1,
+      "retain": true,
+      "text": "1"
+    },
+    {
+      "topic": "unifi/connected",
+      "qos": 1,
+      "retain": true,
+      "text": "2"
+    },
+    {
+      "topic": "unifi/info",
       "qos": 0,
       "retain": true,
       "json": {
         "application_version": "10.5.67",
-        "bridge_version": "\u003cbridge-version\u003e",
-        "host": "192.0.2.1",
+        "console_host": "192.0.2.1",
+        "go": "\u003cgo-version\u003e",
+        "host": "\u003chost\u003e",
+        "maintenance": true,
+        "name": "go-unifi2mqtt",
+        "pid": "\u003cpid\u003e",
         "site": "default",
-        "site_id": "site-uuid"
+        "site_id": "site-uuid",
+        "spec": "2.0",
+        "started": "\u003cstarted\u003e",
+        "version": "\u003cbridge-version\u003e"
       }
     },
     {
-      "topic": "unifi/bridge/status",
-      "qos": 1,
-      "retain": true,
-      "text": "online"
-    },
-    {
-      "topic": "unifi/default/client/00005e005311/attributes",
+      "topic": "unifi/status/default/client/00005e005311/attributes",
       "qos": 0,
       "retain": true,
       "json": {
-        "connected_at": "2026-08-14T09:00:00Z",
-        "guest": false,
-        "ip": "192.0.2.50",
-        "mac": "00:00:5e:00:53:11",
-        "name": "Phone",
-        "network": "LAN",
-        "ssid": "HomeNet",
-        "type": "WIRELESS",
-        "uplink_mac": "00:00:5e:00:53:03",
-        "vlan": 1
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": {
+          "connected_at": "2026-08-14T09:00:00Z",
+          "guest": false,
+          "ip": "192.0.2.50",
+          "mac": "00:00:5e:00:53:11",
+          "name": "Phone",
+          "network": "LAN",
+          "ssid": "HomeNet",
+          "type": "WIRELESS",
+          "uplink_mac": "00:00:5e:00:53:03",
+          "vlan": 1
+        }
       }
     },
     {
-      "topic": "unifi/default/client/00005e005311/blocked",
-      "qos": 0,
-      "retain": true,
-      "text": "OFF"
-    },
-    {
-      "topic": "unifi/default/client/00005e005311/ip",
-      "qos": 0,
-      "retain": true,
-      "text": "192.0.2.50"
-    },
-    {
-      "topic": "unifi/default/client/00005e005311/signal",
-      "qos": 0,
-      "retain": true,
-      "text": "-54"
-    },
-    {
-      "topic": "unifi/default/client/00005e005311/state",
-      "qos": 0,
-      "retain": true,
-      "text": "home"
-    },
-    {
-      "topic": "unifi/default/client/00005e005312/attributes",
+      "topic": "unifi/status/default/client/00005e005311/blocked",
       "qos": 0,
       "retain": true,
       "json": {
-        "guest": false,
-        "ip": "192.0.2.60",
-        "mac": "00:00:5e:00:53:12",
-        "name": "NAS",
-        "network": "LAN",
-        "type": "WIRED",
-        "uplink_mac": "00:00:5e:00:53:02",
-        "vlan": 1
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
       }
     },
     {
-      "topic": "unifi/default/client/00005e005312/blocked",
-      "qos": 0,
-      "retain": true,
-      "text": "ON"
-    },
-    {
-      "topic": "unifi/default/client/00005e005312/ip",
-      "qos": 0,
-      "retain": true,
-      "text": "192.0.2.60"
-    },
-    {
-      "topic": "unifi/default/client/00005e005312/state",
-      "qos": 0,
-      "retain": true,
-      "text": "home"
-    },
-    {
-      "topic": "unifi/default/client/00005e005313/attributes",
+      "topic": "unifi/status/default/client/00005e005311/ip",
       "qos": 0,
       "retain": true,
       "json": {
-        "guest": true,
-        "ip": "192.0.2.70",
-        "mac": "00:00:5e:00:53:13",
-        "name": "Guest Tablet",
-        "network": "LAN",
-        "ssid": "IoT",
-        "type": "WIRELESS",
-        "uplink_mac": "00:00:5e:00:53:03",
-        "vlan": 1
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "192.0.2.50"
       }
     },
     {
-      "topic": "unifi/default/client/00005e005313/blocked",
-      "qos": 0,
-      "retain": true,
-      "text": "OFF"
-    },
-    {
-      "topic": "unifi/default/client/00005e005313/ip",
-      "qos": 0,
-      "retain": true,
-      "text": "192.0.2.70"
-    },
-    {
-      "topic": "unifi/default/client/00005e005313/signal",
-      "qos": 0,
-      "retain": true,
-      "text": "-71"
-    },
-    {
-      "topic": "unifi/default/client/00005e005313/state",
-      "qos": 0,
-      "retain": true,
-      "text": "home"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/attributes",
+      "topic": "unifi/status/default/client/00005e005311/online",
       "qos": 0,
       "retain": true,
       "json": {
-        "adopted_at": "2025-01-02T03:04:05Z",
-        "ip": "192.0.2.1",
-        "mac": "00:00:5e:00:53:01",
-        "model": "UCG-Ultra",
-        "name": "Gateway",
-        "supported": true,
-        "type": "gateway"
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
       }
     },
     {
-      "topic": "unifi/default/device/00005e005301/cpu_utilization",
-      "qos": 0,
-      "retain": true,
-      "text": "12.5"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/firmware",
-      "qos": 0,
-      "retain": true,
-      "text": "4.3.6"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/locate",
-      "qos": 0,
-      "retain": true,
-      "text": "OFF"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/memory_utilization",
-      "qos": 0,
-      "retain": true,
-      "text": "48.0"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/state",
-      "qos": 0,
-      "retain": true,
-      "text": "ONLINE"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/update_available",
-      "qos": 0,
-      "retain": true,
-      "text": "OFF"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/uplink_rx_bps",
-      "qos": 0,
-      "retain": true,
-      "text": "2097152"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/uplink_tx_bps",
-      "qos": 0,
-      "retain": true,
-      "text": "1048576"
-    },
-    {
-      "topic": "unifi/default/device/00005e005301/uptime",
-      "qos": 0,
-      "retain": true,
-      "text": "864000"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/attributes",
+      "topic": "unifi/status/default/client/00005e005311/signal",
       "qos": 0,
       "retain": true,
       "json": {
-        "ip": "192.0.2.2",
-        "mac": "00:00:5e:00:53:02",
-        "model": "USW-Pro-24-PoE",
-        "name": "Switch Garage",
-        "ports": 2,
-        "supported": true,
-        "type": "switch",
-        "uplink_mac": "00:00:5e:00:53:01"
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": -54
       }
     },
     {
-      "topic": "unifi/default/device/00005e005302/cpu_utilization",
-      "qos": 0,
-      "retain": true,
-      "text": "5.0"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/firmware",
-      "qos": 0,
-      "retain": true,
-      "text": "7.0.25"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/locate",
-      "qos": 0,
-      "retain": true,
-      "text": "ON"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/memory_utilization",
-      "qos": 0,
-      "retain": true,
-      "text": "30.0"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/port/1/poe",
-      "qos": 0,
-      "retain": true,
-      "text": "ON"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/port/1/poe/power_w",
-      "qos": 0,
-      "retain": true,
-      "text": "6.5"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/port/1/speed",
-      "qos": 0,
-      "retain": true,
-      "text": "1000"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/port/1/state",
-      "qos": 0,
-      "retain": true,
-      "text": "UP"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/port/25/speed",
-      "qos": 0,
-      "retain": true,
-      "text": "0"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/port/25/state",
-      "qos": 0,
-      "retain": true,
-      "text": "DOWN"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/state",
-      "qos": 0,
-      "retain": true,
-      "text": "ONLINE"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/update_available",
-      "qos": 0,
-      "retain": true,
-      "text": "ON"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/uplink_rx_bps",
-      "qos": 0,
-      "retain": true,
-      "text": "1024"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/uplink_tx_bps",
-      "qos": 0,
-      "retain": true,
-      "text": "512"
-    },
-    {
-      "topic": "unifi/default/device/00005e005302/uptime",
-      "qos": 0,
-      "retain": true,
-      "text": "3600"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/attributes",
+      "topic": "unifi/status/default/client/00005e005311/state",
       "qos": 0,
       "retain": true,
       "json": {
-        "ip": "192.0.2.3",
-        "mac": "00:00:5e:00:53:03",
-        "model": "U6-Pro",
-        "name": "AP",
-        "radios": 2,
-        "supported": true,
-        "type": "access_point",
-        "uplink_mac": "00:00:5e:00:53:02"
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "home"
       }
     },
     {
-      "topic": "unifi/default/device/00005e005303/cpu_utilization",
-      "qos": 0,
-      "retain": true,
-      "text": "9.8"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/firmware",
-      "qos": 0,
-      "retain": true,
-      "text": "6.6.55"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/locate",
-      "qos": 0,
-      "retain": true,
-      "text": "OFF"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/memory_utilization",
-      "qos": 0,
-      "retain": true,
-      "text": "61.0"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/radio/2g4/channel",
-      "qos": 0,
-      "retain": true,
-      "text": "6"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/radio/2g4/tx_retries",
-      "qos": 0,
-      "retain": true,
-      "text": "0.4"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/radio/5g/channel",
-      "qos": 0,
-      "retain": true,
-      "text": "36"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/radio/5g/tx_retries",
-      "qos": 0,
-      "retain": true,
-      "text": "1.2"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/state",
-      "qos": 0,
-      "retain": true,
-      "text": "ONLINE"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/update_available",
-      "qos": 0,
-      "retain": true,
-      "text": "OFF"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/uplink_rx_bps",
-      "qos": 0,
-      "retain": true,
-      "text": "8192"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/uplink_tx_bps",
-      "qos": 0,
-      "retain": true,
-      "text": "4096"
-    },
-    {
-      "topic": "unifi/default/device/00005e005303/uptime",
-      "qos": 0,
-      "retain": true,
-      "text": "7200"
-    },
-    {
-      "topic": "unifi/default/device/00005e005304/attributes",
+      "topic": "unifi/status/default/client/00005e005312/attributes",
       "qos": 0,
       "retain": true,
       "json": {
-        "mac": "00:00:5e:00:53:04",
-        "model": "UAP-AC-Pro",
-        "name": "Old AP",
-        "supported": false,
-        "type": "access_point"
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": {
+          "guest": false,
+          "ip": "192.0.2.60",
+          "mac": "00:00:5e:00:53:12",
+          "name": "NAS",
+          "network": "LAN",
+          "type": "WIRED",
+          "uplink_mac": "00:00:5e:00:53:02",
+          "vlan": 1
+        }
       }
     },
     {
-      "topic": "unifi/default/device/00005e005304/firmware",
-      "qos": 0,
-      "retain": true,
-      "text": "5.43.56"
-    },
-    {
-      "topic": "unifi/default/device/00005e005304/locate",
-      "qos": 0,
-      "retain": true,
-      "text": "OFF"
-    },
-    {
-      "topic": "unifi/default/device/00005e005304/state",
-      "qos": 0,
-      "retain": true,
-      "text": "OFFLINE"
-    },
-    {
-      "topic": "unifi/default/device/00005e005304/update_available",
-      "qos": 0,
-      "retain": true,
-      "text": "ON"
-    },
-    {
-      "topic": "unifi/default/health/attributes",
+      "topic": "unifi/status/default/client/00005e005312/blocked",
       "qos": 0,
       "retain": true,
       "json": {
-        "access_points": 2,
-        "clients_guest": 3,
-        "clients_iot": 7,
-        "clients_user": 40,
-        "gateways": 1,
-        "lan_status": "ok",
-        "latency_ms": 14,
-        "switches": 1,
-        "uptime_s": 864000,
-        "vpn_status": "unknown",
-        "wan_ip": "198.51.100.7",
-        "wan_status": "ok",
-        "wlan_status": "warning"
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
       }
     },
     {
-      "topic": "unifi/default/health/clients/guest",
+      "topic": "unifi/status/default/client/00005e005312/ip",
       "qos": 0,
       "retain": true,
-      "text": "3"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "192.0.2.60"
+      }
     },
     {
-      "topic": "unifi/default/health/clients/total",
+      "topic": "unifi/status/default/client/00005e005312/online",
       "qos": 0,
       "retain": true,
-      "text": "50"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
     },
     {
-      "topic": "unifi/default/health/lan/state",
+      "topic": "unifi/status/default/client/00005e005312/state",
       "qos": 0,
       "retain": true,
-      "text": "ok"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "home"
+      }
     },
     {
-      "topic": "unifi/default/health/vpn/state",
+      "topic": "unifi/status/default/client/00005e005313/attributes",
       "qos": 0,
       "retain": true,
-      "text": "unknown"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": {
+          "guest": true,
+          "ip": "192.0.2.70",
+          "mac": "00:00:5e:00:53:13",
+          "name": "Guest Tablet",
+          "network": "LAN",
+          "ssid": "IoT",
+          "type": "WIRELESS",
+          "uplink_mac": "00:00:5e:00:53:03",
+          "vlan": 1
+        }
+      }
     },
     {
-      "topic": "unifi/default/health/wan/ip",
+      "topic": "unifi/status/default/client/00005e005313/blocked",
       "qos": 0,
       "retain": true,
-      "text": "198.51.100.7"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
+      }
     },
     {
-      "topic": "unifi/default/health/wan/latency_ms",
+      "topic": "unifi/status/default/client/00005e005313/ip",
       "qos": 0,
       "retain": true,
-      "text": "14"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "192.0.2.70"
+      }
     },
     {
-      "topic": "unifi/default/health/wan/rx_bps",
+      "topic": "unifi/status/default/client/00005e005313/online",
       "qos": 0,
       "retain": true,
-      "text": "12345678"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
     },
     {
-      "topic": "unifi/default/health/wan/state",
+      "topic": "unifi/status/default/client/00005e005313/signal",
       "qos": 0,
       "retain": true,
-      "text": "ok"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": -71
+      }
     },
     {
-      "topic": "unifi/default/health/wan/tx_bps",
+      "topic": "unifi/status/default/client/00005e005313/state",
       "qos": 0,
       "retain": true,
-      "text": "2345678"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "home"
+      }
     },
     {
-      "topic": "unifi/default/health/wlan/state",
+      "topic": "unifi/status/default/device/00005e005301/attributes",
       "qos": 0,
       "retain": true,
-      "text": "warning"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": {
+          "adopted_at": "2025-01-02T03:04:05Z",
+          "ip": "192.0.2.1",
+          "mac": "00:00:5e:00:53:01",
+          "model": "UCG-Ultra",
+          "name": "Gateway",
+          "supported": true,
+          "type": "gateway"
+        }
+      }
     },
     {
-      "topic": "unifi/default/wlan/wlan-1/enabled",
+      "topic": "unifi/status/default/device/00005e005301/cpu_utilization",
       "qos": 0,
       "retain": true,
-      "text": "ON"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 12.5
+      }
     },
     {
-      "topic": "unifi/default/wlan/wlan-1/name",
+      "topic": "unifi/status/default/device/00005e005301/firmware",
       "qos": 0,
       "retain": true,
-      "text": "HomeNet"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "4.3.6"
+      }
     },
     {
-      "topic": "unifi/default/wlan/wlan-2/enabled",
+      "topic": "unifi/status/default/device/00005e005301/locate",
       "qos": 0,
       "retain": true,
-      "text": "OFF"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
+      }
     },
     {
-      "topic": "unifi/default/wlan/wlan-2/name",
+      "topic": "unifi/status/default/device/00005e005301/memory_utilization",
       "qos": 0,
       "retain": true,
-      "text": "IoT"
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 48
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005301/online",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005301/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "ONLINE"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005301/update_available",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005301/uplink_rx_bps",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 2097152
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005301/uplink_tx_bps",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 1048576
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005301/uptime",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 864000
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/attributes",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": {
+          "ip": "192.0.2.2",
+          "mac": "00:00:5e:00:53:02",
+          "model": "USW-Pro-24-PoE",
+          "name": "Switch Garage",
+          "ports": 2,
+          "supported": true,
+          "type": "switch",
+          "uplink_mac": "00:00:5e:00:53:01"
+        }
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/cpu_utilization",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 5
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/firmware",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "7.0.25"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/locate",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/memory_utilization",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 30
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/online",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/port/1/poe",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/port/1/poe/power_w",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 6.5
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/port/1/speed",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 1000
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/port/1/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "UP"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/port/25/speed",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 0
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/port/25/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "DOWN"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "ONLINE"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/update_available",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/uplink_rx_bps",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 1024
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/uplink_tx_bps",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 512
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005302/uptime",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 3600
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/attributes",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": {
+          "ip": "192.0.2.3",
+          "mac": "00:00:5e:00:53:03",
+          "model": "U6-Pro",
+          "name": "AP",
+          "radios": 2,
+          "supported": true,
+          "type": "access_point",
+          "uplink_mac": "00:00:5e:00:53:02"
+        }
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/cpu_utilization",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 9.8
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/firmware",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "6.6.55"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/locate",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/memory_utilization",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 61
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/online",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/radio/2g4/channel",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 6
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/radio/2g4/tx_retries",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 0.4
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/radio/5g/channel",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 36
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/radio/5g/tx_retries",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 1.2
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "ONLINE"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/update_available",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/uplink_rx_bps",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 8192
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/uplink_tx_bps",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 4096
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005303/uptime",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 7200
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005304/attributes",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": {
+          "mac": "00:00:5e:00:53:04",
+          "model": "UAP-AC-Pro",
+          "name": "Old AP",
+          "supported": false,
+          "type": "access_point"
+        }
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005304/firmware",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "5.43.56"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005304/locate",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005304/online",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005304/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "OFFLINE"
+      }
+    },
+    {
+      "topic": "unifi/status/default/device/00005e005304/update_available",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/attributes",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": {
+          "access_points": 2,
+          "clients_guest": 3,
+          "clients_iot": 7,
+          "clients_user": 40,
+          "gateways": 1,
+          "lan_status": "ok",
+          "latency_ms": 14,
+          "switches": 1,
+          "uptime_s": 864000,
+          "vpn_status": "unknown",
+          "wan_ip": "198.51.100.7",
+          "wan_status": "ok",
+          "wlan_status": "warning"
+        }
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/clients/guest",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 3
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/clients/total",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 50
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/lan/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "ok"
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/vpn/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "unknown"
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/wan/ip",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "198.51.100.7"
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/wan/latency_ms",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 14
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/wan/rx_bps",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 12345678
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/wan/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "ok"
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/wan/tx_bps",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": 2345678
+      }
+    },
+    {
+      "topic": "unifi/status/default/health/wlan/state",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "warning"
+      }
+    },
+    {
+      "topic": "unifi/status/default/wlan/wlan-1/enabled",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": true
+      }
+    },
+    {
+      "topic": "unifi/status/default/wlan/wlan-1/name",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "HomeNet"
+      }
+    },
+    {
+      "topic": "unifi/status/default/wlan/wlan-2/enabled",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": false
+      }
+    },
+    {
+      "topic": "unifi/status/default/wlan/wlan-2/name",
+      "qos": 0,
+      "retain": true,
+      "json": {
+        "lc": 1760000000000,
+        "ts": 1760000000000,
+        "val": "IoT"
+      }
     }
   ]
 }

@@ -47,7 +47,7 @@ func TestClientEntities(t *testing.T) {
 	if got := e["payload_home"]; got != "home" {
 		t.Errorf("payload_home = %v, want home", got)
 	}
-	if got := e["state_topic"]; got != "unifi/default/client/00005e005310/state" {
+	if got := e["state_topic"]; got != "unifi/status/default/client/00005e005310/state" {
 		t.Errorf("state_topic = %v", got)
 	}
 

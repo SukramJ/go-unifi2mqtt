@@ -23,7 +23,6 @@ import (
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 	"github.com/SukramJ/go-unifi2mqtt/internal/unifi"
-	"github.com/SukramJ/go-unifi2mqtt/internal/version"
 )
 
 // The published-surface pin (ADR 0070 phase 9, step 0).
@@ -54,7 +53,7 @@ import (
 var updateSurfaceGolden = flag.Bool("update-surface-golden", false,
 	"rewrite internal/coordinator/testdata/surface/*.json, print the new digests and fail")
 
-// versionPlaceholder stands in for version.Version in the bridge info
+// versionPlaceholder stands in for version.Version in the `info`
 // payload. It is the one value in the surface that moves with every
 // release for reasons that have nothing to do with the published shape,
 // and pinning it would make every version bump rewrite the goldens.
@@ -347,6 +346,7 @@ func buildSurface(t *testing.T, sc surfaceScenario) surfaceDoc {
 		Capabilities: caps,
 		Info:         model.ControllerInfo{ApplicationVersion: "10.5.67"},
 		Logger:       slog.New(slog.DiscardHandler),
+		Clock:        testClock,
 	})
 
 	ctx := context.Background()
@@ -375,12 +375,30 @@ func buildSurface(t *testing.T, sc surfaceScenario) surfaceDoc {
 		}
 	}
 
-	return surfaceDoc{Scenario: sc.name, Messages: recordMessages(t, broker)}
+	return surfaceDoc{Scenario: sc.name, Messages: recordMessages(t, c, broker)}
+}
+
+// normaliseInfo replaces the `<name>/info` fields that describe the
+// process rather than the published shape — the build version, the Go
+// runtime, the host, the pid and the start time — with placeholders, so
+// the golden pins which fields are there and not this machine.
+func normaliseInfo(obj map[string]any) {
+	for key, placeholder := range map[string]string{
+		"version": versionPlaceholder,
+		"go":      "<go-version>",
+		"host":    "<host>",
+		"pid":     "<pid>",
+		"started": "<started>",
+	} {
+		if _, ok := obj[key]; ok {
+			obj[key] = placeholder
+		}
+	}
 }
 
 // recordMessages turns the recorded publishes into golden rows, sorted
 // by topic so a concurrent stats fan-out cannot reorder the document.
-func recordMessages(t *testing.T, b *fakeBroker) []recordedMsg {
+func recordMessages(t *testing.T, c *Coordinator, b *fakeBroker) []recordedMsg {
 	t.Helper()
 	b.mu.Lock()
 	msgs := slices.Clone(b.msgs)
@@ -398,8 +416,8 @@ func recordMessages(t *testing.T, b *fakeBroker) []recordedMsg {
 			if err := json.Unmarshal([]byte(payload), &obj); err != nil {
 				t.Fatalf("payload on %s is not JSON: %v", m.topic, err)
 			}
-			if v, ok := obj["bridge_version"]; ok && v == version.Version {
-				obj["bridge_version"] = versionPlaceholder
+			if m.topic == c.topics.layout.Info() {
+				normaliseInfo(obj)
 			}
 			row.JSON = obj
 		default:
@@ -517,21 +535,22 @@ func regenerateSurfaceGoldens(t *testing.T) {
 //
 // Deliberately not written by -update-surface-golden. See
 // [regenerateSurfaceGoldens].
-// Moved by ADR 0070 phase 9's payload prerequisites, by hand, each
-// literal named with the finding that moved it:
+// Moved by hand, each time with the change that moved it named:
 //
-//   - all five by F7's `origin` block, on all 315 discovery configs;
-//   - full.en, full.de and nonascii.de additionally by F15 (the empty
-//     `device.manufacturer` dropped from 36 client configs) and by F14
-//     (the site device's `device.name`, on the 6 SSID switches that
-//     took Site.Internal).
-//
-// The two `minimal` scenarios announce neither clients nor SSIDs, which
-// is why they move on F7 alone.
+//   - by ADR 0070 phase 9's payload prerequisites (F7's `origin` block,
+//     F15's dropped empty manufacturer, F14's site device name);
+//   - then, all five, by the mqtt-smarthome 2.0 move of openccu-loom
+//     ADR 0083 (2.0.0): every topic under `<name>/status|set/`,
+//     `{"val","ts","lc"}` status objects, `<name>/connected` and
+//     `<name>/info` in place of `bridge/status` and `bridge/info`, the
+//     new `online` items, and discovery re-pointed at all of it —
+//     unique_ids, node ids, device identifiers and config topics
+//     unchanged, which TestHomeAssistantIdentitiesAreThoseOf130 proves
+//     against the frozen 1.3.0 rendering.
 var goldenDigests = map[string]string{
-	"minimal.en":  "4cdc44a29e2298071c5ddeff07ddeb68edfaff19ccc40255ae3b5c00d77a1972",
-	"minimal.de":  "5cd94f38b891ed52e97dbd6b6a70f2e9e4029596b9fe8b42005f99871bb70631",
-	"full.en":     "6db7e0089e9c63d6affbf3ef39877044814cbce8247f26b502f651308eb91f92",
-	"full.de":     "0268684ccedeaf879f11be87d8627d1adbd4cce6a7da309d5c549db82a787890",
-	"nonascii.de": "5b32380fdc97012ec0c4542ac96a22c20194d1de8e1fbb1dda50a4b9afe48334",
+	"minimal.en":  "8888f00e8e7fc288138166d6d6329150be47266d76d6740bd1b6618866b861bc",
+	"minimal.de":  "7698cb6fab144ef93114aae0bf58a548ab42b54e8db2cf069b318d47c111087d",
+	"full.en":     "935dbfc2f629a1e551d16bb094eebdb5f50ca091d84c9f9c31d27f32c84c3504",
+	"full.de":     "f8ec2521007c8056399a7bb95f0eafa3408d37a3f28609f9214b60c5aee5bd37",
+	"nonascii.de": "bb4cd273253dcd042f791f41d794cc9abe1eaa1b95c19f7c4c1387174efc8f6e",
 }

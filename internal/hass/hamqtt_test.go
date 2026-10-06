@@ -95,43 +95,46 @@ func TestHamqttLayoutDelegatesToTheTopicsContract(t *testing.T) {
 			stubTopics{}.DeviceTopic(mac, "radio/5g/channel"),
 		},
 		{
-			"device command", l.Command(deviceSlot(mac.String(), "cmd/locate/set")),
-			stubTopics{}.DeviceTopic(mac, "cmd/locate/set"),
+			"device command", l.Command(deviceSlot(mac.String(), "cmd/locate")),
+			stubTopics{}.DeviceCommandTopic(mac, "cmd/locate"),
 		},
 		{
 			"port command", l.Command(deviceSlot(mac.String(), "port/1/cmd/power_cycle")),
-			stubTopics{}.DeviceTopic(mac, "port/1/cmd/power_cycle"),
+			stubTopics{}.DeviceCommandTopic(mac, "port/1/cmd/power_cycle"),
 		},
 		{
 			"client value", l.State(clientSlot("00005e005311", "ip")),
 			stubTopics{}.ClientTopic("00005e005311", "ip"),
 		},
 		{
-			"client command", l.Command(clientSlot("00005e005311", "blocked/set")),
-			stubTopics{}.ClientTopic("00005e005311", "blocked/set"),
+			"client command", l.Command(clientSlot("00005e005311", "blocked")),
+			stubTopics{}.ClientCommandTopic("00005e005311", "blocked"),
 		},
 		{
 			"health value", l.State(healthSlot("wan/latency_ms")),
 			stubTopics{}.HealthTopic("wan/latency_ms"),
 		},
 		{
-			"wlan value", l.State(wlanSlot("wlan-1", "enabled")),
+			"wlan value", l.State(wlanSlot("wlan-1")),
 			stubTopics{}.WLANTopic("wlan-1", "enabled"),
 		},
 		{
-			"wlan command", l.Command(wlanSlot("wlan-1", "enabled/set")),
-			stubTopics{}.WLANTopic("wlan-1", "enabled/set"),
+			"wlan command", l.Command(wlanSlot("wlan-1")),
+			stubTopics{}.WLANCommandTopic("wlan-1", "enabled"),
 		},
 		{"bridge", l.Bridge(), stubTopics{}.AvailabilityTopic()},
-		// The device-availability slot is the object's own state topic,
-		// which is where this bridge's reachability signal actually is.
+		{"connected", l.Connected(), stubTopics{}.AvailabilityTopic()},
+		{"info", l.Info(), stubTopics{}.SmartHome().Info()},
+		{"maintenance", l.Maintenance("stats"), stubTopics{}.SmartHome().Maintenance("stats")},
+		// The device-availability slot is the object's own `online`
+		// status item.
 		{
 			"device availability", l.Availability(deviceSlot(mac.String(), "cpu_utilization")),
-			stubTopics{}.DeviceTopic(mac, "state"),
+			stubTopics{}.DeviceTopic(mac, "online"),
 		},
 		{
 			"client availability", l.Availability(clientSlot("00005e005311", "ip")),
-			stubTopics{}.ClientTopic("00005e005311", "state"),
+			stubTopics{}.ClientTopic("00005e005311", "online"),
 		},
 	}
 	for _, tc := range cases {
@@ -170,6 +173,21 @@ func TestHamqttLayoutIsNotTopicDefault(t *testing.T) {
 	// would silently produce topics nothing subscribes to.
 	if got := ours.Command(cmd); strings.HasSuffix(got, "/set") {
 		t.Errorf("the restart command renders %q; this bridge spells it under cmd/", got)
+	}
+
+	// go-hamqtt's own topic.SmartHome has the same grammar and is still
+	// not this tree: it keys the item on the device UID and has no site
+	// level, so the layout delegates instead of embedding it.
+	sh, err := hatopic.NewSmartHome("unifi")
+	if err != nil {
+		t.Fatalf("NewSmartHome: %v", err)
+	}
+	if sh.State(slot) == ours.State(slot) {
+		t.Errorf("topic.SmartHome renders the same status item as this bridge's layout (%q)",
+			sh.State(slot))
+	}
+	if sh.Connected() != ours.Connected() {
+		t.Errorf("connected = %q, want the grammar's %q", ours.Connected(), sh.Connected())
 	}
 }
 
@@ -342,12 +360,14 @@ func TestHamqttNodeIDIsTheDeviceIdentifier(t *testing.T) {
 // TestHamqttAvailabilityIsTwoLevelWithATemplate is measurement F8.
 //
 // The library's shape is already right — a list, mode "all", resolved
-// per entity — so the 128/187 split costs nothing but a
-// hamodel.BridgeOnly on the 128. What differs is the second level's
-// spelling: discovery.StdContext names a dedicated availability topic
-// with no template, this bridge names the object's own state topic and
-// maps its vocabulary. Both are asserted, so the override cannot go
-// inert unnoticed.
+// per entity — so the bridge-only split costs nothing but a
+// hamodel.BridgeOnly. Under the mqtt-smarthome layout the two entries
+// are go-hamqtt's own: `<name>/connected` read through
+// ConnectedAvailability and the device's `online` item read through
+// OnlineAvailability. What differs from discovery.StdContext is the
+// slot the device level comes from, which is why the method is
+// overridden; both are asserted, so the override cannot go inert
+// unnoticed.
 func TestHamqttAvailabilityIsTwoLevelWithATemplate(t *testing.T) {
 	t.Parallel()
 
@@ -355,7 +375,7 @@ func TestHamqttAvailabilityIsTwoLevelWithATemplate(t *testing.T) {
 	g := d.hamqttDeviceGroup(testDevice(), ControlOptions{})
 	ctx := d.newHamqttContext()
 
-	// A statistics sensor: bridge + the device's own state topic.
+	// A statistics sensor: `connected` + the device's `online` item.
 	cpu := renderOne(t, d, g, "cpu_utilization")
 	if cpu.AvailabilityMode != "all" {
 		t.Errorf("availability_mode = %q, want \"all\"", cpu.AvailabilityMode)
@@ -363,34 +383,29 @@ func TestHamqttAvailabilityIsTwoLevelWithATemplate(t *testing.T) {
 	if len(cpu.Availability) != 2 {
 		t.Fatalf("%d availability sources, want 2", len(cpu.Availability))
 	}
-	if cpu.Availability[0].Topic != (stubTopics{}).AvailabilityTopic() {
-		t.Errorf("first source = %q, want the bridge topic", cpu.Availability[0].Topic)
+	wantFirst := discovery.ConnectedAvailability((stubTopics{}).AvailabilityTopic(), discovery.ConnectedOperational)
+	if cpu.Availability[0] != wantFirst {
+		t.Errorf("first source = %+v, want %+v", cpu.Availability[0], wantFirst)
 	}
-	if cpu.Availability[0].ValueTemplate != "" {
-		t.Errorf("the bridge source carries a template %q", cpu.Availability[0].ValueTemplate)
-	}
-	wantSecond := stubTopics{}.DeviceTopic(testDevice().MAC, "state")
-	if cpu.Availability[1].Topic != wantSecond {
-		t.Errorf("second source = %q, want the device's own state topic %q",
-			cpu.Availability[1].Topic, wantSecond)
-	}
-	if cpu.Availability[1].ValueTemplate != deviceAvailTemplate {
-		t.Errorf("second source template = %q, want %q",
-			cpu.Availability[1].ValueTemplate, deviceAvailTemplate)
+	wantSecond := discovery.OnlineAvailability(stubTopics{}.DeviceTopic(testDevice().MAC, "online"),
+		discovery.StatusObjectEncoding)
+	if cpu.Availability[1] != wantSecond {
+		t.Errorf("second source = %+v, want the device's online item %+v",
+			cpu.Availability[1], wantSecond)
 	}
 
 	// The entity that reports the offline condition opts out of the
 	// second level: making it unavailable would hide what the user
-	// needs. That is the 128 of the 128/187 split.
+	// needs.
 	state := renderOne(t, d, g, "state")
 	if len(state.Availability) != 1 {
 		t.Errorf("the state sensor has %d availability sources, want 1 (bridge only)",
 			len(state.Availability))
 	}
 
-	// And the library's own spelling is different, which is why the
+	// And the library's own resolution is different, which is why the
 	// method is overridden at all.
-	std := discovery.StdContext{Layout: ctx.layout, Namespace: hamqttNamespace, Enc: discovery.RawEncoding}
+	std := discovery.StdContext{Layout: ctx.layout, Namespace: hamqttNamespace, Enc: discovery.StatusObjectEncoding}
 	e := findEntity(t, g, "cpu_utilization")
 	got := std.Availability(g.dev, e)
 	if len(got) == 2 && got[1] == cpu.Availability[1] {
@@ -428,33 +443,36 @@ func TestHamqttBridgeOnlyIsLoadBearing(t *testing.T) {
 
 // --- the encoding ------------------------------------------------------
 
-// TestHamqttRawEncodingIsLoadBearing pins the setting that would be the
-// widest silent diff of all.
+// TestHamqttStatusObjectEncodingIsLoadBearing pins the setting that
+// would be the widest silent diff of all.
 //
-// discovery.Encoding's zero value is EnvelopeEncoding, which attaches
-// `value_template: {{ value_json.value }}` to every entity that reads a
-// topic. This bridge publishes bare scalars, so the envelope template
-// would break 297 entities at once — and in review it reads like a
-// formatting detail.
-func TestHamqttRawEncodingIsLoadBearing(t *testing.T) {
+// Every status item is a `{"val","ts","lc"}` object, so every entity
+// that reads one needs a template reaching into `val`. Under
+// RawEncoding none would get one, and every state would render as the
+// whole JSON document — and in review it reads like a formatting
+// detail.
+func TestHamqttStatusObjectEncodingIsLoadBearing(t *testing.T) {
 	t.Parallel()
 
 	d := hamqttTestDiscovery("en")
 	g := d.hamqttDeviceGroup(testDevice(), ControlOptions{})
-	if got := renderOne(t, d, g, "cpu_utilization").ValueTemplate; got != "" {
-		t.Errorf("value_template = %q on a sensor that publishes a bare scalar", got)
+	if got := renderOne(t, d, g, "cpu_utilization").ValueTemplate; got != discovery.StatusValueTemplate {
+		t.Errorf("value_template = %q, want %q", got, discovery.StatusValueTemplate)
+	}
+	if got := renderOne(t, d, g, "update_available").ValueTemplate; got != discovery.StatusBoolValueTemplate {
+		t.Errorf("binary sensor value_template = %q, want %q", got, discovery.StatusBoolValueTemplate)
 	}
 
-	envelope := d.newHamqttContext()
-	envelope.Enc = discovery.EnvelopeEncoding
-	comp, err := discovery.RenderComponent(envelope, g.dev, findEntity(t, g, "cpu_utilization"),
+	raw := d.newHamqttContext()
+	raw.Enc = discovery.RawEncoding
+	comp, err := discovery.RenderComponent(raw, g.dev, findEntity(t, g, "cpu_utilization"),
 		discovery.Origin{})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if comp.ValueTemplate == "" {
-		t.Error("the envelope encoding renders no value_template either; " +
-			"discovery.RawEncoding is inert and this file proves nothing about it")
+	if comp.ValueTemplate != "" {
+		t.Error("the raw encoding renders a value_template too; " +
+			"discovery.StatusObjectEncoding is inert and this file proves nothing about it")
 	}
 
 	// A binary sensor that DOES carry a template keeps its own: the
@@ -636,13 +654,13 @@ func TestHamqttComponentKeysAreTheObjectIDSegments(t *testing.T) {
 // availability override has a second, weaker switch — and says why it
 // cannot be removed.
 //
-// [hamqttContext.Availability] skips LevelDevice when the entity
-// carries no template. On the infrastructure and client planes that is
-// unreachable, because every entity there has one and
+// [hamqttContext.Availability] skips LevelDevice when the layout renders
+// no `online` item for the entity's slot. On the infrastructure and
+// client planes that is unreachable, because both publish one and
 // [hamodel.BridgeOnly] is the only switch. On the site plane it is the
-// guard that matters: the site device has no state topic at all, so a
-// LevelDevice there would name "unifi/default/health/state", which
-// nothing publishes and which would grey out all nine site entities.
+// guard that matters: the site device has no `online` item at all, so a
+// LevelDevice there would name a topic nothing publishes and grey out
+// every site entity.
 //
 // Dropping BridgeOnly on a site entity is therefore an *equivalent*
 // mutation — the guard catches it — so the guard is asserted directly
@@ -653,10 +671,6 @@ func TestHamqttSitePlaneHasNoDeviceLevelSignal(t *testing.T) {
 	d := hamqttTestDiscovery("en")
 	g := d.hamqttHealthGroup()
 	e := findEntity(t, g, "wan_latency")
-	if e.availTemplate != "" {
-		t.Fatalf("a site entity carries an availability template %q; "+
-			"this test's premise has changed", e.availTemplate)
-	}
 
 	// Drop the explicit BridgeOnly and the level still does not render,
 	// because the guard refuses to name a topic nobody writes.
@@ -669,12 +683,11 @@ func TestHamqttSitePlaneHasNoDeviceLevelSignal(t *testing.T) {
 		t.Errorf("the site entity gained a device availability level (%d sources); it would "+
 			"point at a topic nothing publishes", len(comp.Availability))
 	}
-	// And the topic it would have pointed at is indeed not one this
-	// bridge writes — the site plane publishes wan/, clients/ and
-	// attributes, never a bare "state".
+	// And that is the layout refusing: the site plane has no `online`
+	// item, so its availability slot renders nothing.
 	l := hamqttLayout{topics: stubTopics{}}
-	if got := l.Availability(healthSlot("wan/latency_ms")); got != "unifi/default/health/state" {
-		t.Errorf("the site availability slot renders %q; the premise above has changed", got)
+	if got := l.Availability(healthSlot("wan/latency_ms")); got != "" {
+		t.Errorf("the site availability slot renders %q; the site plane publishes no online item", got)
 	}
 }
 

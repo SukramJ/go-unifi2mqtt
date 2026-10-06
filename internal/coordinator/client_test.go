@@ -66,14 +66,14 @@ func TestClientPresencePublished(t *testing.T) {
 		t.Fatalf("refreshClients: %v", err)
 	}
 
-	if got, _ := h.broker.latest("unifi/default/client/00005e005310/state"); got != "home" {
+	if got, _ := h.broker.latest("unifi/status/default/client/00005e005310/state"); got != "home" {
 		t.Errorf("presence = %q, want home", got)
 	}
-	if got, _ := h.broker.latest("unifi/default/client/00005e005310/ip"); got != "192.0.2.42" {
+	if got, _ := h.broker.latest("unifi/status/default/client/00005e005310/ip"); got != "192.0.2.42" {
 		t.Errorf("ip = %q, want 192.0.2.42", got)
 	}
 
-	raw, ok := h.broker.latest("unifi/default/client/00005e005310/attributes")
+	raw, ok := h.broker.latest("unifi/status/default/client/00005e005310/attributes")
 	if !ok {
 		t.Fatal("no attributes topic")
 	}
@@ -114,7 +114,7 @@ func TestPresenceSurvivesAMissedPoll(t *testing.T) {
 		if err := h.c.refreshClients(t.Context()); err != nil {
 			t.Fatalf("refreshClients: %v", err)
 		}
-		if got, ok := h.broker.latest("unifi/default/client/00005e005310/state"); ok {
+		if got, ok := h.broker.latest("unifi/status/default/client/00005e005310/state"); ok {
 			t.Errorf("presence flipped to %q after one missed poll, want it held at home", got)
 		}
 
@@ -124,7 +124,7 @@ func TestPresenceSurvivesAMissedPoll(t *testing.T) {
 		if err := h.c.refreshClients(t.Context()); err != nil {
 			t.Fatalf("refreshClients: %v", err)
 		}
-		if got, ok := h.broker.latest("unifi/default/client/00005e005310/state"); ok {
+		if got, ok := h.broker.latest("unifi/status/default/client/00005e005310/state"); ok {
 			t.Errorf("presence flipped to %q before AWAY_TIMEOUT, want it held", got)
 		}
 
@@ -133,7 +133,7 @@ func TestPresenceSurvivesAMissedPoll(t *testing.T) {
 		if err := h.c.refreshClients(t.Context()); err != nil {
 			t.Fatalf("refreshClients: %v", err)
 		}
-		if got, _ := h.broker.latest("unifi/default/client/00005e005310/state"); got != "not_home" {
+		if got, _ := h.broker.latest("unifi/status/default/client/00005e005310/state"); got != "not_home" {
 			t.Errorf("presence = %q after the grace period, want not_home", got)
 		}
 	})
@@ -202,13 +202,13 @@ func TestAwayClientDropsItsIP(t *testing.T) {
 			t.Fatalf("refreshClients: %v", err)
 		}
 
-		if got, _ := h.broker.latest("unifi/default/client/00005e005310/ip"); got != "" {
+		if got, _ := h.broker.latest("unifi/status/default/client/00005e005310/ip"); got != "" {
 			t.Errorf("ip = %q for an away client, want it cleared", got)
 		}
 		// The tracker itself must stay: a device_tracker that disappears
 		// makes automations referencing it error out, rather than simply
 		// seeing "away".
-		if got, _ := h.broker.latest("unifi/default/client/00005e005310/state"); got != "not_home" {
+		if got, _ := h.broker.latest("unifi/status/default/client/00005e005310/state"); got != "not_home" {
 			t.Errorf("state = %q, want not_home", got)
 		}
 	})
@@ -268,7 +268,7 @@ func TestClientsDisabledPublishesNothing(t *testing.T) {
 	if err := h.c.refreshClients(t.Context()); err != nil {
 		t.Fatalf("refreshClients: %v", err)
 	}
-	if got := h.broker.topicsWithPrefix("unifi/default/client/"); len(got) != 0 {
+	if got := h.broker.topicsWithPrefix("unifi/status/default/client/"); len(got) != 0 {
 		t.Errorf("published %d client topics with CLIENTS.ENABLE off", len(got))
 	}
 	if got := h.src.callCount("Clients"); got != 0 {

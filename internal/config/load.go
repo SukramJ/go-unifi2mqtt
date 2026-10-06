@@ -182,13 +182,15 @@ func applyEnv(cfg *Config, env Env) error {
 		"CLASSIC_PASSWORD": secret(&cfg.ClassicPassword),
 
 		// MQTT
-		"MQTT_SERVER":       str(&cfg.MQTTServer),
-		"MQTT_PORT":         num(&cfg.MQTTPort),
-		"MQTT_LOGIN":        str(&cfg.MQTTLogin),
-		"MQTT_PASSWORD":     secret(&cfg.MQTTPassword),
-		"MQTT_TOPIC":        str(&cfg.MQTTTopic),
-		"MQTT_SSL":          boolean(&cfg.MQTTSSL),
-		"MQTT_SSL_INSECURE": boolean(&cfg.MQTTSSLInsecure),
+		"MQTT_SERVER":         str(&cfg.MQTTServer),
+		"MQTT_PORT":           num(&cfg.MQTTPort),
+		"MQTT_LOGIN":          str(&cfg.MQTTLogin),
+		"MQTT_PASSWORD":       secret(&cfg.MQTTPassword),
+		"MQTT_TOPIC":          str(&cfg.MQTTTopic),
+		"MQTT_SSL":            boolean(&cfg.MQTTSSL),
+		"MQTT_SSL_INSECURE":   boolean(&cfg.MQTTSSLInsecure),
+		"MQTT_MAINTENANCE":    boolean(&cfg.MQTTMaintenance),
+		"MQTT_STATS_INTERVAL": num(&cfg.MQTTStatsInterval),
 
 		// Home Assistant
 		"HASS_ENABLE":          boolean(&cfg.HASSEnable),
@@ -202,7 +204,6 @@ func applyEnv(cfg *Config, env Env) error {
 		"REFRESH_CLIENTS":      num(&cfg.RefreshClients),
 		"REFRESH_HEALTH":       num(&cfg.RefreshHealth),
 		"REFRESH_STATIC":       num(&cfg.RefreshStatic),
-		"FORCE_REPUBLISH":      num(&cfg.ForceRepublish),
 
 		"MQTT_CLIENT_ID": str(&cfg.MQTTClientID),
 

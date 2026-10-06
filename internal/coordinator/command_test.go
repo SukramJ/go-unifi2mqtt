@@ -6,11 +6,12 @@ package coordinator
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	mqtt "github.com/SukramJ/go-mqtt"
+	hapub "github.com/SukramJ/go-hamqtt/publisher"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
@@ -67,9 +68,15 @@ func controlHarness(t *testing.T, extra string) *harness {
 	return h
 }
 
-// deliver feeds a message to the command handler as the broker would.
+// deliver feeds a message to the command handler as the router would:
+// normalised per spec §5.3, with the empty and malformed payloads the
+// router never hands over dropped here too.
 func deliver(c *Coordinator, topic, payload string, retained bool) {
-	c.onCommand(&mqtt.Message{Topic: topic, Payload: []byte(payload), Retain: retained})
+	v, err := hapub.ParseSet([]byte(payload))
+	if err != nil {
+		return
+	}
+	c.onCommand(topic, payload, retained, v)
 }
 
 // runCommands drains the queue until ctx ends.
@@ -113,30 +120,32 @@ func TestCommandsReachTheConsole(t *testing.T) {
 		want    actuatorCall
 	}{
 		{
-			name:  "restart resolves the MAC to the API id",
-			topic: "unifi/default/device/00005e005302/cmd/restart",
-			want:  actuatorCall{kind: "restart", id: "id-sw"},
+			name:    "restart resolves the MAC to the API id",
+			topic:   "unifi/set/default/device/00005e005302/cmd/restart",
+			payload: "PRESS",
+			want:    actuatorCall{kind: "restart", id: "id-sw"},
 		},
 		{
-			name:  "power cycle carries the port index",
-			topic: "unifi/default/device/00005e005302/port/1/cmd/power_cycle",
-			want:  actuatorCall{kind: "power_cycle", id: "id-sw", portIdx: 1},
+			name:    "power cycle carries the port index",
+			topic:   "unifi/set/default/device/00005e005302/port/1/cmd/power_cycle",
+			payload: `{"val":"PRESS"}`,
+			want:    actuatorCall{kind: "power_cycle", id: "id-sw", portIdx: 1},
 		},
 		{
 			name:    "locate on",
-			topic:   "unifi/default/device/00005e005302/cmd/locate/set",
+			topic:   "unifi/set/default/device/00005e005302/cmd/locate",
 			payload: "ON",
 			want:    actuatorCall{kind: "locate", mac: swMAC, on: true},
 		},
 		{
 			name:    "locate off",
-			topic:   "unifi/default/device/00005e005302/cmd/locate/set",
+			topic:   "unifi/set/default/device/00005e005302/cmd/locate",
 			payload: "OFF",
 			want:    actuatorCall{kind: "locate", mac: swMAC, on: false},
 		},
 		{
 			name:    "wlan toggle",
-			topic:   "unifi/default/wlan/wlan-1/enabled/set",
+			topic:   "unifi/set/default/wlan/wlan-1/enabled",
 			payload: "OFF",
 			want:    actuatorCall{kind: "wlan", id: "wlan-1", on: false},
 		},
@@ -163,7 +172,7 @@ func TestRetainedCommandsAreDropped(t *testing.T) {
 	h := controlHarness(t, "")
 	runCommands(t, h.c)
 
-	deliver(h.c, "unifi/default/device/00005e005302/port/1/cmd/power_cycle", "", true)
+	deliver(h.c, "unifi/set/default/device/00005e005302/port/1/cmd/power_cycle", "PRESS", true)
 
 	select {
 	case c := <-h.src.actuatorCh:
@@ -172,7 +181,7 @@ func TestRetainedCommandsAreDropped(t *testing.T) {
 	}
 
 	// The same command as a live message must work.
-	deliver(h.c, "unifi/default/device/00005e005302/port/1/cmd/power_cycle", "", false)
+	deliver(h.c, "unifi/set/default/device/00005e005302/port/1/cmd/power_cycle", "PRESS", false)
 	if got := waitForCall(t, h).kind; got != "power_cycle" {
 		t.Errorf("live command produced %q", got)
 	}
@@ -192,7 +201,7 @@ func TestHandlerNeverBlocks(t *testing.T) {
 	go func() {
 		// Far more than the queue holds.
 		for range commandQueueSize * 4 {
-			deliver(h.c, "unifi/default/device/00005e005302/cmd/restart", "", false)
+			deliver(h.c, "unifi/set/default/device/00005e005302/cmd/restart", "PRESS", false)
 		}
 		close(done)
 	}()
@@ -214,7 +223,7 @@ func TestFailedCommandStillTriggersRefresh(t *testing.T) {
 	h.src.actuatorErr = errors.New("console rejected it")
 	runCommands(t, h.c)
 
-	deliver(h.c, "unifi/default/device/00005e005302/cmd/locate/set", "ON", false)
+	deliver(h.c, "unifi/set/default/device/00005e005302/cmd/locate", "ON", false)
 
 	select {
 	case <-h.c.nudgeStatic:
@@ -313,7 +322,7 @@ func TestSuccessfulCommandTriggersRefresh(t *testing.T) {
 	h := controlHarness(t, "")
 	runCommands(t, h.c)
 
-	deliver(h.c, "unifi/default/client/00005e005310/blocked/set", "ON", false)
+	deliver(h.c, "unifi/set/default/client/00005e005310/blocked", "ON", false)
 	waitForCall(t, h)
 
 	select {
@@ -332,7 +341,7 @@ func TestDisabledControlsIgnoreCommands(t *testing.T) {
 	h.c.cfg.Controls.DeviceRestart = false
 	runCommands(t, h.c)
 
-	deliver(h.c, "unifi/default/device/00005e005302/cmd/restart", "", false)
+	deliver(h.c, "unifi/set/default/device/00005e005302/cmd/restart", "PRESS", false)
 	select {
 	case c := <-h.src.actuatorCh:
 		t.Fatalf("a disabled control executed: %+v", c)
@@ -340,18 +349,33 @@ func TestDisabledControlsIgnoreCommands(t *testing.T) {
 	}
 }
 
+// With controls off no command filter is subscribed; the maintenance
+// filter is, because maintenance is on by default and independent of
+// the controls. With both off nothing is subscribed at all.
 func TestControlsOffSubscribesToNothing(t *testing.T) {
 	t.Parallel()
 
 	sub := &fakeSubscriber{}
-	h := newHarness(t, nil) // default config: controls off
+	h := newHarness(t, nil) // default config: controls off, maintenance on
 	h.c.SetSubscriber(sub)
 
 	if err := h.c.subscribeCommands(t.Context()); err != nil {
 		t.Fatalf("subscribeCommands: %v", err)
 	}
+	if want := []string{"unifi/maintenance/set/#"}; !slices.Equal(sub.filters, want) {
+		t.Errorf("subscribed to %v with controls disabled, want only %v", sub.filters, want)
+	}
+
+	cfg := testConfig()
+	cfg.MQTTMaintenance = false
+	sub = &fakeSubscriber{}
+	h = newHarness(t, cfg)
+	h.c.SetSubscriber(sub)
+	if err := h.c.subscribeCommands(t.Context()); err != nil {
+		t.Fatalf("subscribeCommands: %v", err)
+	}
 	if len(sub.filters) != 0 {
-		t.Errorf("subscribed to %v with controls disabled", sub.filters)
+		t.Errorf("subscribed to %v with controls and maintenance disabled", sub.filters)
 	}
 }
 
@@ -369,7 +393,7 @@ func TestCommandTopicsAreWildcards(t *testing.T) {
 	// One subscription per shape, not per object: 120 clients would
 	// otherwise need 120 subscriptions and one more per new client.
 	for _, f := range sub.filters {
-		if !strings.Contains(f, "+") {
+		if !strings.ContainsAny(f, "+#") {
 			t.Errorf("filter %q is not a wildcard", f)
 		}
 	}
@@ -387,7 +411,7 @@ func TestCommandForUnknownDeviceFails(t *testing.T) {
 	h := controlHarness(t, "")
 	runCommands(t, h.c)
 
-	deliver(h.c, "unifi/default/device/aabbccddeeff/cmd/restart", "", false)
+	deliver(h.c, "unifi/set/default/device/aabbccddeeff/cmd/restart", "PRESS", false)
 	select {
 	case c := <-h.src.actuatorCh:
 		t.Fatalf("a command for an unknown device reached the console: %+v", c)
@@ -402,13 +426,13 @@ func TestMalformedCommandsAreIgnored(t *testing.T) {
 	runCommands(t, h.c)
 
 	for _, topic := range []string{
-		"unifi/default/device/not-a-mac/cmd/restart",
-		"unifi/default/device/00005e005302/port/xyz/cmd/power_cycle",
-		"unifi/default/device/00005e005302/cmd/unknown",
-		"unifi/default/nonsense/00005e005302/cmd/restart",
-		"unifi/default/device",
+		"unifi/set/default/device/not-a-mac/cmd/restart",
+		"unifi/set/default/device/00005e005302/port/xyz/cmd/power_cycle",
+		"unifi/set/default/device/00005e005302/cmd/unknown",
+		"unifi/set/default/nonsense/00005e005302/cmd/restart",
+		"unifi/set/default/device",
 	} {
-		deliver(h.c, topic, "", false)
+		deliver(h.c, topic, "PRESS", false)
 	}
 
 	select {
@@ -442,23 +466,38 @@ func TestGuestAuthorizeMinutes(t *testing.T) {
 		payload string
 		want    int
 	}{
-		{"", 0},                // the button's default press
 		{"PRESS", 0},           // Home Assistant's button payload
+		{"{}", 0},              // the documented empty JSON form
 		{"60", 60},             // a plain number
+		{`{"val":45}`, 45},     // the plain number, wrapped (spec §5.3)
 		{`{"minutes":30}`, 30}, // the documented JSON form
 	}
 	for _, tt := range tests {
-		deliver(h.c, "unifi/default/client/00005e005310/cmd/authorize", tt.payload, false)
+		deliver(h.c, "unifi/set/default/client/00005e005310/cmd/authorize", tt.payload, false)
 		got := waitForCall(t, h)
 		if got.kind != "authorize" || got.minutes != tt.want {
 			t.Errorf("payload %q produced %+v, want minutes %d", tt.payload, got, tt.want)
 		}
 	}
+
+	// 2.0 dropped the empty authorize: an empty payload is what clearing
+	// a retained topic looks like, and the convention ignores it.
+	deliver(h.c, "unifi/set/default/client/00005e005310/cmd/authorize", "", false)
+	select {
+	case c := <-h.src.actuatorCh:
+		t.Fatalf("an empty authorize executed: %+v", c)
+	case <-time.After(200 * time.Millisecond):
+	}
 }
 
+// Switch requests take spec §5.3's boolean spellings, plain or wrapped,
+// and anything else is rejected rather than read as "off" — which is
+// what 1.x did with "nonsense".
 func TestSwitchPayloadForms(t *testing.T) {
-	t.Parallel()
+	h := controlHarness(t, "")
+	runCommands(t, h.c)
 
+	topic := "unifi/set/default/device/00005e005302/cmd/locate"
 	for _, tt := range []struct {
 		payload string
 		want    bool
@@ -467,14 +506,27 @@ func TestSwitchPayloadForms(t *testing.T) {
 		{"on", true},
 		{"true", true},
 		{"1", true},
+		{"yes", true},
+		{`{"val":true}`, true},
 		{"OFF", false},
 		{"off", false},
 		{"false", false},
 		{"0", false},
-		{"nonsense", false},
+		{"no", false},
+		{`{"val":"off"}`, false},
 	} {
-		if got := isOn(tt.payload); got != tt.want {
-			t.Errorf("isOn(%q) = %v, want %v", tt.payload, got, tt.want)
+		deliver(h.c, topic, tt.payload, false)
+		if got := waitForCall(t, h); got.kind != "locate" || got.on != tt.want {
+			t.Errorf("payload %q produced %+v, want on=%v", tt.payload, got, tt.want)
 		}
+	}
+
+	for _, payload := range []string{"nonsense", "home", `{"brightness":3}`} {
+		deliver(h.c, topic, payload, false)
+	}
+	select {
+	case c := <-h.src.actuatorCh:
+		t.Fatalf("a payload that is not a boolean executed: %+v", c)
+	case <-time.After(200 * time.Millisecond):
 	}
 }

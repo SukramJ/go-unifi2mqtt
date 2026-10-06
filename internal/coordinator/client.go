@@ -5,9 +5,7 @@ package coordinator
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
-	"strconv"
 	"time"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
@@ -24,8 +22,8 @@ import (
 // poll makes every presence automation flap, so a client stays home
 // until it has been absent for AWAY_TIMEOUT (CONCEPT.md §6.4).
 
-// Presence payloads. These are the strings device_tracker expects by
-// default, so discovery needs no payload_home override.
+// Presence tokens. These are the strings device_tracker expects by
+// default, carried as the `val` of the client's `state` item.
 const (
 	payloadHome    = "home"
 	payloadNotHome = "not_home"
@@ -178,10 +176,18 @@ func (c *Coordinator) publishClient(ctx context.Context, cl *model.Client, home 
 	if err := c.pub.publish(ctx, c.topics.client(key, keyState), state); err != nil {
 		return err
 	}
+	// The client's reachability as a boolean item, read by its sensors
+	// as their second availability entry. It is the presence above as a
+	// boolean, so it exists from the client's first publish on and an
+	// entity reading it cannot be left waiting for a topic that never
+	// comes.
+	if err := c.pub.publish(ctx, c.topics.client(key, keyOnline), home); err != nil {
+		return err
+	}
 
 	// An absent client's IP is stale by definition; publishing the last
 	// known one would suggest it is still reachable there.
-	ip := ""
+	var ip any
 	if home && cl.IP.IsValid() {
 		ip = cl.IP.String()
 	}
@@ -190,27 +196,22 @@ func (c *Coordinator) publishClient(ctx context.Context, cl *model.Client, home 
 	}
 
 	if c.controlOptions().ClientBlock {
-		if err := c.pub.publish(ctx, c.topics.client(key, keyClientBlocked),
-			boolPayload(cl.Blocked)); err != nil {
+		if err := c.pub.publish(ctx, c.topics.client(key, keyClientBlocked), cl.Blocked); err != nil {
 			return err
 		}
 	}
 
 	if c.clientSignalEnabled() && cl.Type == model.ClientWireless {
-		signal := ""
+		var signal any
 		if home && cl.SignalDBm != 0 {
-			signal = strconv.Itoa(cl.SignalDBm)
+			signal = cl.SignalDBm
 		}
 		if err := c.pub.publish(ctx, c.topics.client(key, keyClientSignal), signal); err != nil {
 			return err
 		}
 	}
 
-	payload, err := json.Marshal(clientAttributes(cl, home))
-	if err != nil {
-		return err
-	}
-	return c.pub.publish(ctx, c.topics.client(key, keyAttributes), string(payload))
+	return c.pub.publish(ctx, c.topics.client(key, keyAttributes), clientAttributes(cl, home))
 }
 
 // clientAttrs is the JSON object bound as json_attributes_topic.

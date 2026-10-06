@@ -464,12 +464,12 @@ func TestOwnershipCannotSeparateTwoConsolesOnOneRoot(t *testing.T) {
 	// A second console's SSID switch, published by a second instance of
 	// this daemon under the *same* MQTT root. Its unique_id is in our
 	// namespace, its availability topic is ours because the root is
-	// ours, and its state topic is under `unifi/default/` because the
+	// ours, and its state topic is under `unifi/status/default/` because the
 	// site segment is `default` on every console. There is nothing in
 	// it that is not also true of ours.
 	const sibling = "homeassistant/switch/unifi_site_default/wlan_other-console-ssid/config"
 	payload := []byte(`{"unique_id":"unifi_wlan_other-console-ssid_enabled",` +
-		`"state_topic":"unifi/default/wlan/other-console-ssid/enabled",` +
+		`"state_topic":"unifi/status/default/wlan/other-console-ssid/enabled",` +
 		`"availability":[{"topic":"` + h.c.AvailabilityTopic() + `"}]}`)
 
 	if !h.c.hass.IsOwnConfig(payload) {

@@ -6,13 +6,13 @@ package coordinator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	hapub "github.com/SukramJ/go-hamqtt/publisher"
@@ -93,11 +93,11 @@ func TestEveryPlanePublishReachesTheWireAtTheStatedQoS(t *testing.T) {
 	if err := c.ha().AnnounceOnline(ctx); err != nil {
 		t.Fatalf("AnnounceOnline: %v", err)
 	}
-	if err := c.pub.publish(ctx, "unifi/default/device/aa/state", "ONLINE"); err != nil {
+	if err := c.pub.publish(ctx, "unifi/status/default/device/aa/state", "ONLINE"); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if err := c.pub.publish(ctx, "unifi/default/client/x/ip", ""); err != nil {
-		t.Fatalf("publish of an empty payload: %v", err)
+	if err := c.pub.publish(ctx, "unifi/status/default/client/x/ip", nil); err != nil {
+		t.Fatalf("publish of an empty value: %v", err)
 	}
 
 	broker.mu.Lock()
@@ -112,10 +112,10 @@ func TestEveryPlanePublishReachesTheWireAtTheStatedQoS(t *testing.T) {
 			t.Errorf("%s published unretained; every topic this daemon owns is retained", m.topic)
 		}
 	}
-	if got[0].topic != "unifi/bridge/status" || got[0].payload != "online" || got[0].qos != mqtt.QoS1 {
-		t.Errorf("availability publish = %+v, want unifi/bridge/status online at QoS 1", got[0])
+	if got[0].topic != "unifi/connected" || got[0].payload != "1" || got[0].qos != mqtt.QoS1 {
+		t.Errorf("availability publish = %+v, want unifi/connected 1 at QoS 1", got[0])
 	}
-	if got[1].qos != mqtt.QoS0 || got[1].payload != "ONLINE" {
+	if got[1].qos != mqtt.QoS0 || plainVal(got[1].payload) != "ONLINE" {
 		t.Errorf("state publish = %+v, want QoS 0", got[1])
 	}
 	if got[2].qos != mqtt.QoS0 || got[2].payload != "" {
@@ -123,82 +123,73 @@ func TestEveryPlanePublishReachesTheWireAtTheStatedQoS(t *testing.T) {
 	}
 }
 
-// [hapub.StateConfig.Encoding] is inert here and is stated anyway.
-//
-// This daemon renders its own payloads and calls Publish, never
-// PublishValue, so the encoding decides nothing — but the zero value is
-// EnvelopeEncoding, which is a statement that reads as the opposite of
-// what this bridge publishes. Asserting the inertness is what keeps the
-// field from looking like an oversight, and what makes the day it stops
-// being inert visible.
-func TestStateEncodingIsInertAndStatedAnyway(t *testing.T) {
+// [hapub.StateConfig.Encoding] is the mqtt-smarthome status object, and
+// it is what reaches the wire: `{"val","ts","lc"}`, with the value typed
+// and the timestamps in integer milliseconds.
+func TestStateEncodingIsTheStatusObject(t *testing.T) {
 	t.Parallel()
 
 	broker := &fakeBroker{}
-	p := newPublisher(broker, nil, 0, slog.New(slog.DiscardHandler))
-	if err := p.publish(t.Context(), "unifi/default/device/aa/state", "ONLINE"); err != nil {
+	p := newPublisher(broker, nil, testClock, slog.New(slog.DiscardHandler))
+	if err := p.publish(t.Context(), "unifi/status/default/device/aa/state", "ONLINE"); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	got, _ := broker.latest("unifi/default/device/aa/state")
-	if got != "ONLINE" {
-		t.Fatalf("payload = %q, want the bare scalar; an envelope encoding would have reached the wire", got)
+	got, _ := broker.latestRaw("unifi/status/default/device/aa/state")
+	ts := testClock().UnixMilli()
+	if want := fmt.Sprintf(`{"val":"ONLINE","ts":%d,"lc":%d}`, ts, ts); got != want {
+		t.Fatalf("payload = %s, want %s", got, want)
 	}
 }
 
 // --- the empty payload -------------------------------------------------
 
-// An empty state payload is a retraction, and it still deduplicates.
+// An empty status item is a retraction, and it still deduplicates.
 //
-// [hapub.StatePublisher.Publish] refuses zero bytes with
-// ErrEmptyStatePayload on purpose, so the eviction path has to be
-// explicit — and Evict has no dedup gate of its own, by design. That
-// would be a behaviour change here rather than a detail: an absent
-// client publishes an empty `ip` and an empty `signal` on every poll
-// for as long as it stays away, and change detection suppressed the
-// repeats before this step.
+// [hapub.StatePublisher.PublishStatus] refuses a nil value on purpose,
+// so the eviction path has to be explicit — and Evict has no dedup gate
+// of its own, by design. That would be a behaviour change here rather
+// than a detail: an absent client publishes an empty `ip` and an empty
+// `signal` on every poll for as long as it stays away, and change
+// detection has always suppressed the repeats.
 func TestEmptyStatePayloadIsEvictedAndStillDeduplicated(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		broker := &fakeBroker{}
-		p := newPublisher(broker, nil, time.Hour, slog.New(slog.DiscardHandler))
-		const topic = "unifi/default/client/x/ip"
-		ctx := t.Context()
+	broker := &fakeBroker{}
+	p := newPublisher(broker, nil, testClock, slog.New(slog.DiscardHandler))
+	const topic = "unifi/status/default/client/x/ip"
+	ctx := t.Context()
 
-		for range 3 {
-			if err := p.publish(ctx, topic, ""); err != nil {
-				t.Fatalf("publish: %v", err)
-			}
-		}
-		if n := broker.count(topic); n != 1 {
-			t.Errorf("an unchanged empty payload was published %d times, want 1", n)
-		}
-		if got, _ := broker.latest(topic); got != "" {
-			t.Errorf("payload = %q, want no bytes", got)
-		}
-
-		// A real value after an eviction must go out: the gate has to have
-		// forgotten the topic, not merely recorded an empty payload against
-		// it.
-		if err := p.publish(ctx, topic, "192.0.2.5"); err != nil {
+	for range 3 {
+		if err := p.publish(ctx, topic, nil); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
-		if got, _ := broker.latest(topic); got != "192.0.2.5" {
-			t.Errorf("payload after the eviction = %q, want the new value", got)
-		}
+	}
+	if n := broker.count(topic); n != 1 {
+		t.Errorf("an unchanged empty value was published %d times, want 1", n)
+	}
+	if got, _ := broker.latestRaw(topic); got != "" {
+		t.Errorf("payload = %q, want no bytes", got)
+	}
 
-		// And the forced republish still reaches the eviction path.
-		time.Sleep(time.Hour)
-		if err := p.publish(ctx, topic, ""); err != nil {
+	// A real value after an eviction must go out: the gate has to have
+	// forgotten the topic, not merely recorded an empty payload against
+	// it.
+	if err := p.publish(ctx, topic, "192.0.2.5"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if got, _ := broker.latest(topic); got != "192.0.2.5" {
+		t.Errorf("payload after the eviction = %q, want the new value", got)
+	}
+
+	// And the value going away again is a second eviction.
+	for range 2 {
+		if err := p.publish(ctx, topic, nil); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
-		if err := p.publish(ctx, topic, ""); err != nil {
-			t.Fatalf("publish: %v", err)
-		}
-		if n := broker.count(topic); n != 3 {
-			t.Errorf("topic published %d times in total, want 3 (evict, value, forced evict)", n)
-		}
-	})
+	}
+	if n := broker.count(topic); n != 3 {
+		t.Errorf("topic published %d times in total, want 3 (evict, value, evict)", n)
+	}
 }
 
 // --- the runtime is a factory ------------------------------------------
@@ -303,13 +294,13 @@ func TestTheDiscoveryRuntimeMemoDoesNotSurviveAConnection(t *testing.T) {
 	}
 }
 
-// The state plane's dedup gate re-opens on a reconnect, and the claim
-// list does not.
+// A reconnect replays the state plane and keeps the claim list.
 //
 // Both halves matter and they pull in opposite directions. A broker
-// that came back without its retained store holds nothing, so a gate
-// that still believes it published every value leaves that broker
-// permanently empty. The sweep's ownership evidence is the opposite: it
+// that came back without its retained store holds nothing, so every
+// remembered status item is re-sent on the reconnect itself — unchanged,
+// because it is the same observation — and the next unchanged poll then
+// has nothing to add. The sweep's ownership evidence is the opposite: it
 // is a statement about this *process*, and clearing it would make a
 // reconnected daemon believe it had published nothing — the one input
 // that makes the sweep dangerous.
@@ -327,7 +318,7 @@ func TestAReconnectOpensTheDedupGateAndKeepsTheClaims(t *testing.T) {
 	t.Cleanup(c.Close)
 	ctx := t.Context()
 
-	const state = "unifi/default/device/aa/state"
+	const state = "unifi/status/default/device/aa/state"
 	const config = "homeassistant/sensor/unifi_aa/state/config"
 	mustPublish := func() {
 		t.Helper()
@@ -345,10 +336,12 @@ func TestAReconnectOpensTheDedupGateAndKeepsTheClaims(t *testing.T) {
 	}
 
 	c.OnConnect(ctx)
-
+	if n := broker.count(state); n != 2 {
+		t.Errorf("the value was published %d times after the reconnect, want 2: the replay did not run", n)
+	}
 	mustPublish()
 	if n := broker.count(state); n != 2 {
-		t.Errorf("the value was published %d times after the reconnect, want 2: the dedup gate did not re-open", n)
+		t.Errorf("the value was published %d times after an unchanged poll, want still 2", n)
 	}
 	if !c.pub.claims().Published[config] {
 		t.Error("the reconnect dropped the sweep's ownership claim; a reconnected daemon must not forget what it published")
@@ -453,10 +446,6 @@ func TestEveryStateTopicGoesThroughTheDedupGate(t *testing.T) {
 	for _, fn := range []func(context.Context) error{
 		h.c.refreshStatic, h.c.refreshDevices, h.c.refreshDeviceStats,
 		h.c.refreshClients, h.c.refreshHealth,
-		// `bridge/info` is published from the connect hook alone, so it
-		// would never repeat in a cycle-driven pass — and a publish site
-		// that went round the gate would be invisible. Driven directly.
-		h.c.publishBridgeInfo,
 	} {
 		if err := fn(ctx); err != nil {
 			t.Fatalf("second cycle: %v", err)
@@ -468,7 +457,7 @@ func TestEveryStateTopicGoesThroughTheDedupGate(t *testing.T) {
 	h.broker.mu.Unlock()
 	var offenders []string
 	for _, m := range repeats {
-		if strings.HasPrefix(m.topic, h.c.topics.root+"/") {
+		if strings.HasPrefix(m.topic, h.c.topics.name()+"/status/") {
 			offenders = append(offenders, m.topic)
 		}
 	}
@@ -506,7 +495,7 @@ func mapKeys(m map[string]bool) []string {
 func TestSubscriptionFiltersCannotOverlap(t *testing.T) {
 	t.Parallel()
 
-	nop := func(context.Context, hapub.Command) {}
+	nop := func(context.Context, hapub.Command, hapub.SetValue) {}
 	c := New(Deps{
 		Cfg:    testConfig(),
 		Site:   testSite(),
@@ -521,13 +510,18 @@ func TestSubscriptionFiltersCannotOverlap(t *testing.T) {
 	}
 	r := hapub.NewCommandRouter(nopTransport{}, hapub.CommandConfig{QoS: CommandQoS})
 	for _, f := range filters {
-		if err := r.Handle(f, nop); err != nil {
+		if err := r.HandleSet(f, nop); err != nil {
 			t.Fatalf("the permanent command filters overlap: %v", err)
 		}
 	}
+	// The maintenance filter rides the same router and is disjoint from
+	// all six: it lives under another function.
+	if err := c.instance.Register(r); err != nil {
+		t.Fatalf("the maintenance filter overlaps a command route: %v", err)
+	}
 
 	// Not vacuous: the router really does refuse an overlap.
-	if err := r.Handle("unifi/default/device/+/cmd/+", nop); err == nil {
+	if err := r.HandleSet("unifi/set/default/device/+/cmd/+", nop); err == nil {
 		t.Error("the router accepted a filter overlapping a command route; this test proves nothing")
 	} else if !errors.Is(err, hapub.ErrAmbiguousRoutes) {
 		t.Errorf("the overlap was refused with %v, want ErrAmbiguousRoutes", err)
@@ -538,7 +532,7 @@ func TestSubscriptionFiltersCannotOverlap(t *testing.T) {
 	// however wide the sweep's `<prefix>/#` is.
 	for _, f := range []string{sweepWindow(c), c.cfg.HASSBaseTopic + "/status"} {
 		for _, cmd := range filters {
-			if strings.HasPrefix(f, c.topics.root+"/") {
+			if strings.HasPrefix(f, c.topics.name()+"/") {
 				t.Errorf("%s is inside this daemon's own tree alongside %s", f, cmd)
 			}
 		}
@@ -577,8 +571,8 @@ func TestNothingThisDaemonPublishesIsAlsoSubscribed(t *testing.T) {
 
 	r := hapub.NewCommandRouter(nopTransport{}, hapub.CommandConfig{QoS: CommandQoS})
 	for _, f := range h.c.commandFilters() {
-		if err := r.Handle(f, func(context.Context, hapub.Command) {}); err != nil {
-			t.Fatalf("Handle(%s): %v", f, err)
+		if err := r.HandleSet(f, func(context.Context, hapub.Command, hapub.SetValue) {}); err != nil {
+			t.Fatalf("HandleSet(%s): %v", f, err)
 		}
 	}
 	if err := r.CheckDisjoint(states...); err != nil {
@@ -586,7 +580,7 @@ func TestNothingThisDaemonPublishesIsAlsoSubscribed(t *testing.T) {
 	}
 
 	// Not vacuous: a topic that genuinely collides is caught.
-	collide := h.c.topics.device(surfGwMAC, cmdRestart)
+	collide := h.c.topics.deviceCommand(surfGwMAC, cmdRestart)
 	if err := r.CheckDisjoint(collide); err == nil {
 		t.Errorf("CheckDisjoint accepted %s, which is a command topic; this test proves nothing", collide)
 	}
@@ -608,7 +602,7 @@ func TestTheRouterItselfDropsARetainedDelivery(t *testing.T) {
 
 	tr := &replayTransport{}
 	r := newCommandRouter(t.Context(), tr, slog.New(slog.DiscardHandler))
-	const filter = "unifi/default/device/+/cmd/restart"
+	const filter = "unifi/set/default/device/+/cmd/restart"
 	seen := make(chan hapub.Command, 4)
 	if err := r.Handle(filter, func(_ context.Context, cmd hapub.Command) { seen <- cmd }); err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -617,8 +611,8 @@ func TestTheRouterItselfDropsARetainedDelivery(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	tr.deliver("unifi/default/device/aa/cmd/restart", []byte("PRESS"), true)
-	tr.deliver("unifi/default/device/aa/cmd/restart", []byte("PRESS"), false)
+	tr.deliver("unifi/set/default/device/aa/cmd/restart", []byte("PRESS"), true)
+	tr.deliver("unifi/set/default/device/aa/cmd/restart", []byte("PRESS"), false)
 	r.WaitIdle()
 
 	var got []hapub.Command
@@ -686,7 +680,7 @@ func TestSubscribeCommandsStartsTheRouter(t *testing.T) {
 	got := slices.Clone(sub.filters)
 	sub.mu.Unlock()
 	slices.Sort(got)
-	want := slices.Clone(h.c.commandFilters())
+	want := append(slices.Clone(h.c.commandFilters()), "unifi/maintenance/set/#")
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Fatalf("subscribed %v, want %v", got, want)
@@ -696,7 +690,7 @@ func TestSubscribeCommandsStartsTheRouter(t *testing.T) {
 	handlers := slices.Clone(sub.handlers)
 	filters := slices.Clone(sub.filters)
 	sub.mu.Unlock()
-	topic := h.c.topics.device(gwMAC, cmdRestart)
+	topic := h.c.topics.deviceCommand(gwMAC, cmdRestart)
 	for i, f := range filters {
 		if hapub.MatchFilter(f, topic) {
 			handlers[i](&mqtt.Message{Topic: topic, Payload: []byte("PRESS")})
@@ -716,7 +710,7 @@ func TestSubscribeCommandsStartsTheRouter(t *testing.T) {
 // A self-echo fails the boot rather than warning.
 //
 // The check cannot be reached from the shipped catalogue — every
-// command suffix is one no state topic carries, which is what
+// command filter is under `<name>/set/` and no status item is, which is what
 // TestNothingThisDaemonPublishesIsAlsoSubscribed asserts directly — so
 // the collision is injected through the one seam that can carry an
 // arbitrary topic into the published set. What is pinned here is that
@@ -734,7 +728,7 @@ func TestSubscribeCommandsFailsTheBootOnASelfEcho(t *testing.T) {
 		t.Fatalf("the shipped layout already collides with its own command tree: %v", err)
 	}
 
-	collide := h.c.topics.device(gwMAC, cmdRestart)
+	collide := h.c.topics.deviceCommand(gwMAC, cmdRestart)
 	if err := h.c.pub.publishConfig(ctx, collide, []byte("{}")); err != nil {
 		t.Fatalf("seeding the colliding topic: %v", err)
 	}
@@ -761,7 +755,7 @@ func TestTheStatePlaneStatesItsPulseQoS(t *testing.T) {
 	t.Parallel()
 
 	logs := &logCapture{}
-	newStatePlane(nopTransport{}, nil, slog.New(logs))
+	newStatePlane(nopTransport{}, nil, nil, slog.New(logs))
 	if logs.contains("pulse_qos_unstated") {
 		t.Error("the state plane leaves PulseQoS unstated; its pulses would be delivered " +
 			"at QoS 0 whatever StateQoS says")
@@ -803,8 +797,8 @@ func TestTheWillWritesTheTopicEveryEntityReads(t *testing.T) {
 	if strings.HasPrefix(will.Topic, c.cfg.HASSBaseTopic+"/") {
 		t.Errorf("will topic %q sits inside Home Assistant's own discovery tree", will.Topic)
 	}
-	if string(will.Payload) != payloadOffline {
-		t.Errorf("will payload = %q, want %q", will.Payload, payloadOffline)
+	if string(will.Payload) != hapub.ConnectedPayloadDown {
+		t.Errorf("will payload = %q, want %q", will.Payload, hapub.ConnectedPayloadDown)
 	}
 	if !will.Retain {
 		t.Error("the will is not retained; a Home Assistant that subscribes after the crash would never see it")
@@ -838,7 +832,7 @@ func TestTheWillWritesTheTopicEveryEntityReads(t *testing.T) {
 func TestTheRuntimeDerivesItsStatusTopicFromTheLayout(t *testing.T) {
 	t.Parallel()
 
-	for _, root := range []string{"unifi", "haus/netz"} {
+	for _, root := range []string{"unifi", "haus_netz"} {
 		cfg := testConfig()
 		cfg.MQTTTopic = root
 		c := New(Deps{
@@ -935,15 +929,15 @@ func TestTheAvailabilityMarkerDoesNotGoThroughTheBreaker(t *testing.T) {
 	if err := c.ha().AnnounceOnline(ctx); err != nil {
 		t.Errorf("the birth was refused by the open circuit: %v", err)
 	}
-	if got, _ := direct.latest(c.AvailabilityTopic()); got != payloadOnline {
-		t.Errorf("direct publisher saw %q, want the birth marker", got)
+	if got, _ := direct.latest(c.AvailabilityTopic()); got != "1" {
+		t.Errorf("direct publisher saw %q, want the connected level", got)
 	}
 	if err := c.ha().AnnounceOffline(ctx); err != nil {
 		t.Errorf("the death marker was refused by the open circuit: %v", err)
 	}
 
 	// Not vacuous: every other topic really does ride the breaker.
-	if err := c.pub.publish(ctx, "unifi/default/device/aa/state", "ONLINE"); !errors.Is(err, mqtt.ErrCircuitOpen) {
+	if err := c.pub.publish(ctx, "unifi/status/default/device/aa/state", "ONLINE"); !errors.Is(err, mqtt.ErrCircuitOpen) {
 		t.Errorf("a state publish bypassed the breaker: %v", err)
 	}
 	if direct.total() != 2 {
@@ -1298,13 +1292,13 @@ func TestOnlyTheAvailabilityMarkerBypassesTheBreaker(t *testing.T) {
 	ctx := t.Context()
 
 	tr := c.planeTransport()
-	if err := tr.Publish(ctx, c.AvailabilityTopic(), []byte(payloadOnline), 1, true); err != nil {
+	if err := tr.Publish(ctx, c.AvailabilityTopic(), []byte("2"), 1, true); err != nil {
 		t.Errorf("the availability marker was refused by the open circuit: %v", err)
 	}
 	// Anything else on the same transport must ride the breaker. A
 	// bypass that keyed on the direct publisher's existence rather than
 	// on the topic would let every plane past it the moment one is set.
-	const other = "unifi/default/device/aa/state"
+	const other = "unifi/status/default/device/aa/state"
 	if err := tr.Publish(ctx, other, []byte("ONLINE"), 0, true); !errors.Is(err, mqtt.ErrCircuitOpen) {
 		t.Errorf("a state publish through the plane transport bypassed the breaker: %v", err)
 	}
@@ -1314,5 +1308,63 @@ func TestOnlyTheAvailabilityMarkerBypassesTheBreaker(t *testing.T) {
 	if direct.total() != 1 {
 		t.Errorf("the direct publisher carried %d messages, want only the availability marker",
 			direct.total())
+	}
+}
+
+// The maintenance topics act on the daemon itself: `loglevel` on the
+// handler's level, `restart` on the graceful shutdown — and the restart
+// only where something restarts the process afterwards.
+func TestMaintenanceReachesTheDaemon(t *testing.T) {
+	t.Parallel()
+
+	for _, supervised := range []bool{false, true} {
+		var level slog.LevelVar
+		shutdown := make(chan struct{}, 1)
+		c := New(Deps{
+			Cfg:         testConfig(),
+			Site:        testSite(),
+			Source:      newFakeSource(),
+			MQTT:        &fakeBroker{},
+			Logger:      slog.New(slog.DiscardHandler),
+			SetLogLevel: level.Set,
+			Supervised:  func() bool { return supervised },
+			Shutdown:    func() { shutdown <- struct{}{} },
+		})
+		t.Cleanup(c.Close)
+		sub := &fakeSubscriber{}
+		c.SetSubscriber(sub)
+		if err := c.subscribeCommands(t.Context()); err != nil {
+			t.Fatalf("subscribeCommands: %v", err)
+		}
+
+		send := func(topic, payload string) {
+			t.Helper()
+			sub.mu.Lock()
+			handlers, filters := slices.Clone(sub.handlers), slices.Clone(sub.filters)
+			sub.mu.Unlock()
+			for i, f := range filters {
+				if hapub.MatchFilter(f, topic) {
+					handlers[i](&mqtt.Message{Topic: topic, Payload: []byte(payload)})
+				}
+			}
+			c.router.WaitIdle()
+		}
+
+		send("unifi/maintenance/set/loglevel", "debug")
+		if level.Level() != slog.LevelDebug {
+			t.Errorf("supervised=%v: log level = %v after loglevel debug", supervised, level.Level())
+		}
+
+		send("unifi/maintenance/set/restart", "")
+		select {
+		case <-shutdown:
+			if !supervised {
+				t.Error("an unsupervised daemon shut down on restart; nothing would start it again")
+			}
+		case <-time.After(500 * time.Millisecond):
+			if supervised {
+				t.Error("a supervised daemon ignored restart")
+			}
+		}
 	}
 }

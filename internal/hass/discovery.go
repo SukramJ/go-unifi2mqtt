@@ -20,6 +20,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SukramJ/go-hamqtt/discovery"
+	hatopic "github.com/SukramJ/go-hamqtt/topic"
+
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 )
 
@@ -33,18 +36,29 @@ import (
 // in either package. The coordinator owns the layout and passes itself
 // in.
 type Topics interface {
-	// DeviceTopic returns the state topic for one device value, e.g.
+	// DeviceTopic returns the status item for one device value, e.g.
 	// key "state" or "port/3/poe".
 	DeviceTopic(mac model.MAC, key string) string
-	// ClientTopic returns the state topic for one client value.
+	// DeviceCommandTopic returns the set item for one device command,
+	// e.g. key "cmd/restart".
+	DeviceCommandTopic(mac model.MAC, key string) string
+	// ClientTopic returns the status item for one client value.
 	ClientTopic(key, valueKey string) string
-	// HealthTopic returns the state topic for one site-health value.
+	// ClientCommandTopic returns the set item for one client command.
+	ClientCommandTopic(key, valueKey string) string
+	// HealthTopic returns the status item for one site-health value.
 	HealthTopic(key string) string
-	// WLANTopic returns the state topic for one WLAN value.
+	// WLANTopic returns the status item for one WLAN value.
 	WLANTopic(id, key string) string
-	// AvailabilityTopic returns the bridge's retained online/offline
-	// topic.
+	// WLANCommandTopic returns the set item for one WLAN command.
+	WLANCommandTopic(id, key string) string
+	// AvailabilityTopic returns the bridge's retained `<name>/connected`
+	// topic, which carries 0, 1 or 2.
 	AvailabilityTopic() string
+	// SmartHome is the instance's mqtt-smarthome layout, for the
+	// `info` and `maintenance` topics the discovery runtime's layout
+	// forwards.
+	SmartHome() hatopic.SmartHome
 }
 
 // Manufacturer is the vendor string every device is announced under.
@@ -201,12 +215,35 @@ type deviceInfo struct {
 	ViaDevice string `json:"via_device,omitempty"`
 }
 
-// availabilityEntry is one source in a multi-source availability list.
-type availabilityEntry struct {
-	Topic string `json:"topic"`
-	// ValueTemplate maps a topic's payload onto online/offline when it
-	// does not already use those words.
-	ValueTemplate string `json:"value_template,omitempty"`
+// availabilityEntry is one source in a multi-source availability list:
+// go-hamqtt's own entry, so the four keys spec §8 allows — topic,
+// value_template, payload_available, payload_not_available — are the
+// only ones a payload of this package can carry.
+type availabilityEntry = discovery.AvailabilityEntry
+
+// attributesTemplate reads the attributes document out of its status
+// object. The attributes topics carry `{"val": {…}, "ts", "lc"}` like
+// every other status item, and without the template Home Assistant would
+// show `val`, `ts` and `lc` as the entity's three attributes.
+const attributesTemplate = "{{ value_json.val | tojson }}"
+
+// valueTemplateFor is the template an entity reads its status item
+// with: the spec's explicit one when it has one, and otherwise the one
+// go-hamqtt renders for the platform under the status-object encoding —
+// `val` lowered on the platforms that compare a boolean against
+// `payload_on`/`state_on`, `val` itself everywhere else. A button reads
+// nothing.
+func valueTemplateFor(p Platform, explicit string) string {
+	switch {
+	case explicit != "":
+		return explicit
+	case p == PlatformBinarySensor || p == PlatformSwitch:
+		return discovery.StatusBoolValueTemplate
+	case p == PlatformButton:
+		return ""
+	default:
+		return discovery.StatusValueTemplate
+	}
 }
 
 // entity is the discovery payload shared by every platform. Fields are
@@ -250,6 +287,9 @@ type entity struct {
 	PayloadOff          string `json:"payload_off,omitempty"`
 	ValueTemplate       string `json:"value_template,omitempty"`
 	JSONAttributesTopic string `json:"json_attributes_topic,omitempty"`
+	// JSONAttributesTemplate is [attributesTemplate] wherever
+	// JSONAttributesTopic is set.
+	JSONAttributesTemplate string `json:"json_attributes_template,omitempty"`
 
 	Availability     []availabilityEntry `json:"availability,omitempty"`
 	AvailabilityMode string              `json:"availability_mode,omitempty"`
@@ -283,9 +323,9 @@ type spec struct {
 	icon        string
 	payloadOn   string
 	payloadOff  string
-	// valueTemplate maps the published value onto payloadOn/payloadOff
-	// for a binary sensor whose state topic carries something richer
-	// than two strings.
+	// valueTemplate maps the published token onto payloadOn/payloadOff
+	// for a binary sensor whose status item carries something richer
+	// than a boolean. Empty means [valueTemplateFor]'s default.
 	//
 	// Without one, a binary sensor can only match the values it names:
 	// a device state topic carrying every model.DeviceState string
@@ -355,7 +395,7 @@ func deviceSpecs() []spec {
 			// report the device going away. It stayed *available* while
 			// doing it, because this entity is bridge-scoped on
 			// purpose, so nothing anywhere said the reading was stale.
-			valueTemplate: "{{ 'ON' if value == 'ONLINE' else 'OFF' }}",
+			valueTemplate: "{{ 'ON' if value_json.val == 'ONLINE' else 'OFF' }}",
 			payloadOn:     payloadON,
 			payloadOff:    payloadOFF,
 
@@ -393,7 +433,7 @@ func deviceSpecs() []spec {
 		},
 		{
 			platform: PlatformBinarySensor, key: "update_available", stateSuffix: "update_available",
-			deviceClass: "update", payloadOn: "ON", payloadOff: "OFF",
+			deviceClass: "update", payloadOn: discovery.PayloadTrue, payloadOff: discovery.PayloadFalse,
 			category:        "diagnostic",
 			bridgeAvailOnly: true,
 		},
@@ -415,7 +455,7 @@ func portSpecs(p *model.Port) []spec {
 			// defect as the device "reachable" sensor, on a third
 			// surface. A port whose link state the console cannot
 			// report is not carrying traffic, so it reads as off.
-			valueTemplate: "{{ 'ON' if value == 'UP' else 'OFF' }}",
+			valueTemplate: "{{ 'ON' if value_json.val == 'UP' else 'OFF' }}",
 			payloadOn:     payloadON,
 			payloadOff:    payloadOFF,
 			category:      "diagnostic",
@@ -436,7 +476,7 @@ func portSpecs(p *model.Port) []spec {
 			platform: PlatformBinarySensor, key: prefix + "poe",
 			nameKey: "port_poe", nameArg: idx,
 			stateSuffix: "port/" + idx + "/poe",
-			deviceClass: "power", payloadOn: "ON", payloadOff: "OFF",
+			deviceClass: "power", payloadOn: discovery.PayloadTrue, payloadOff: discovery.PayloadFalse,
 			category: "diagnostic",
 		})
 	}
@@ -488,12 +528,15 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 		Icon:                s.icon,
 		PayloadOn:           s.payloadOn,
 		PayloadOff:          s.payloadOff,
-		ValueTemplate:       s.valueTemplate,
+		ValueTemplate:       valueTemplateFor(s.platform, s.valueTemplate),
 		JSONAttributesTopic: d.stateTopic(mac, "attributes"),
-		Availability:        d.availabilityFor(mac, s.bridgeAvailOnly),
-		AvailabilityMode:    "all",
-		Device:              info,
-		Origin:              origin(),
+		// A sibling field of the topic rather than a separate key set, so
+		// the two cannot be published apart.
+		JSONAttributesTemplate: attributesTemplate,
+		Availability:           d.availabilityFor(mac, s.bridgeAvailOnly),
+		AvailabilityMode:       "all",
+		Device:                 info,
+		Origin:                 origin(),
 	}
 
 	payload, err := json.Marshal(e)
@@ -506,17 +549,6 @@ func (d *Discovery) render(s *spec, mac model.MAC, info deviceInfo) (Entry, erro
 	}, nil
 }
 
-// availabilityFor builds the availability sources for an entity.
-//
-// Two stages (CONCEPT.md §6.5): the bridge topic covers the daemon
-// being gone, and the device's own state topic covers the device being
-// gone — without the second one a switch that went offline would sit in
-// Home Assistant showing its last CPU reading as though it were current.
-//
-// Entities that report the offline condition itself (state, reachable,
-// firmware, update) opt out of the second stage: making them unavailable
-// when the device is offline would hide exactly the information the
-// user needs.
 // siteDeviceInfo is the one `device` block the synthetic site device is
 // announced under.
 //
@@ -542,16 +574,42 @@ func (d *Discovery) siteDeviceInfo() deviceInfo {
 	}
 }
 
+// availabilityFor builds the availability sources for an entity.
+//
+// Two stages (CONCEPT.md §6.5): `<name>/connected` covers the daemon
+// being gone or the console being unreachable, and the device's own
+// `online` item covers the device being gone — without the second one a
+// switch that went offline would sit in Home Assistant showing its last
+// CPU reading as though it were current.
+//
+// Entities that report the offline condition itself (state, reachable,
+// firmware, update) opt out of the second stage: making them unavailable
+// when the device is offline would hide exactly the information the
+// user needs.
 func (d *Discovery) availabilityFor(mac model.MAC, bridgeOnly bool) []availabilityEntry {
 	out := make([]availabilityEntry, 0, 2)
-	out = append(out, availabilityEntry{Topic: d.topics.AvailabilityTopic()})
+	out = append(out, d.bridgeAvailability())
 	if bridgeOnly {
 		return out
 	}
-	return append(out, availabilityEntry{
-		Topic:         d.stateTopic(mac, "state"),
-		ValueTemplate: "{{ 'online' if value == 'ONLINE' else 'offline' }}",
-	})
+	return append(out, d.deviceAvailability(mac))
+}
+
+// bridgeAvailability is the entry every entity carries: `<name>/connected`,
+// available at 2 (spec §8), through go-hamqtt's own entry so the template
+// and the two payloads are the library's spelling.
+func (d *Discovery) bridgeAvailability() availabilityEntry {
+	return discovery.ConnectedAvailability(d.topics.AvailabilityTopic(), discovery.ConnectedOperational)
+}
+
+// deviceAvailability is the infrastructure device's `online` item.
+func (d *Discovery) deviceAvailability(mac model.MAC) availabilityEntry {
+	return discovery.OnlineAvailability(d.stateTopic(mac, "online"), discovery.StatusObjectEncoding)
+}
+
+// clientAvailability is a client's `online` item.
+func (d *Discovery) clientAvailability(key string) availabilityEntry {
+	return discovery.OnlineAvailability(d.topics.ClientTopic(key, "online"), discovery.StatusObjectEncoding)
 }
 
 func (d *Discovery) deviceInfo(dev *model.Device) deviceInfo {

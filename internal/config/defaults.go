@@ -20,6 +20,12 @@ const (
 	DefaultMQTTPort    = 1883
 	DefaultMQTTSSLPort = 8883
 	DefaultMQTTTopic   = "unifi"
+	// DefaultMQTTMaintenance switches the mqtt-smarthome maintenance
+	// topics on, as spec §7 recommends.
+	DefaultMQTTMaintenance = true
+	// DefaultMQTTStatsInterval is the `<name>/maintenance/stats` period
+	// in seconds (spec §9's default).
+	DefaultMQTTStatsInterval = 60
 
 	DefaultHASSBaseTopic      = "homeassistant"
 	DefaultHASSBirthGracetime = 15
@@ -33,7 +39,6 @@ const (
 	DefaultRefreshClients = 30
 	DefaultRefreshHealth  = 60
 	DefaultRefreshStatic  = 3600
-	DefaultForceRepublish = 600
 
 	DefaultClientsMax         = 100
 	DefaultClientsAwayTimeout = 300
@@ -55,8 +60,10 @@ func defaults() Config {
 		HTTPTimeout: DefaultHTTPTimeout,
 		HTTPRetries: DefaultHTTPRetries,
 
-		MQTTPort:  DefaultMQTTPort,
-		MQTTTopic: DefaultMQTTTopic,
+		MQTTPort:          DefaultMQTTPort,
+		MQTTTopic:         DefaultMQTTTopic,
+		MQTTMaintenance:   DefaultMQTTMaintenance,
+		MQTTStatsInterval: DefaultMQTTStatsInterval,
 
 		HASSBaseTopic:      DefaultHASSBaseTopic,
 		HASSBirthGracetime: DefaultHASSBirthGracetime,
@@ -66,7 +73,6 @@ func defaults() Config {
 		RefreshClients: DefaultRefreshClients,
 		RefreshHealth:  DefaultRefreshHealth,
 		RefreshStatic:  DefaultRefreshStatic,
-		ForceRepublish: DefaultForceRepublish,
 
 		Clients: ClientsConfig{
 			// Wireless-only is the useful default for presence
