@@ -560,6 +560,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 
 	g.Go(func() error { return c.rediscoverLoop(gctx) })
 	g.Go(func() error { return c.reconcileOrphans(gctx) })
+	g.Go(func() error { return c.migrateOldLayout(gctx) })
 	// The maintenance commands ride the same router as the controls, so
 	// it is subscribed whether or not CONTROLS.ENABLE is on.
 	if err := c.subscribeCommands(ctx); err != nil {
