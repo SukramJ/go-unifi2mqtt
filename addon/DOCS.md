@@ -77,11 +77,37 @@ controller API to fill those gaps.
 | `mqtt_server` | — | Broker host. **Leave empty** to use the Home Assistant MQTT service. |
 | `mqtt_port` | `1883` | Broker port. |
 | `mqtt_login` / `mqtt_password` | — | Broker credentials. |
-| `mqtt_topic` | `unifi` | Root of the published topic tree. |
+| `mqtt_topic` | `unifi` | The instance name, first level of every topic (`unifi/status/…`, `unifi/set/…`, `unifi/connected`, `unifi/info`). **It is the only thing that keeps two instances on one broker apart**: two consoles or sites need two different names. The default `unifi` is also the default instance name of hobbyquaker's Node.js adapter `unifi2mqtt`; running both on one broker needs one of them renamed. |
+| `mqtt_maintenance` | `true` | The mqtt-smarthome maintenance topics: `unifi/maintenance/set/loglevel` (`error`/`warn`/`info`/`debug`, not persisted), `unifi/maintenance/set/restart` and `unifi/maintenance/stats`. See the security note below. |
+| `mqtt_stats_interval` | `60` | Seconds between `unifi/maintenance/stats`; `0` switches them off. |
 | `mqtt_client_id` | *(empty)* | Identifier presented to the broker. Empty means `unifi2mqtt-` + `mqtt_topic`. Set it when two instances share one broker — two clients on one identifier evict each other in a loop. |
 | `hass_enable` | `true` | Publish Home Assistant discovery. |
 | `hass_base_topic` | `homeassistant` | Discovery prefix. Only change this if you changed it in the MQTT integration too. |
 | `hass_cleanup` | `true` | On start, remove the discovery configs **this run of the add-on published and has since given up**. A config it did not publish itself is never removed, even one that looks exactly like its own — two UniFi consoles bridged to one broker publish indistinguishable configs, and removing the wrong one deletes another console's entities from Home Assistant with nothing in any log to say so. Leftovers from an earlier version or a removed device are therefore listed in the log (`reconcile_unclaimed`) instead of removed; see Troubleshooting. |
+
+Since 2.0.0 the topics follow the mqtt-smarthome 2.0 convention:
+status items under `unifi/status/<site>/…` as `{"val","ts","lc"}`
+objects, commands under `unifi/set/<site>/…`, `unifi/connected`
+(`0`/`1`/`2`) and `unifi/info`. The Home Assistant entities keep their
+identities and move with it by themselves; flows and dashboards that read
+the raw topics have to move. The old and new topics are listed side by
+side in the project README ("Upgrading from 1.x"), and the add-on clears
+the 1.x leftovers it owns on every start. A `unifi_site` whose reference
+is `bridge`, `alarm`, `security`, `system` or an mqtt-smarthome function
+name (`status`, `set`, `info`, …) is refused at start.
+
+**`unifi/maintenance/set/restart` is refused in the add-on** (logged as
+`publisher.maintenance.restart_refused`). The restart is a clean exit
+that relies on something starting the process again, and for an add-on
+that is only the Supervisor's Watchdog switch — off by default, and not
+visible to the add-on. Restart the add-on from Home Assistant instead.
+The log level and the statistics work as described.
+
+> **Anyone who can publish to your broker can change the add-on's log
+> level** through the maintenance topics, and restart your network
+> hardware once controls are on. Give the add-on's broker user an ACL for
+> `unifi/#` and the discovery prefix, and turn `mqtt_maintenance` off on
+> a broker without authentication.
 
 ### Polling
 

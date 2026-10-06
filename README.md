@@ -114,50 +114,155 @@ client.
 
 ## MQTT topic layout
 
-Rooted at `MQTT_TOPIC` (default `unifi`), keyed by site and MAC:
+Since 2.0.0 the tree follows the
+[mqtt-smarthome 2.0](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md)
+convention, `<name>/<function>/<item...>` (openccu-loom ADR 0083). The
+instance name is `MQTT_TOPIC` (default `unifi`); below `status` and
+`set` the items are keyed by site and MAC:
 
 ```
-unifi/bridge/status                            online | offline   (retained LWT)
-unifi/bridge/info                              {"site":…,"application_version":…}
-unifi/bridge/error                             last non-fatal failure
+unifi/connected                                       0 | 1 | 2        (retained, Last Will 0)
+unifi/info                                            {"name":"go-unifi2mqtt","version":…,"spec":"2.0",…}
+unifi/status/bridge/error                             {"val":{"loop":…,"error":…},…}   (not retained)
 
-unifi/<site>/health/wan/state                  ok | warning | error
-unifi/<site>/health/wan/ip                     203.0.113.7
-unifi/<site>/health/wan/latency_ms             12
-unifi/<site>/health/clients/total              47
+unifi/status/<site>/health/wan/state                  ok | warning | error
+unifi/status/<site>/health/wan/ip                     203.0.113.7
+unifi/status/<site>/health/wan/latency_ms             12
+unifi/status/<site>/health/clients/total              47
 
-unifi/<site>/device/<mac>/state                ONLINE | OFFLINE | …
-unifi/<site>/device/<mac>/cpu_utilization      12.5
-unifi/<site>/device/<mac>/memory_utilization   48.0
-unifi/<site>/device/<mac>/uptime               864000
-unifi/<site>/device/<mac>/uplink_tx_bps        1048576
-unifi/<site>/device/<mac>/firmware             7.0.25
-unifi/<site>/device/<mac>/update_available     ON | OFF
-unifi/<site>/device/<mac>/attributes           {"model":…,"uplink_mac":…}
-unifi/<site>/device/<mac>/port/3/state         UP | DOWN
-unifi/<site>/device/<mac>/port/3/poe           ON | OFF
-unifi/<site>/device/<mac>/port/3/poe/power_w   7.4
-unifi/<site>/device/<mac>/radio/5g/channel     36
+unifi/status/<site>/device/<mac>/state                ONLINE | OFFLINE | …
+unifi/status/<site>/device/<mac>/online               true | false
+unifi/status/<site>/device/<mac>/cpu_utilization      12.5
+unifi/status/<site>/device/<mac>/memory_utilization   48
+unifi/status/<site>/device/<mac>/uptime               864000
+unifi/status/<site>/device/<mac>/uplink_tx_bps        1048576
+unifi/status/<site>/device/<mac>/firmware             7.0.25
+unifi/status/<site>/device/<mac>/update_available     true | false
+unifi/status/<site>/device/<mac>/attributes           {"model":…,"uplink_mac":…}
+unifi/status/<site>/device/<mac>/port/3/state         UP | DOWN
+unifi/status/<site>/device/<mac>/port/3/poe           true | false
+unifi/status/<site>/device/<mac>/port/3/poe/power_w   7.4
+unifi/status/<site>/device/<mac>/radio/5g/channel     36
 
-unifi/<site>/client/<mac>/state                home | not_home
-unifi/<site>/client/<mac>/ip                   192.168.1.42
-unifi/<site>/client/<mac>/signal               -52
-unifi/<site>/client/<mac>/attributes           {"ssid":…,"vlan":…}
+unifi/status/<site>/client/<mac>/state                home | not_home
+unifi/status/<site>/client/<mac>/online               true | false
+unifi/status/<site>/client/<mac>/ip                   192.168.1.42
+unifi/status/<site>/client/<mac>/signal               -52
+unifi/status/<site>/client/<mac>/attributes           {"ssid":…,"vlan":…}
 
-unifi/<site>/wlan/<id>/enabled                 ON | OFF
-unifi/<site>/wlan/<id>/name                    HomeNet
+unifi/status/<site>/wlan/<id>/enabled                 true | false
+unifi/status/<site>/wlan/<id>/name                    HomeNet
 ```
 
-Command topics, only with `CONTROLS.ENABLE`:
+The values above are each item's `val`. Every status item is published
+as a status object, never as a plain value:
+
+```json
+{"val": 12.5, "ts": 1760000000000, "lc": 1759999940000}
+```
+
+`ts` is when the value was observed and `lc` when it last changed, both
+integer milliseconds. Booleans are JSON booleans, numbers JSON numbers,
+states their English token. A value is published when it changes and
+again, unchanged, after every broker reconnect — never periodically. An
+empty retained payload means "no value" (an absent client's `ip`).
+
+`unifi/connected` is `0` when the daemon is gone (Last Will, and on a
+clean stop), `1` while it is connected to the broker but the console
+does not answer its device poll, and `2` while it does. A device's or
+client's own reachability is its `online` item. Home Assistant entities
+are available while `connected` is 2 and, where the entity has one,
+the object's `online` is true.
+
+Command items, only with `CONTROLS.ENABLE`, on the same item path under
+`set`. A plain value or `{"val": …}` is accepted; switches take
+`true/false`, `on/off`, `1/0` or `yes/no` in any case and reject
+anything else; the `cmd/…` actions fire on any non-empty payload.
+Empty and retained messages are ignored, and a rejected or failed
+request is logged at warn with its topic and payload:
 
 ```
-unifi/<site>/device/<mac>/cmd/restart            ← any payload
-unifi/<site>/device/<mac>/cmd/locate/set         ← ON | OFF
-unifi/<site>/device/<mac>/port/3/cmd/power_cycle ← any payload
-unifi/<site>/client/<mac>/blocked/set            ← ON | OFF
-unifi/<site>/client/<mac>/cmd/authorize          ← {"minutes":60} or empty
-unifi/<site>/wlan/<id>/enabled/set               ← ON | OFF
+unifi/set/<site>/device/<mac>/cmd/restart             ← any non-empty payload
+unifi/set/<site>/device/<mac>/cmd/locate              ← true | false
+unifi/set/<site>/device/<mac>/port/3/cmd/power_cycle  ← any non-empty payload
+unifi/set/<site>/client/<mac>/blocked                 ← true | false
+unifi/set/<site>/client/<mac>/cmd/authorize           ← {} or {"minutes":60}
+unifi/set/<site>/wlan/<id>/enabled                    ← true | false
 ```
+
+`bridge` sits beside the sites as a literal item, so a site whose
+reference is `bridge`, `alarm`, `security`, `system` or one of the
+function names (`connected`, `status`, `set`, `get`, `info`, `meta`,
+`maintenance`) is refused at start.
+
+### `MQTT_TOPIC`: the instance name
+
+`MQTT_TOPIC` is the only thing that keeps two instances apart on one
+broker, and nothing checks it. Two consoles — or two sites of one
+console — bridged to the same broker need two different names, or they
+overwrite each other's `connected`, `info` and status items. The
+default `unifi` is also the default instance name of hobbyquaker's
+Node.js adapter [unifi2mqtt](https://github.com/hobbyquaker/unifi2mqtt);
+running both on one broker needs one of them renamed.
+
+### Upgrading from 1.x
+
+2.0.0 is a clean break, with no compatibility switch. Home Assistant
+users need to do nothing: `unique_id`s, device identifiers and discovery
+config topics are unchanged, and the entities re-point to the new
+topics by themselves. Anything that reads the raw topics — Node-RED
+flows, dashboards, scripts — has to move:
+
+| 1.x | 2.0 |
+|---|---|
+| `unifi/<site>/…/<key>` = `12.5` | `unifi/status/<site>/…/<key>` = `{"val":12.5,"ts":…,"lc":…}` |
+| `ON` / `OFF` | `true` / `false` |
+| `unifi/bridge/status` = `online` / `offline` | `unifi/connected` = `0` / `1` / `2` |
+| `unifi/bridge/info` | `unifi/info` (`bridge_version` → `version`, `host` → `console_host`) |
+| `unifi/bridge/error` | `unifi/status/bridge/error` (still not retained) |
+| — | `unifi/status/<site>/device/<mac>/online`, `…/client/<mac>/online` |
+| `…/device/<mac>/cmd/restart` | `unifi/set/<site>/device/<mac>/cmd/restart` |
+| `…/device/<mac>/cmd/locate/set` | `unifi/set/<site>/device/<mac>/cmd/locate` |
+| `…/device/<mac>/port/<p>/cmd/power_cycle` | `unifi/set/<site>/device/<mac>/port/<p>/cmd/power_cycle` |
+| `…/client/<mac>/blocked/set` | `unifi/set/<site>/client/<mac>/blocked` |
+| `…/client/<mac>/cmd/authorize` (empty payload allowed) | `unifi/set/<site>/client/<mac>/cmd/authorize` (needs `{}` or `{"minutes": n}`) |
+| `…/wlan/<id>/enabled/set` | `unifi/set/<site>/wlan/<id>/enabled` |
+| every value republished every `FORCE_REPUBLISH` s | on change and on reconnect only; the key is ignored |
+
+On every start the daemon clears what 1.x left retained under its own
+name: `unifi/bridge/status`, `unifi/bridge/info`, the site's health
+items, and the 1.x items of every device, client and SSID it has polled
+from its own console in this run — exact 1.x shapes only, never a
+prefix, never a topic whose second level is a function name. An object
+this run does not see keeps its old topics until a later start does.
+A site whose reference is now reserved (see above) stops the daemon
+with a message naming `SITE`.
+
+### Maintenance topics
+
+On by default (`MQTT_MAINTENANCE: false` turns them off), per spec §7:
+
+```
+unifi/maintenance/set/loglevel   ← error | warn | info | debug   (not persisted)
+unifi/maintenance/set/restart    ← any                            (graceful stop, exit 0)
+unifi/maintenance/stats          {"rss":…,"heapUsed":…,"cpu":…,"uptime":…,"ts":…}  every MQTT_STATS_INTERVAL s (0 = off)
+```
+
+`restart` exits cleanly and relies on something starting the daemon
+again, so it is honoured only when the daemon knows it is supervised:
+`UNIFI_SUPERVISED=1` (or `0` to refuse), otherwise detected — systemd,
+Kubernetes, a container. A container without a restart policy is
+detected as supervised too, and a restart then stops it for good; set
+`UNIFI_SUPERVISED=0` there. The Home Assistant add-on refuses it (see
+its documentation).
+
+**Security.** Anyone allowed to publish on the broker can change the
+log level and restart the daemon. Give the daemon's broker user an ACL
+for `unifi/#` and the discovery prefix and nothing else, give consumers
+publish rights only where they need them, and on a broker that cannot
+be secured set `MQTT_MAINTENANCE: false`.
+
+### Discovery
 
 Discovery configs are retained too. On start the daemon reads back what
 is retained under the discovery prefix and clears the orphans among
@@ -188,7 +293,7 @@ whole entity set instead of overwriting it entity by entity. The
 reasoning, and the condition under which that could change, is in
 [`notes/adr0070-phase9-measurement.md`](notes/adr0070-phase9-measurement.md).
 
-State topics are retained, command topics are not. **Retained commands
+Status items are retained, command items are not. **Retained commands
 are ignored on purpose**: a stale `mosquitto_pub -r` would otherwise
 power-cycle a port every time the daemon starts.
 
@@ -213,7 +318,9 @@ It binds to `127.0.0.1:8080` by default. Set `WEB_USER` and
   certificate on their LAN address. `CA_FILE` is the better fix: it
   keeps verification on and trusts the console's own certificate.
 - **Whoever can publish to your broker can restart your network
-  hardware** once controls are enabled. Use a broker ACL.
+  hardware** once controls are enabled, and restart this daemon or
+  change its log level through the maintenance topics. Use a broker
+  ACL; see [Maintenance topics](#maintenance-topics).
 - Credentials never reach a log line, an error message, the web UI or an
   MQTT payload.
 

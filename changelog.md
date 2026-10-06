@@ -1,3 +1,99 @@
+# Version 2.0.0 (2026-10-06)
+
+A breaking release: the MQTT tree moves to the
+[mqtt-smarthome 2.0](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md)
+convention, which all six projects of this family adopt together
+(openccu-loom ADR 0083). Every topic and every status payload changes,
+there is no compatibility switch, and anything that reads the raw topics
+— Node-RED flows, dashboards, scripts — has to move. The README lists
+the old and the new topics side by side ("Upgrading from 1.x").
+
+**Home Assistant users need to do nothing.** No `unique_id`, device
+identifier, entity_id seed or discovery config topic changed — the whole
+fleet is held to the frozen 1.3.0 rendering by a test — so every entity
+keeps its history, area, name and automations and simply re-points to
+the new topics.
+
+## The new layout
+
+- `<name>/<function>/<item...>`, `<name>` being `MQTT_TOPIC` (default
+  `unifi`): status items under `unifi/status/<site>/…`, commands on the
+  same item path under `unifi/set/<site>/…`.
+- Every status item is `{"val": …, "ts": …, "lc": …}`: `ts` when the value
+  was observed, `lc` when it last changed, integer milliseconds. `ON`/`OFF`
+  are now JSON booleans, numbers are JSON numbers, states keep their
+  English token (`ONLINE`, `UP`, `home`, `ok`).
+- `unifi/bridge/status` (`online`/`offline`) is replaced by
+  `unifi/connected`: `0` from the Last Will and on a clean stop, `1` while
+  the broker is reachable but the console does not answer the device
+  poll, `2` while it does. Entities are available at `2`.
+- `unifi/bridge/info` is replaced by `unifi/info` (`name`
+  `go-unifi2mqtt`, `version`, `spec`, `go`, `host`, `pid`, `started`,
+  `maintenance`, plus `site`, `site_id`, `application_version` and the
+  console's host as `console_host`).
+- `unifi/bridge/error` moves to `unifi/status/bridge/error`, still not
+  retained, as a status object whose `val` is `{"loop", "error"}`.
+- New `online` items (`true`/`false`) for every device and every client;
+  entities read them as their second availability entry instead of
+  templating the `state` topic.
+- Values are published on change and replayed unchanged after every
+  broker reconnect. The forced republish every `FORCE_REPUBLISH` seconds
+  is gone; the key is ignored if still set.
+
+## Commands
+
+`cmd/locate/set`, `blocked/set` and `enabled/set` become `cmd/locate`,
+`blocked` and `enabled` under `unifi/set/<site>/…`; `cmd/restart`,
+`port/<p>/cmd/power_cycle` and `cmd/authorize` keep their item path. A
+plain value and `{"val": …}` are both accepted. Switches take
+`true/false`, `on/off`, `1/0`, `yes/no` in any case and **reject anything
+else** (1.x read an unknown payload as "off"). Empty and retained
+messages are ignored, so **`cmd/authorize` no longer accepts an empty
+payload** — send `{}` for the site default or `{"minutes": n}`. A
+rejected or failed command is logged at warn with its topic and payload.
+
+## Maintenance topics
+
+New and on by default (`MQTT_MAINTENANCE`, `MQTT_STATS_INTERVAL`, also
+add-on options `mqtt_maintenance` and `mqtt_stats_interval`):
+`unifi/maintenance/set/loglevel`, `unifi/maintenance/set/restart` (a
+graceful stop and exit 0, honoured only when the daemon is supervised —
+`UNIFI_SUPERVISED`, else systemd, Kubernetes or a container is detected)
+and `unifi/maintenance/stats`. **Anyone allowed to publish on the broker
+can then restart the daemon or change its log level**; use broker ACLs,
+or switch the topics off. The Home Assistant add-on refuses the restart:
+the Supervisor only restarts an add-on through its Watchdog switch, which
+is off by default — restart it from Home Assistant instead.
+
+## Possible hard failures on upgrade
+
+- A site whose reference is `bridge`, `alarm`, `security`, `system` or an
+  mqtt-smarthome function name (`connected`, `status`, `set`, `get`,
+  `info`, `meta`, `maintenance`) is refused at start.
+- An `MQTT_TOPIC` starting with `$` is refused.
+
+## Migration
+
+On every start the daemon clears what 1.x left retained under its own
+name: `bridge/status`, `bridge/info`, the site's health items, and the
+1.x items of every device, client and SSID it polled from its own console
+in that run — exact 1.x shapes only, never a prefix match, never another
+name or site. An object not seen in a run keeps its old topics until a
+later start sees it.
+
+## `MQTT_TOPIC` is the instance name
+
+It is the only thing that keeps two instances on one broker apart: two
+consoles or sites need two different names. The default `unifi` is also
+the default of hobbyquaker's Node.js adapter `unifi2mqtt`; running both
+on one broker needs one of them renamed.
+
+## Library updates
+
+- `go-hamqtt` 0.35.0 → 0.36.0 (the mqtt-smarthome building blocks:
+  `topic.SmartHome`, the status-object encoding, `Runtime.SetConnected`,
+  `CommandRouter.HandleSet`, `publisher.Instance`, `DetectSupervised`).
+
 # Version 1.3.0 (2026-10-02)
 
 A toolchain and dependency release. The daemon and the add-on image are

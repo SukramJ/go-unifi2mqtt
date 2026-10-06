@@ -482,97 +482,159 @@ VLAN mapping from §2.2.
 
 ## 5. MQTT topic layout
 
-The tree is rooted at `MQTT_TOPIC` (default `unifi`) and keyed by site and
-MAC address. `<site>` is the site identifier (`default`), `<mac>` the
-normalised MAC without separators.
+Since 2.0.0 the tree follows mqtt-smarthome 2.0
+(<https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md>),
+as openccu-loom ADR 0083 decided for all six projects of the family:
+`<name>/<function>/<item...>`. `<name>` is `MQTT_TOPIC` (default `unifi`,
+sanitised to one segment), the function is `connected`, `status`, `set`,
+`info` or `maintenance`, and below `status` and `set` the items are keyed
+by site and MAC address. `<site>` is the site reference (`default`),
+`<mac>` the normalised MAC without separators. The 1.x column names what
+each topic was before 2.0.0; there is no compatibility switch.
+
+`MQTT_TOPIC` is the only thing that keeps two instances on one broker
+apart, and nothing checks it: two consoles or sites need two names. The
+default `unifi` is also hobbyquaker's Node.js `unifi2mqtt` default; the
+two on one broker need one renamed.
 
 ### 5.1 Bridge level
 
-| Topic                 | Retain | Content                                                   |
-| --------------------- | ------ | --------------------------------------------------------- |
-| `unifi/bridge/status` | ✅     | `online` \| `offline` — LWT + birth                       |
-| `unifi/bridge/info`   | ✅     | JSON: daemon version, controller version, detected flavour |
-| `unifi/bridge/error`  | ❌     | JSON: last non-fatal error (diagnostics)                  |
+| Topic                       | Retain | Content                                                   | 1.x |
+| --------------------------- | ------ | --------------------------------------------------------- | --- |
+| `unifi/connected`           | ✅     | `0` (Last Will, clean stop) \| `1` (broker up, console not answering the device poll) \| `2` (operational) | `unifi/bridge/status` `online`/`offline` |
+| `unifi/info`                | ✅     | JSON (spec §6): `name` `go-unifi2mqtt`, `version`, `spec`, `go`, `host`, `pid`, `started`, `maintenance`, plus `site`, `site_id`, `application_version`, `console_host` | `unifi/bridge/info` |
+| `unifi/status/bridge/error` | ❌     | status object, `val` = `{"loop","error"}`: a non-fatal poll error | `unifi/bridge/error` |
+| `unifi/maintenance/set/loglevel` | — (in) | `error` \| `warn` \| `info` \| `debug`, not persisted | — |
+| `unifi/maintenance/set/restart`  | — (in) | any: graceful stop, `connected` 0, exit 0 — only when supervised (`UNIFI_SUPERVISED`, else systemd/Kubernetes/container detection) | — |
+| `unifi/maintenance/stats`   | ✅     | process statistics every `MQTT_STATS_INTERVAL` s (0 = off) | — |
 
-The LWT deliberately lives **under our own root**, not under
-`homeassistant/` — the discovery prefix belongs to Home Assistant, and a
-bridge availability topic has no business there. (This intentionally differs
-from `go-mtec2mqtt`, where it sits elsewhere for historical reasons.)
+`connected` and `info` deliberately live **under our own name**, not under
+`homeassistant/` — the discovery prefix belongs to Home Assistant. `bridge`
+is a literal first-level item beside `<site>`, so a site whose reference is
+`bridge`, `alarm`, `security`, `system` or a function name (`connected`,
+`status`, `set`, `get`, `info`, `meta`, `maintenance`) is refused at start
+(the last also keeps the migration sweep's "second level is a function ⇒
+new topic" rule sound).
+
+The maintenance topics are on by default (`MQTT_MAINTENANCE`). Anyone who
+may publish on the broker can then restart the daemon or raise its log
+level; the only gate is the broker's ACLs, so on a broker that cannot be
+secured they belong off.
 
 ### 5.2 Site health
 
-| Topic                                | Retain | Content                      |
-| ------------------------------------ | ------ | ---------------------------- |
-| `unifi/<site>/health/wan/state`      | ✅     | `ok` \| `warning` \| `error` |
-| `unifi/<site>/health/wan/ip`         | ✅     | `203.0.113.7`                |
-| `unifi/<site>/health/wan/latency_ms` | ✅     | `12`                         |
-| `unifi/<site>/health/wan/rx_bps`     | ✅     | `18400000`                   |
-| `unifi/<site>/health/wan/tx_bps`     | ✅     | `2100000`                    |
-| `unifi/<site>/health/wlan/state`     | ✅     | `ok` \| `warning` \| `error` |
-| `unifi/<site>/health/lan/state`      | ✅     | ditto                        |
-| `unifi/<site>/health/vpn/state`      | ✅     | ditto                        |
-| `unifi/<site>/health/clients/total`  | ✅     | `47`                         |
-| `unifi/<site>/health/clients/guest`  | ✅     | `3`                          |
-| `unifi/<site>/health/attributes`     | ✅     | JSON aggregate for HA        |
+All under `unifi/status/<site>/health/`; 1.x: `unifi/<site>/health/…`.
+
+| Item                | Retain | `val`                        |
+| ------------------- | ------ | ---------------------------- |
+| `wan/state`         | ✅     | `ok` \| `warning` \| `error` |
+| `wan/ip`            | ✅     | `"203.0.113.7"`              |
+| `wan/latency_ms`    | ✅     | `12` (cleared when unknown)  |
+| `wan/rx_bps`        | ✅     | `18400000`                   |
+| `wan/tx_bps`        | ✅     | `2100000`                    |
+| `wlan/state`        | ✅     | `ok` \| `warning` \| `error` |
+| `lan/state`         | ✅     | ditto                        |
+| `vpn/state`         | ✅     | ditto                        |
+| `clients/total`     | ✅     | `47`                         |
+| `clients/guest`     | ✅     | `3`                          |
+| `attributes`        | ✅     | JSON aggregate for HA        |
 
 ### 5.3 Devices
 
-| Topic                                                     | Direction | Retain | Content                              |
-| --------------------------------------------------------- | --------- | ------ | ------------------------------------- |
-| `unifi/<site>/device/<mac>/state`                         | out       | ✅     | `ONLINE` \| `OFFLINE` \| …            |
-| `unifi/<site>/device/<mac>/uptime`                        | out       | ✅     | seconds                               |
-| `unifi/<site>/device/<mac>/cpu_utilization`               | out       | ✅     | `12.5`                                |
-| `unifi/<site>/device/<mac>/memory_utilization`            | out       | ✅     | `48.0`                                |
-| `unifi/<site>/device/<mac>/uplink_tx_bps`                 | out       | ✅     | `1048576`                             |
-| `unifi/<site>/device/<mac>/uplink_rx_bps`                 | out       | ✅     | `2097152`                             |
-| `unifi/<site>/device/<mac>/firmware`                      | out       | ✅     | `7.0.25`                              |
-| `unifi/<site>/device/<mac>/update_available`              | out       | ✅     | `ON` \| `OFF`                         |
-| `unifi/<site>/device/<mac>/attributes`                    | out       | ✅     | JSON: model, IP, type, uplink, adoption time |
-| `unifi/<site>/device/<mac>/port/<idx>/state`              | out       | ✅     | `UP` \| `DOWN`                        |
-| `unifi/<site>/device/<mac>/port/<idx>/speed`              | out       | ✅     | Mbit/s                                |
-| `unifi/<site>/device/<mac>/port/<idx>/poe`                | out       | ✅     | `ON` \| `OFF`                         |
-| `unifi/<site>/device/<mac>/port/<idx>/poe/power_w`        | out       | ✅     | `7.4` (classic layer only)            |
-| `unifi/<site>/device/<mac>/radio/<band>/channel`          | out       | ✅     | `36`                                  |
-| **`unifi/<site>/device/<mac>/cmd/restart`**               | **in**    | —      | any payload → restart                 |
-| **`unifi/<site>/device/<mac>/cmd/locate/set`**            | **in**    | —      | `ON` \| `OFF`                         |
-| **`unifi/<site>/device/<mac>/port/<idx>/cmd/power_cycle`**| **in**    | —      | any payload                           |
+Status under `unifi/status/<site>/device/<mac>/`, commands under
+`unifi/set/<site>/device/<mac>/`; 1.x: both under `unifi/<site>/device/<mac>/`.
+
+| Item                            | Direction | Retain | `val` / payload                       | 1.x |
+| ------------------------------- | --------- | ------ | ------------------------------------- | --- |
+| `state`                         | out       | ✅     | `ONLINE` \| `OFFLINE` \| …            | same item |
+| `online`                        | out       | ✅     | `true` \| `false` (state is `ONLINE`) | new |
+| `uptime`                        | out       | ✅     | seconds                               | |
+| `cpu_utilization`               | out       | ✅     | `12.5`                                | |
+| `memory_utilization`            | out       | ✅     | `48`                                  | `48.0` |
+| `uplink_tx_bps`                 | out       | ✅     | `1048576`                             | |
+| `uplink_rx_bps`                 | out       | ✅     | `2097152`                             | |
+| `firmware`                      | out       | ✅     | `"7.0.25"`                            | |
+| `update_available`              | out       | ✅     | `true` \| `false`                     | `ON`/`OFF` |
+| `locate`                        | out       | ✅     | `true` \| `false` (classic)           | `ON`/`OFF` |
+| `attributes`                    | out       | ✅     | JSON: model, IP, type, uplink, adoption time | |
+| `port/<idx>/state`              | out       | ✅     | `UP` \| `DOWN`                        | |
+| `port/<idx>/speed`              | out       | ✅     | Mbit/s                                | |
+| `port/<idx>/poe`                | out       | ✅     | `true` \| `false`                     | `ON`/`OFF` |
+| `port/<idx>/poe/power_w`        | out       | ✅     | `7.4` (classic layer only)            | |
+| `radio/<band>/channel`          | out       | ✅     | `36`                                  | |
+| **`cmd/restart`**               | **in**    | —      | any non-empty payload → restart       | same |
+| **`cmd/locate`**                | **in**    | —      | boolean (§5.6)                        | `cmd/locate/set` |
+| **`port/<idx>/cmd/power_cycle`**| **in**    | —      | any non-empty payload                 | same |
 
 ### 5.4 Clients
 
-| Topic                                         | Direction | Retain | Content                                                    |
-| --------------------------------------------- | --------- | ------ | ----------------------------------------------------------- |
-| `unifi/<site>/client/<mac>/state`             | out       | ✅     | `home` \| `not_home`                                        |
-| `unifi/<site>/client/<mac>/ip`                | out       | ✅     | `192.168.1.42`                                              |
-| `unifi/<site>/client/<mac>/signal`            | out       | ✅     | dBm (classic layer only)                                    |
-| `unifi/<site>/client/<mac>/attributes`        | out       | ✅     | JSON: type, SSID, VLAN, network, uplink device, connected since |
-| `unifi/<site>/client/<mac>/blocked`           | out       | ✅     | `ON` \| `OFF`                                               |
-| **`unifi/<site>/client/<mac>/blocked/set`**   | **in**    | —      | `ON` \| `OFF`                                               |
-| **`unifi/<site>/client/<mac>/cmd/authorize`** | **in**    | —      | JSON `{"minutes": 60}` or empty for the default             |
+Status under `unifi/status/<site>/client/<mac>/`, commands under
+`unifi/set/<site>/client/<mac>/`. Clients without a MAC (VPN, Teleport)
+are keyed by their API id instead.
+
+| Item                | Direction | Retain | `val` / payload                                             | 1.x |
+| ------------------- | --------- | ------ | ----------------------------------------------------------- | --- |
+| `state`             | out       | ✅     | `home` \| `not_home`                                        | same |
+| `online`            | out       | ✅     | `true` \| `false` (`state` is `home`)                       | new |
+| `ip`                | out       | ✅     | `"192.168.1.42"`, cleared while away                        | |
+| `signal`            | out       | ✅     | dBm (classic layer only)                                    | |
+| `attributes`        | out       | ✅     | JSON: type, SSID, VLAN, network, uplink device, connected since | |
+| `blocked`           | out       | ✅     | `true` \| `false`                                           | `ON`/`OFF` |
+| **`blocked`**       | **in**    | —      | boolean (§5.6)                                              | `blocked/set` |
+| **`cmd/authorize`** | **in**    | —      | `{}` for the site default, `{"minutes": 60}` or `60`        | empty payload allowed |
+
+The ADR names `online` for infrastructure devices only. Clients get one
+too, for the same job: their `ip` and `signal` sensors went unavailable
+with the client in 1.x by reading `state` through a template, and an
+`online` boolean lets every second availability entry have the one shape
+spec §8 describes. It is published with every client publish, from the
+first one on, so no entity can wait for it.
 
 ### 5.5 WLANs
 
-| Topic                                    | Direction | Retain | Content       |
-| ---------------------------------------- | --------- | ------ | ------------- |
-| `unifi/<site>/wlan/<id>/enabled`         | out       | ✅     | `ON` \| `OFF` |
-| `unifi/<site>/wlan/<id>/name`            | out       | ✅     | the SSID      |
-| **`unifi/<site>/wlan/<id>/enabled/set`** | **in**    | —      | `ON` \| `OFF` |
+| Item (`unifi/{status,set}/<site>/wlan/<id>/`) | Direction | Retain | `val` / payload   | 1.x |
+| ------------------------------------------- | --------- | ------ | ----------------- | --- |
+| `enabled`                                   | out       | ✅     | `true` \| `false` | `ON`/`OFF` |
+| `name`                                      | out       | ✅     | the SSID          | |
+| **`enabled`**                               | **in**    | —      | boolean (§5.6)    | `enabled/set` |
 
 ### 5.6 Conventions
 
-- **Scalar topics instead of JSON blobs** for anything that becomes an HA
-  entity — one `state_topic` per sensor, no `value_template` maze.
-- **`attributes` topics** additionally carry a JSON object that HA binds as
-  `json_attributes_topic`. That is where things go which are useful to see
-  but pointless as their own entity.
-- **Every state topic is `retain: true`**, no command topic is. A daemon
-  restart therefore does not leave HA sitting on `unavailable`.
-- **Commands are handled with a retain check.** On (re)subscribe the broker
-  re-delivers the last retained command; the handler drops messages with the
-  retain flag set, otherwise a stale `mosquitto_pub -r` would trigger a real
-  port power-cycle on every daemon start. (`go-mqtt` exposes the flag as
-  `Message.Retain`.)
-- **QoS 0 for state, QoS 1 for commands and discovery.** State is republished
-  cyclically anyway; a lost command, by contrast, is a visible failure.
+- **One status item per entity value** instead of JSON blobs — one
+  `state_topic` per sensor reading `{{ value_json.val }}`.
+- **Every status item is a status object** (spec §5.2):
+  `{"val": …, "ts": …, "lc": …}`, `ts` the observation and `lc` the last
+  change, integer milliseconds. Booleans are JSON booleans, numbers JSON
+  numbers, states their English token. An empty retained payload means "no
+  value".
+- **`attributes` items** carry a JSON object as `val`, which HA binds as
+  `json_attributes_topic` through `{{ value_json.val | tojson }}`. That is
+  where things go which are useful to see but pointless as their own entity.
+- **Every status item is `retain: true`**, no command is; `bridge/error` is
+  an event and not retained either.
+- **Commands** (spec §3.3, §5.3) take a plain value or `{"val": …}`;
+  booleans read `true/false`, `1/0`, `on/off`, `yes/no` in any case and
+  anything else is rejected; actions fire on any non-empty payload. Empty
+  payloads and retained messages are dropped: on (re)subscribe the broker
+  re-delivers the last retained command, and a stale `mosquitto_pub -r`
+  would otherwise trigger a real port power-cycle on every daemon start. A
+  rejected or failed command is logged at warn with topic and payload.
+- **QoS 0 for status, QoS 1 for the command subscriptions, discovery and
+  `connected`.** A lost status value is corrected by the next change or the
+  next reconnect's replay; a lost command is a visible failure.
+
+### 5.7 Migration from 1.x
+
+On every start of 2.x the daemon clears the retained topics 1.x left under
+its own name, after the first poll cycles have said what it owns. It reads
+`unifi/<site>/#` and `unifi/bridge/+` for a few seconds and clears, with an
+empty retained payload, only exact 1.x shapes: `bridge/status`,
+`bridge/info`, the site's health items, and the 1.x items of every device,
+client and SSID this run polled from its own console. Never a prefix match,
+never a topic whose second level is a function name. Another name, another
+site and an unknown MAC are never touched, so a second console bridged
+under the same name keeps its leftovers. The sweep is idempotent and goes
+with 3.0.
 
 ---
 
@@ -710,11 +772,16 @@ grace period every presence automation flaps. An `AWAY_TIMEOUT` below
 
 ### 6.5 Availability and orphans
 
-- Every entity gets `availability_topic: unifi/bridge/status`. If the daemon
-  dies, entities go `unavailable` in HA instead of freezing.
-- **Two-stage availability:** device entities additionally use their own
-  `state` topic as an availability source, so a switch that went offline does
-  not sit there showing stale CPU figures.
+- Every entity's availability list starts with `unifi/connected`, available
+  at `2` (`{{ 'online' if value | int(0) >= 2 else 'offline' }}`). If the
+  daemon dies or loses the console, entities go `unavailable` in HA instead
+  of freezing.
+- **Two-stage availability:** device and client entities additionally read
+  their object's `online` item (`{{ value_json.val | lower }}`, `true`
+  available), `availability_mode: all`, so a switch that went offline does
+  not sit there showing stale CPU figures. Each list entry carries only
+  `topic`, `value_template`, `payload_available` and
+  `payload_not_available` (spec §8).
 - **Orphaned discovery configs** are reconciled on two levels, because the
   cheap one cannot see the interesting case.
 
@@ -743,7 +810,7 @@ grace period every presence automation flaps. An `AWAY_TIMEOUT` below
   defect. The rule this section used to state — that ownership needs the
   `unifi_` id namespace *and* this bridge's availability topic to agree — was
   removed in PR #24 because it does not separate two instances of this daemon.
-  A state topic here is `<root>/<site>/…`; the root is `MQTT_TOPIC`, which is
+  A state topic here is `<name>/status/<site>/…`; the name is `MQTT_TOPIC`, which is
   exactly what the availability check already reads, and the site segment is
   `default` on every UniFi console out of the box. Two consoles bridged to one
   broker with the shipped configuration publish byte-identical config topics,
@@ -905,11 +972,15 @@ interesting sensor stale.
 
 ### 8.3 Change detection
 
-Publishing happens **only on value change**, plus a forced full republish
-every `FORCE_REPUBLISH` seconds (default 600). Reason: a broker with many
+Publishing happens **only on value change** — the gate compares the status
+object's `val`, never its timestamps — and again, unchanged with its
+original `ts`, after every broker reconnect. Reason: a broker with many
 subscribers and 200 clients × 5 topics every 30 s is pointless load when
-nothing changed. The periodic full pass catches subscribers without retained
-support drifting permanently stale.
+nothing changed, and mqtt-smarthome 2.0 §3.2 says an adapter must not
+republish unchanged state. 1.x also forced a full republish every
+`FORCE_REPUBLISH` seconds; 2.0.0 removed it (ADR 0083): a subscriber that
+missed a message has the retained value, and the reconnect replay restores
+a broker that lost its retained store. The key is ignored if still set.
 
 ### 8.4 Rate limits and backoff
 
