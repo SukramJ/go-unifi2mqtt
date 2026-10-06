@@ -317,6 +317,8 @@ func (c *Coordinator) collectRetainedConfigs(ctx context.Context) (map[string][]
 		return nil, ErrNoPublisher
 	}
 	prefix := rt.Prefix()
+	c.windowMu.Lock()
+	defer c.windowMu.Unlock()
 
 	var mu sync.Mutex
 	retained := make(map[string][]byte)

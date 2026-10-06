@@ -227,6 +227,12 @@ etc. — no special test runner beyond `go test`.
   entities. The stated cost is that a config left by an *earlier run*
   is no longer cleared either; it is logged once as
   `coordinator.reconcile_unclaimed` with the remedy.
+  The one exception is the 2.x migration (`internal/coordinator/repoint.go`):
+  a config in the **1.x** shape whose availability is exactly this name's
+  `bridge/status` and whose topics are 1.x items of the same object under
+  this name **and site** is re-pointed or retracted without a claim.
+  That is sound only because 2.0 made the name the instance's identity;
+  it never applies to a 2.x-shaped config, and it goes with the sweep.
 - **Discovery is per-entity, and that is a decision with a condition
   attached.** One retained config per entity at
   `homeassistant/<platform>/<node_id>/<object_id>/config` — *not* a

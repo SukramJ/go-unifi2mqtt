@@ -6,6 +6,8 @@ package coordinator
 import (
 	"context"
 	"log/slog"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,6 +15,8 @@ import (
 
 	hatopic "github.com/SukramJ/go-hamqtt/topic"
 	mqtt "github.com/SukramJ/go-mqtt"
+
+	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 )
 
 // The retained sweep of openccu-loom ADR 0083 ("Migration").
@@ -45,9 +49,11 @@ import (
 //     name and site — which 1.x already could not tell apart — keeps
 //     every device, client and SSID this one does not know.
 //
-// An object this run has not seen (a client that stays away, a device
-// unplugged while the daemon was stopped) keeps its old retained topics
-// until a later start sees it: stale, never wrongly deleted.
+// An object this run has not polled keeps its old retained topics unless
+// the re-point of its 1.x discovery configs (repoint.go) settled it: an
+// absent client re-pointed to the new layout, a device or SSID the
+// console no longer has retracted. Everything else stays: stale, never
+// wrongly deleted.
 
 // oldDeviceItems are the 1.x items below `<root>/<site>/device/<mac>/`,
 // apart from the port and radio sub-trees.
@@ -189,10 +195,17 @@ func (c *Coordinator) ownedIdentifiers() ownedIDs {
 	return ids
 }
 
-// migrateOldLayout runs the sweep once, after the first poll cycles
-// have said which devices, clients and SSIDs this instance owns — the
-// same readiness the orphan reconcile waits for, bounded by the same
-// timeout.
+// migrateOldLayout runs the migration once the first poll cycles have
+// said which devices, clients and SSIDs this instance owns — the same
+// readiness the orphan reconcile waits for, bounded by the same timeout
+// for the first round.
+//
+// A round re-points or retracts the 1.x discovery configs of every class
+// whose source has reported ([Coordinator.repointLegacyConfigs]) and
+// then sweeps the 1.x status items. A class that has not reported by the
+// first round — the classic layer still failing, say — is settled in a
+// later round, as soon as it does: its 1.x configs are the ones Home
+// Assistant shows as unavailable until then.
 //
 // Like the reconcile it returns nil for anything but cancellation: a
 // bridge that publishes correctly but cannot tidy up the old layout is
@@ -205,10 +218,77 @@ func (c *Coordinator) migrateOldLayout(ctx context.Context) error {
 		return ctx.Err()
 	}
 
-	cleared, err := c.sweepOldLayout(ctx, c.ownedIdentifiers())
+	done := map[hass.Class]bool{}
+	tick := time.NewTicker(reconcileReadyPoll)
+	defer tick.Stop()
+	for first := true; ; first = false {
+		todo := map[hass.Class]bool{}
+		if c.hass != nil {
+			for cl := range c.readyClasses() {
+				if !done[cl] {
+					todo[cl] = true
+				}
+			}
+		}
+		if first || len(todo) > 0 {
+			if err := c.migrationRound(ctx, todo); err != nil {
+				return err
+			}
+			maps.Copy(done, todo)
+		}
+		if c.hass == nil || allReady(done) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+		}
+	}
+}
+
+// migrationRound reads the 1.x status items and, for classes, the
+// retained discovery configs in one window each, settles the configs,
+// and evicts the 1.x status items this instance owns. Only cancellation
+// is returned.
+func (c *Coordinator) migrationRound(ctx context.Context, classes map[hass.Class]bool) error {
+	var (
+		configs map[string][]byte
+		cfgErr  error
+		wg      sync.WaitGroup
+	)
+	if len(classes) > 0 {
+		wg.Go(func() { configs, cfgErr = c.collectRetainedConfigs(ctx) })
+	}
+	old, oldErr := c.collectOldLayout(ctx)
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		// Shutting down inside the window; the next start migrates again.
+		return err
+	}
+
+	extra := ownedIDs{}
+	switch {
+	case len(classes) == 0:
+	case cfgErr != nil:
+		c.log.Warn("coordinator.migration_repoint_failed", slog.String("err", cfgErr.Error()))
+	default:
+		extra = c.repointLegacyConfigs(ctx, configs, old, classes).ids
+	}
+
+	if oldErr != nil {
+		c.log.Warn("coordinator.migration_sweep_failed", slog.String("err", oldErr.Error()))
+		return nil
+	}
+	ids := c.ownedIdentifiers()
+	for _, pair := range []struct{ dst, src map[string]bool }{
+		{ids.devices, extra.devices}, {ids.clients, extra.clients}, {ids.wlans, extra.wlans},
+	} {
+		maps.Copy(pair.dst, pair.src)
+	}
+	cleared, err := c.evictOldLayout(ctx, ids, old)
 	switch {
 	case ctx.Err() != nil:
-		// Shutting down inside the window; the next start sweeps again.
 		return ctx.Err()
 	case err != nil:
 		c.log.Warn("coordinator.migration_sweep_failed", slog.String("err", err.Error()))
@@ -220,33 +300,42 @@ func (c *Coordinator) migrateOldLayout(ctx context.Context) error {
 	return nil
 }
 
-// sweepOldLayout subscribes the 1.x trees this instance owns for one
-// window, collects the retained topics [oldLayoutTopic] accepts,
-// unsubscribes, and clears each with an empty retained payload. It
-// returns how many it cleared.
+// sweepOldLayout is one collect-and-evict pass over the 1.x status items
+// with a fixed set of owned identifiers. It returns how many it cleared.
 func (c *Coordinator) sweepOldLayout(ctx context.Context, ids ownedIDs) (int, error) {
+	old, err := c.collectOldLayout(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return c.evictOldLayout(ctx, ids, old)
+}
+
+// collectOldLayout subscribes the 1.x trees this instance owns for one
+// window — `<name>/<site>/#` and `<name>/bridge/+`, never another name or
+// site — collects every retained, non-empty message, and unsubscribes.
+// What it returns is read, not judged: [Coordinator.evictOldLayout]
+// decides what is this instance's to clear, and the re-point reads an
+// absent client's last values out of it.
+func (c *Coordinator) collectOldLayout(ctx context.Context) (map[string][]byte, error) {
 	root, site := c.topics.name(), c.topics.site
 	filters := []string{root + "/" + site + "/#", root + "/" + bridgeSegment + "/+"}
 
 	var (
 		mu     sync.Mutex
-		found  []string
-		seen   = map[string]bool{}
+		found  = map[string][]byte{}
 		closed atomic.Bool
 	)
 	collect := func(msg *mqtt.Message) {
-		// Runs inline in the MQTT read loop: a check and a map write,
-		// nothing that publishes. An empty payload is a topic already
-		// cleared, and a live message is not the old layout's leftover.
-		if closed.Load() || !msg.Retain || len(msg.Payload) == 0 ||
-			!oldLayoutTopic(root, site, ids, msg.Topic) {
+		// Runs inline in the MQTT read loop: a check, a copy and a map
+		// write, nothing that publishes. An empty payload is a topic
+		// already cleared, and a live message is not the old layout's
+		// leftover.
+		if closed.Load() || !msg.Retain || len(msg.Payload) == 0 {
 			return
 		}
+		payload := append([]byte(nil), msg.Payload...)
 		mu.Lock()
-		if !seen[msg.Topic] {
-			seen[msg.Topic] = true
-			found = append(found, msg.Topic)
-		}
+		found[msg.Topic] = payload
 		mu.Unlock()
 	}
 
@@ -270,7 +359,7 @@ func (c *Coordinator) sweepOldLayout(ctx context.Context, ids ownedIDs) (int, er
 	}()
 	for _, f := range filters {
 		if _, err := c.sub.Subscribe(ctx, f, mqtt.QoS0, collect); err != nil {
-			return 0, err
+			return nil, err
 		}
 		subscribed = append(subscribed, f)
 	}
@@ -283,15 +372,28 @@ func (c *Coordinator) sweepOldLayout(ctx context.Context, ids ownedIDs) (int, er
 	}
 	closed.Store(true)
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	mu.Lock()
-	targets := append([]string(nil), found...)
-	mu.Unlock()
+	defer mu.Unlock()
+	return maps.Clone(found), nil
+}
+
+// evictOldLayout clears every topic of old that [oldLayoutTopic] accepts
+// for ids, with an empty retained payload, and returns how many.
+func (c *Coordinator) evictOldLayout(ctx context.Context, ids ownedIDs, old map[string][]byte) (int, error) {
+	root, site := c.topics.name(), c.topics.site
+	var targets []string
+	for topic := range old {
+		if oldLayoutTopic(root, site, ids, topic) {
+			targets = append(targets, topic)
+		}
+	}
 	if len(targets) == 0 {
 		return 0, nil
 	}
+	slices.Sort(targets)
 	// Through the state plane's eviction: an empty retained payload at
 	// the state QoS, refused for anything inside this daemon's own
 	// command subscriptions — which no 1.x topic can be.
