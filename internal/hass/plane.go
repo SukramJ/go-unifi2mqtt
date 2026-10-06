@@ -20,7 +20,8 @@ import (
 // [Topics] is an interface: a second spelling of any of them is a
 // divergence nothing would report.
 
-// NewLayout exposes this bridge's topic tree as a [hatopic.Layout].
+// NewLayout exposes this bridge's topic tree as a
+// [hatopic.SmartHomeLayout].
 //
 // It is the same unexported layout the rendering path uses, and it is
 // exported because three independent readers now need it to agree: the
@@ -30,7 +31,11 @@ import (
 // and the Last Will the MQTT client is built with. One typo there greys
 // out the whole fleet under `availability_mode: "all"`, and the only
 // evidence is every entity being unavailable at once.
-func NewLayout(t Topics) hatopic.Layout { return hamqttLayout{topics: t} }
+//
+// Being a [hatopic.SmartHomeLayout] is what puts the runtime on
+// `<name>/connected` with 0/1/2, and what [publisher.Instance] needs for
+// `<name>/info` and `<name>/maintenance/…`.
+func NewLayout(t Topics) hatopic.SmartHomeLayout { return hamqttLayout{topics: t} }
 
 // publishedPlatforms is the Home Assistant platforms this daemon emits,
 // of the 32 the catalogue declares, as a set for [OwnsConfigTopic].

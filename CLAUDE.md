@@ -169,12 +169,24 @@ etc. — no special test runner beyond `go test`.
   `config.yaml` options, `config.yaml` schema, `translations/{en,de}.yaml`
   and `script/run.sh`. Each disagreement fails differently and quietly;
   `internal/config/addon_test.go` checks all four.
-- **Topic suffixes are an API.** Every key in `internal/coordinator/topics.go`
+- **Topics follow mqtt-smarthome 2.0** (openccu-loom ADR 0083, since
+  2.0.0): `<name>/status/<site>/…` as `{"val","ts","lc"}` status objects
+  through go-hamqtt's `PublishStatus`, commands on the same item path
+  under `<name>/set/` through `CommandRouter.HandleSet`, `<name>/connected`
+  (0 will / 1 console not answering the device poll / 2), `<name>/info`
+  and `<name>/maintenance/…` through `publisher.Instance`. Publish on
+  change and on reconnect only — there is no periodic republish. A site
+  reference spelled like `bridge`, `alarm`, `security`, `system` or a
+  function name is refused (`coordinator.CheckTopics`); the 1.x retained
+  sweep in `internal/coordinator/migrate.go` depends on that.
+- **Item keys are an API.** Every key in `internal/coordinator/topics.go`
   doubles as the Home Assistant entity key and the translation-table
   lookup. Renaming one orphans the entity and its history in every
   existing installation. The same goes for `unique_id` and
   `default_entity_id`
-  in `internal/hass` — `TestIdentifiersAreStable` pins the exact strings.
+  in `internal/hass` — `TestIdentifiersAreStable` pins the exact strings,
+  and `TestHomeAssistantIdentitiesAreThoseOf130` holds the whole fleet to
+  the frozen 1.3.0 rendering (`testdata/frozen_v1.3.0_identity.json`).
 - **The MQTT command handler must never block.** It runs inline in the
   client's read loop, the same goroutine that decodes acknowledgements
   and feeds the keep-alive watchdog. It parses and enqueues, nothing

@@ -92,14 +92,14 @@ func (d *Discovery) renderTracker(key string, info deviceInfo) (Entry, error) {
 		// The tracker is the entity that reports being away, so its
 		// availability must not depend on the client being present —
 		// only on the bridge running.
-		StateTopic:          d.topics.ClientTopic(key, "state"),
-		JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
-		Availability: []availabilityEntry{
-			{Topic: d.topics.AvailabilityTopic()},
-		},
-		AvailabilityMode: "all",
-		Device:           info,
-		Origin:           origin(),
+		StateTopic:             d.topics.ClientTopic(key, "state"),
+		ValueTemplate:          valueTemplateFor(PlatformDeviceTracker, ""),
+		JSONAttributesTopic:    d.topics.ClientTopic(key, "attributes"),
+		JSONAttributesTemplate: attributesTemplate,
+		Availability:           []availabilityEntry{d.bridgeAvailability()},
+		AvailabilityMode:       "all",
+		Device:                 info,
+		Origin:                 origin(),
 		// "router" tells Home Assistant this is network-presence rather
 		// than GPS, which is what makes it usable for the person
 		// integration without a location.
@@ -122,25 +122,21 @@ func (d *Discovery) renderClientSensor(key, suffix string, info deviceInfo, s sp
 	uid := idPrefix + "_client_" + key + "_" + s.key
 	seed := entityIDSeed(info.Name, s.key)
 	e := entity{
-		Name:                name(s.nameKey, d.lang),
-		UniqueID:            uid,
-		DefaultEntityID:     string(s.platform) + "." + seed,
-		StateTopic:          d.topics.ClientTopic(key, s.stateSuffix),
-		UnitOfMeasurement:   s.unit,
-		DeviceClass:         s.deviceClass,
-		StateClass:          s.stateClass,
-		EntityCategory:      s.category,
-		Icon:                s.icon,
-		JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
-		Availability: []availabilityEntry{
-			{Topic: d.topics.AvailabilityTopic()},
-			// A client's values are stale once it is away, so these go
-			// unavailable with it — unlike the tracker itself.
-			{
-				Topic:         d.topics.ClientTopic(key, "state"),
-				ValueTemplate: "{{ 'online' if value == 'home' else 'offline' }}",
-			},
-		},
+		Name:                   name(s.nameKey, d.lang),
+		UniqueID:               uid,
+		DefaultEntityID:        string(s.platform) + "." + seed,
+		StateTopic:             d.topics.ClientTopic(key, s.stateSuffix),
+		UnitOfMeasurement:      s.unit,
+		DeviceClass:            s.deviceClass,
+		StateClass:             s.stateClass,
+		EntityCategory:         s.category,
+		Icon:                   s.icon,
+		ValueTemplate:          valueTemplateFor(s.platform, ""),
+		JSONAttributesTopic:    d.topics.ClientTopic(key, "attributes"),
+		JSONAttributesTemplate: attributesTemplate,
+		// A client's values are stale once it is away, so these go
+		// unavailable with it — unlike the tracker itself.
+		Availability:     []availabilityEntry{d.bridgeAvailability(), d.clientAvailability(key)},
 		AvailabilityMode: "all",
 		Device:           info,
 		Origin:           origin(),

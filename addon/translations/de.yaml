@@ -62,14 +62,30 @@ configuration:
     name: MQTT-Passwort
     description: Leer lassen, wenn der Broker anonymen Zugriff erlaubt.
   mqtt_topic:
-    name: Topic-Wurzel
+    name: Instanzname
     description: >-
-      Wurzel des Topic-Baums, z. B. unifi/default/device/...
+      Erste Ebene jedes Topics (unifi/status/..., unifi/set/...,
+      unifi/connected). Er ist das Einzige, was zwei Instanzen auf einem
+      Broker trennt: zwei Konsolen oder Sites brauchen zwei Namen. Der
+      Standard "unifi" ist auch der Standard von hobbyquakers
+      Node.js-Adapter unifi2mqtt; laufen beide an einem Broker, muss einer
+      umbenannt werden.
+  mqtt_maintenance:
+    name: Wartungs-Topics
+    description: >-
+      unifi/maintenance/set/loglevel und .../restart sowie
+      Prozessstatistiken. Jeder, der am Broker publizieren darf, kann dann
+      das Log-Level ändern oder das Add-on neu starten; an einem Broker
+      ohne Anmeldung und ACLs ausschalten.
+  mqtt_stats_interval:
+    name: Statistik-Intervall
+    description: >-
+      Sekunden zwischen zwei unifi/maintenance/stats; 0 schaltet sie ab.
   mqtt_client_id:
     name: MQTT-Client-ID
     description: >-
       Kennung, mit der sich dieses Add-on beim Broker meldet. Leer bedeutet
-      "unifi2mqtt-" plus Topic-Wurzel. Setzen, wenn zwei Instanzen denselben
+      "unifi2mqtt-" plus Instanzname. Setzen, wenn zwei Instanzen denselben
       Broker nutzen: MQTT verlangt, dass der Broker die bestehende Sitzung
       trennt, sobald ein zweiter Client dieselbe Kennung vorlegt — beide
       werfen sich dann endlos gegenseitig hinaus.

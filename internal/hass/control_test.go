@@ -30,7 +30,7 @@ func TestDeviceControls(t *testing.T) {
 	if restart == nil {
 		t.Fatal("no restart button")
 	}
-	if got := restart["command_topic"]; got != "unifi/default/device/00005e005302/cmd/restart" {
+	if got := restart["command_topic"]; got != "unifi/set/default/device/00005e005302/cmd/restart" {
 		t.Errorf("command_topic = %v", got)
 	}
 	if got := restart["payload_press"]; got != "PRESS" {
@@ -41,10 +41,10 @@ func TestDeviceControls(t *testing.T) {
 	if locate == nil {
 		t.Fatal("no locate switch")
 	}
-	if got := locate["state_topic"]; got != "unifi/default/device/00005e005302/locate" {
+	if got := locate["state_topic"]; got != "unifi/status/default/device/00005e005302/locate" {
 		t.Errorf("state_topic = %v", got)
 	}
-	if got := locate["command_topic"]; got != "unifi/default/device/00005e005302/cmd/locate/set" {
+	if got := locate["command_topic"]; got != "unifi/set/default/device/00005e005302/cmd/locate" {
 		t.Errorf("command_topic = %v", got)
 	}
 
@@ -185,7 +185,7 @@ func TestClientControls(t *testing.T) {
 	if blocked == nil {
 		t.Fatal("no blocked switch")
 	}
-	if got := blocked["command_topic"]; got != "unifi/default/client/00005e005310/blocked/set" {
+	if got := blocked["command_topic"]; got != "unifi/set/default/client/00005e005310/blocked" {
 		t.Errorf("command_topic = %v", got)
 	}
 
@@ -237,7 +237,7 @@ func TestWLANControl(t *testing.T) {
 	if got := payload["name"]; got != "HomeNet" {
 		t.Errorf("name = %v, want the SSID", got)
 	}
-	if got := payload["command_topic"]; got != "unifi/default/wlan/w-1/enabled/set" {
+	if got := payload["command_topic"]; got != "unifi/set/default/wlan/w-1/enabled" {
 		t.Errorf("command_topic = %v", got)
 	}
 	// WLANs belong to the site, not to any single access point.

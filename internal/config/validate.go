@@ -80,6 +80,10 @@ func (c *Config) validate(o options) error {
 	if c.HTTPRetries < 0 {
 		errs = append(errs, "HTTP_RETRIES must not be negative")
 	}
+	if c.MQTTStatsInterval < 0 {
+		errs = append(errs, fmt.Sprintf("MQTT_STATS_INTERVAL must be 0 (off) or a number of seconds, got %d",
+			c.MQTTStatsInterval))
+	}
 
 	// Rate-limit protection: polling faster than this cannot produce
 	// meaningfully fresher data but can trip the console's limiter.

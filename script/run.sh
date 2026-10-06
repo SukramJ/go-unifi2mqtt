@@ -50,6 +50,18 @@ else
 fi
 export UNIFI_MQTT_TOPIC="$(bashio::config 'mqtt_topic')"
 export UNIFI_MQTT_CLIENT_ID="$(bashio::config 'mqtt_client_id')"
+export UNIFI_MQTT_MAINTENANCE="$(bashio::config 'mqtt_maintenance')"
+export UNIFI_MQTT_STATS_INTERVAL="$(bashio::config 'mqtt_stats_interval')"
+# The maintenance restart is a graceful exit 0 that relies on something
+# starting the process again. For an add-on that is only the
+# Supervisor's per-add-on Watchdog switch: it reanimates a container that
+# stopped (current Supervisor also on a clean exit), but it is off by
+# default, the operator sets it in the UI, and this script cannot see it
+# (no hassio_api). With the switch off a restart would be a stop, and
+# /.dockerenv would otherwise make the daemon believe it is supervised —
+# so the daemon refuses the MQTT restart at warn. Restart the add-on from
+# Home Assistant instead.
+export UNIFI_SUPERVISED=0
 
 # --- Home Assistant discovery ---
 export UNIFI_HASS_ENABLE="$(bashio::config 'hass_enable')"

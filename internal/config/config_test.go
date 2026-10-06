@@ -52,6 +52,8 @@ func TestLoadAppliesDefaults(t *testing.T) {
 		{"HTTPTimeout", cfg.HTTPTimeout, DefaultHTTPTimeout},
 		{"MQTTPort", cfg.MQTTPort, DefaultMQTTPort},
 		{"MQTTTopic", cfg.MQTTTopic, DefaultMQTTTopic},
+		{"MQTTMaintenance", cfg.MQTTMaintenance, true},
+		{"MQTTStatsInterval", cfg.MQTTStatsInterval, 60},
 		{"RefreshDevices", cfg.RefreshDevices, DefaultRefreshDevices},
 		{"RefreshClients", cfg.RefreshClients, DefaultRefreshClients},
 		{"Clients.Max", cfg.Clients.Max, DefaultClientsMax},
@@ -90,6 +92,39 @@ CLIENTS:
 	if cfg.Clients.ExcludeGuests {
 		t.Error("CLIENTS.EXCLUDE_GUESTS: false was overwritten by the default true")
 	}
+}
+
+// The mqtt-smarthome maintenance keys: on by default, switchable off in
+// the file and through UNIFI_*, and a stats interval of 0 is "off"
+// rather than "unset" — only a negative one is refused.
+func TestMaintenanceKeys(t *testing.T) {
+	t.Parallel()
+
+	cfg := mustLoad(t, minimal+"MQTT_MAINTENANCE: false\nMQTT_STATS_INTERVAL: 0\n", nil)
+	if cfg.MQTTMaintenance || cfg.MQTTStatsInterval != 0 {
+		t.Errorf("file: maintenance=%v stats=%d, want false and 0", cfg.MQTTMaintenance, cfg.MQTTStatsInterval)
+	}
+
+	cfg = mustLoad(t, minimal, MapEnv{
+		"UNIFI_MQTT_MAINTENANCE":    "false",
+		"UNIFI_MQTT_STATS_INTERVAL": "300",
+	})
+	if cfg.MQTTMaintenance || cfg.MQTTStatsInterval != 300 {
+		t.Errorf("env: maintenance=%v stats=%d, want false and 300", cfg.MQTTMaintenance, cfg.MQTTStatsInterval)
+	}
+
+	if _, err := loadYAML(t, minimal+"MQTT_STATS_INTERVAL: -1\n", nil); err == nil ||
+		!strings.Contains(err.Error(), "MQTT_STATS_INTERVAL") {
+		t.Errorf("a negative stats interval loaded: %v", err)
+	}
+}
+
+// FORCE_REPUBLISH went with 2.0.0; a config that still carries it must
+// keep loading rather than fail the upgrade.
+func TestRemovedForceRepublishStillLoads(t *testing.T) {
+	t.Parallel()
+
+	mustLoad(t, minimal+"FORCE_REPUBLISH: 600\n", MapEnv{"UNIFI_FORCE_REPUBLISH": "600"})
 }
 
 func TestLoadEmptyReaderIsEnvOnly(t *testing.T) {

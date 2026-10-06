@@ -5,6 +5,7 @@ package coordinator
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"testing/synctest"
@@ -13,105 +14,67 @@ import (
 
 var errBroker = errors.New("broker unreachable")
 
-// The forced republish deliberately ages each topic on its own clock.
-//
-// A single global deadline would be consumed by whichever publish ran
-// first after it expired, leaving every other topic in that cycle still
-// suppressed — turning "republish everything every 10 minutes" into
-// "republish one topic every 10 minutes". This test pins that.
-func TestForceRepublishIsPerTopic(t *testing.T) {
+// Change detection compares the value and nothing else: a clock that
+// moves on does not make an unchanged reading new (spec §3.2's "MUST NOT
+// republish unchanged state"), and there is no age after which it is
+// forced out again — 1.x's FORCE_REPUBLISH is gone.
+func TestUnchangedValueIsNeverRepublished(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
 		broker := &fakeBroker{}
-		p := newPublisher(broker, nil, 10*time.Minute, slog.New(slog.DiscardHandler))
+		p := newPublisher(broker, nil, time.Now, slog.New(slog.DiscardHandler))
 
-		// Two topics published at the same moment.
-		for _, topic := range []string{"a", "b"} {
-			if err := p.publish(t.Context(), topic, "v"); err != nil {
-				t.Fatalf("publish: %v", err)
-			}
-		}
-		broker.reset()
-
-		// Unchanged and not yet stale: both suppressed.
-		time.Sleep(10*time.Minute - time.Nanosecond)
-		for _, topic := range []string{"a", "b"} {
-			if err := p.publish(t.Context(), topic, "v"); err != nil {
-				t.Fatalf("publish: %v", err)
-			}
-		}
-		if got := broker.total(); got != 0 {
-			t.Fatalf("published %d messages before the age limit, want 0", got)
-		}
-
-		// At the limit: BOTH must go out, not just the first one.
-		time.Sleep(time.Nanosecond)
-		for _, topic := range []string{"a", "b"} {
-			if err := p.publish(t.Context(), topic, "v"); err != nil {
-				t.Fatalf("publish: %v", err)
-			}
-		}
-		if got := broker.total(); got != 2 {
-			t.Errorf("forced republish sent %d messages, want 2 — the deadline is not per topic", got)
-		}
-	})
-}
-
-// A topic published later than its neighbours ages on its own schedule,
-// which spreads forced traffic instead of bunching it into one burst.
-func TestForceRepublishStaggers(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		broker := &fakeBroker{}
-		p := newPublisher(broker, nil, 10*time.Minute, slog.New(slog.DiscardHandler))
-
-		if err := p.publish(t.Context(), "early", "v"); err != nil {
-			t.Fatalf("publish: %v", err)
-		}
-		time.Sleep(5 * time.Minute)
-		if err := p.publish(t.Context(), "late", "v"); err != nil {
-			t.Fatalf("publish: %v", err)
-		}
-
-		// Exactly 10 minutes after "early", 5 after "late": only "early"
-		// is stale.
-		time.Sleep(5 * time.Minute)
-		broker.reset()
-		for _, topic := range []string{"early", "late"} {
-			if err := p.publish(t.Context(), topic, "v"); err != nil {
-				t.Fatalf("publish: %v", err)
-			}
-		}
-		if got := broker.count("early"); got != 1 {
-			t.Errorf("stale topic republished %d times, want 1", got)
-		}
-		if got := broker.count("late"); got != 0 {
-			t.Errorf("fresh topic republished %d times, want 0", got)
-		}
-	})
-}
-
-// With forcing disabled, an unchanged topic must never be republished.
-func TestForceRepublishDisabled(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		broker := &fakeBroker{}
-		p := newPublisher(broker, nil, 0, slog.New(slog.DiscardHandler))
-
-		if err := p.publish(t.Context(), "a", "v"); err != nil {
+		if err := p.publish(t.Context(), "a", 21.5); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 		broker.reset()
 
 		time.Sleep(24 * time.Hour)
-		if err := p.publish(t.Context(), "a", "v"); err != nil {
+		if err := p.publish(t.Context(), "a", 21.5); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 		if got := broker.total(); got != 0 {
-			t.Errorf("published %d messages with forcing off, want 0", got)
+			t.Errorf("an unchanged value went out %d times a day later, want 0", got)
+		}
+	})
+}
+
+// `ts` is the observation and `lc` the last change: a changed value
+// moves both, and the replay after a reconnect re-sends the cached
+// object, original `ts` included.
+func TestStatusTimestamps(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		broker := &fakeBroker{}
+		p := newPublisher(broker, nil, time.Now, slog.New(slog.DiscardHandler))
+
+		t0 := time.Now().UnixMilli()
+		if err := p.publish(t.Context(), "a", "ONLINE"); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+		first, _ := broker.latestRaw("a")
+		if want := fmt.Sprintf(`{"val":"ONLINE","ts":%d,"lc":%d}`, t0, t0); first != want {
+			t.Errorf("first = %s, want %s", first, want)
+		}
+
+		time.Sleep(time.Minute)
+		t1 := time.Now().UnixMilli()
+		if err := p.publish(t.Context(), "a", "OFFLINE"); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+		if got, _ := broker.latestRaw("a"); got != fmt.Sprintf(`{"val":"OFFLINE","ts":%d,"lc":%d}`, t1, t1) {
+			t.Errorf("after a change = %s", got)
+		}
+
+		time.Sleep(time.Minute)
+		broker.reset()
+		if n, err := p.republish(t.Context()); err != nil || n != 1 {
+			t.Fatalf("republish = %d, %v; want 1, nil", n, err)
+		}
+		if got, _ := broker.latestRaw("a"); got != fmt.Sprintf(`{"val":"OFFLINE","ts":%d,"lc":%d}`, t1, t1) {
+			t.Errorf("the replay = %s, want the cached object with its original ts", got)
 		}
 	})
 }
@@ -122,7 +85,7 @@ func TestFailedPublishIsNotRemembered(t *testing.T) {
 	t.Parallel()
 
 	broker := &fakeBroker{fail: errBroker}
-	p := newPublisher(broker, nil, 0, slog.New(slog.DiscardHandler))
+	p := newPublisher(broker, nil, nil, slog.New(slog.DiscardHandler))
 
 	if err := p.publish(t.Context(), "a", "v"); err == nil {
 		t.Fatal("publish succeeded against a failing broker")
@@ -143,7 +106,7 @@ func TestFailedPublishIsNotRemembered(t *testing.T) {
 func TestForgetOnlyDropsMatchingPrefix(t *testing.T) {
 	t.Parallel()
 
-	p := newPublisher(&fakeBroker{}, nil, 0, slog.New(slog.DiscardHandler))
+	p := newPublisher(&fakeBroker{}, nil, nil, slog.New(slog.DiscardHandler))
 
 	for _, topic := range []string{"d/aa/state", "d/aa/uptime", "d/bb/state"} {
 		if err := p.publish(t.Context(), topic, "v"); err != nil {
@@ -176,7 +139,7 @@ func TestAConfigPublishTheBrokerRefusedIsNotClaimed(t *testing.T) {
 	t.Parallel()
 
 	broker := &fakeBroker{fail: errBroker}
-	p := newPublisher(broker, nil, 0, slog.New(slog.DiscardHandler))
+	p := newPublisher(broker, nil, nil, slog.New(slog.DiscardHandler))
 	const topic = "homeassistant/sensor/unifi_00005e005301/state/config"
 
 	if err := p.publishConfig(t.Context(), topic, []byte(`{"unique_id":"unifi_00005e005301_state"}`)); err == nil {

@@ -9,11 +9,10 @@
 // API, and republishes sites, devices, clients and health data to an
 // MQTT broker with optional Home Assistant auto-discovery.
 //
-// Build status: phase 2 of CONCEPT.md §12. The daemon polls the console
-// and publishes devices, ports, radios and the WLAN catalogue to MQTT
-// with change detection and a retained availability topic. Home
-// Assistant discovery is phase 3 and clients are phase 4, so entities
-// still have to be wired up by hand for now.
+// It publishes under the mqtt-smarthome 2.0 topic convention
+// (openccu-loom ADR 0083): `<name>/connected`, `<name>/info`,
+// `<name>/status/…`, `<name>/set/…` and `<name>/maintenance/…`, with
+// MQTT_TOPIC as the instance name.
 //
 // `--once` skips all of that and just reports the site inventory, which
 // is the fastest way to check credentials and filters against a real
@@ -82,11 +81,14 @@ func main() {
 		return
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	// One level for the whole process, so DEBUG and the maintenance
+	// topic's `loglevel` move the same handler.
+	level := new(slog.LevelVar)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(logger)
 	logger.Info("unifi2mqtt.boot", slog.String("build", version.String()))
 
-	if err := run(*configPath, *once, logger); fatalErr(err) {
+	if err := run(*configPath, *once, logger, level); fatalErr(err) {
 		logger.Error("unifi2mqtt.fatal", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
@@ -100,9 +102,16 @@ func fatalErr(err error) bool {
 	return err != nil && !errors.Is(err, context.Canceled)
 }
 
+// supervisedEnv is this daemon's explicit answer to "does something
+// restart me after a clean exit": 1/true or 0/false; unset leaves it to
+// [hapub.DetectSupervised]'s detection (systemd, Kubernetes, a
+// container). Only a supervised daemon honours
+// `<name>/maintenance/set/restart`.
+const supervisedEnv = config.EnvPrefix + "SUPERVISED"
+
 // run is the testable entry point: a non-nil error on any startup or
 // runtime failure, nil on clean shutdown.
-func run(configPath string, once bool, logger *slog.Logger) error {
+func run(configPath string, once bool, logger *slog.Logger, level *slog.LevelVar) error {
 	// A --once run never opens a broker connection, so demanding
 	// MQTT_SERVER would only push operators towards a placeholder that
 	// later gets forgotten in a real config.
@@ -115,14 +124,19 @@ func run(configPath string, once bool, logger *slog.Logger) error {
 		return err
 	}
 	if cfg.Debug {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-		slog.SetDefault(logger)
+		level.Set(slog.LevelDebug)
 	}
 	for _, w := range cfg.Warnings() {
 		logger.Warn("unifi2mqtt.config_warning", slog.String("note", w))
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
+	// The graceful shutdown path, reachable from a signal and from the
+	// maintenance restart alike: cancelling it ends the bridge, whose
+	// deferred disconnect writes `<name>/connected` 0, and run returns
+	// nil — exit 0, for the supervisor to restart.
+	ctx, cancel := context.WithCancel(sigCtx)
 	defer cancel()
 
 	client, site, info, err := connect(ctx, cfg, logger)
@@ -140,7 +154,25 @@ func run(configPath string, once bool, logger *slog.Logger) error {
 	if once {
 		return inventory(ctx, client, cfg, site, logger)
 	}
-	return bridge(ctx, cfg, facade, facade, site, info, logger)
+	// Refused before anything is published: a site spelled like a
+	// reserved item would share a level with `bridge` or a function.
+	if err := coordinator.CheckTopics(cfg.MQTTTopic, site); err != nil {
+		return err
+	}
+	return bridge(ctx, cfg, facade, facade, site, info, logger, maintenance{
+		setLogLevel: hapub.LevelVarSetter(level),
+		supervised:  hapub.DetectSupervised(supervisedEnv),
+		shutdown:    cancel,
+	})
+}
+
+// maintenance is what the mqtt-smarthome maintenance topics act on: the
+// daemon's real log level, the supervisor question, and its real
+// graceful shutdown.
+type maintenance struct {
+	setLogLevel func(slog.Level)
+	supervised  func() bool
+	shutdown    func()
 }
 
 // connect builds the console client, probes the API and resolves the
@@ -200,6 +232,7 @@ func bridge(
 	site model.Site,
 	info model.ControllerInfo,
 	logger *slog.Logger,
+	mnt maintenance,
 ) error {
 	// The coordinator owns the topic layout, so it also decides where
 	// availability lives — main only needs the string to build the will.
@@ -221,6 +254,9 @@ func bridge(
 		Store:        store,
 		Info:         info,
 		Logger:       logger,
+		SetLogLevel:  mnt.setLogLevel,
+		Supervised:   mnt.supervised,
+		Shutdown:     mnt.shutdown,
 	})
 	// The Last Will is part of CONNECT, so the client needs it before it
 	// exists — and the will is the discovery runtime's own statement, so
@@ -247,11 +283,12 @@ func bridge(
 		Password:   cfg.MQTTPassword.Reveal(),
 		KeepAlive:  keepAlive,
 		CleanStart: true,
-		// The will covers ungraceful death; the OnConnect hook below
-		// publishes the matching birth, and the shutdown path
-		// re-publishes "offline" because a clean DISCONNECT suppresses
-		// the will. Without the birth, one network blip would leave the
-		// retained topic stuck at "offline" for the rest of the run.
+		// The will covers ungraceful death with `<name>/connected` 0; the
+		// OnConnect hook below publishes the current level, and the
+		// shutdown path re-publishes 0 because a clean DISCONNECT
+		// suppresses the will. Without the announce, one network blip
+		// would leave the retained topic stuck at 0 for the rest of the
+		// run.
 		Will:      bridgeWill(will),
 		TLSConfig: tlsConfig,
 		Logger:    logger,
@@ -274,13 +311,13 @@ func bridge(
 	// The bridge availability marker goes around the breaker, and the
 	// asymmetry is the point: mqtt.Breaker counts ErrNotConnected as a
 	// failure, so a connection drop is exactly what opens the circuit —
-	// and the first thing a reconnected daemon does is announce itself
-	// online. Behind the breaker that announcement fails fast with
-	// ErrCircuitOpen, nothing retries it, and the fleet sits unavailable
-	// under `availability_mode: "all"` behind the "offline" the will
+	// and the first thing a reconnected daemon does is announce its
+	// `connected` level. Behind the breaker that announcement fails fast
+	// with ErrCircuitOpen, nothing retries it, and the fleet sits
+	// unavailable under `availability_mode: "all"` behind the 0 the will
 	// just wrote. At shutdown it is worse: a graceful DISCONNECT
 	// suppresses the will, so a marker the breaker refused leaves a
-	// retained "online" standing forever.
+	// retained 2 standing forever.
 	c.SetDirectPublisher(mqttClient)
 	// Subscriptions go to the client directly rather than through the
 	// breaker: they are startup-path calls with their own SUBACK-bounded
@@ -303,7 +340,8 @@ func bridge(
 	logger.Info("unifi2mqtt.mqtt_connected",
 		slog.String("broker", cfg.MQTTBrokerURL()),
 		slog.String("client_id", cfg.ClientID()),
-		slog.String("topic_root", cfg.MQTTTopic))
+		slog.String("name", cfg.MQTTTopic),
+		slog.Bool("maintenance", cfg.MQTTMaintenance))
 
 	//nolint:contextcheck // disconnect deliberately uses a fresh context;
 	// the run context is already cancelled when this defer fires.
@@ -337,13 +375,13 @@ func bridge(
 	return nil
 }
 
-// disconnect announces the bridge offline and closes the broker session.
+// disconnect writes `<name>/connected` 0 and closes the broker session.
 //
 // It deliberately builds a fresh context instead of taking the run
 // context: by the time this runs the run context is already cancelled,
 // so reusing it would abort both calls before they reach the broker and
-// leave the retained availability topic stuck at "online" until the
-// keep-alive expires. The fresh context is bounded so a hung broker
+// leave the retained `<name>/connected` stuck at its last level until
+// the keep-alive expires. The fresh context is bounded so a hung broker
 // cannot hold up a systemd stop either.
 func disconnect(c *coordinator.Coordinator, lc *mqtt.Lifecycle, logger *slog.Logger) {
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)

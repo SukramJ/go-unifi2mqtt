@@ -61,14 +61,30 @@ configuration:
     name: MQTT password
     description: Leave empty when the broker allows anonymous access.
   mqtt_topic:
-    name: Topic root
+    name: Instance name
     description: >-
-      Root of the published topic tree, e.g. unifi/default/device/...
+      First level of every topic (unifi/status/..., unifi/set/...,
+      unifi/connected). It is the only thing that keeps two instances on
+      one broker apart: two consoles or sites need two different names.
+      The default "unifi" is also the default of hobbyquaker's Node.js
+      adapter unifi2mqtt; running both on one broker needs one renamed.
+  mqtt_maintenance:
+    name: Maintenance topics
+    description: >-
+      unifi/maintenance/set/loglevel and .../restart plus process
+      statistics. Anyone allowed to publish on the broker can then change
+      the log level or restart the add-on; turn it off on a broker
+      without authentication and ACLs.
+  mqtt_stats_interval:
+    name: Statistics interval
+    description: >-
+      Seconds between unifi/maintenance/stats publishes; 0 switches them
+      off.
   mqtt_client_id:
     name: MQTT client id
     description: >-
       Identifier this add-on presents to the broker. Leave empty for
-      "unifi2mqtt-" followed by the topic root. Set it when two instances
+      "unifi2mqtt-" followed by the instance name. Set it when two instances
       share one broker: MQTT makes the broker disconnect the session it
       already holds when a second client presents the same identifier, so
       two on one id evict each other in a loop.

@@ -62,7 +62,22 @@ MQTT_SERVER: localhost # Broker host
 MQTT_PORT: 1883 # 1883 plain · 8883 when MQTT_SSL is true
 MQTT_LOGIN: "" # (override: env UNIFI_MQTT_LOGIN)
 MQTT_PASSWORD: "" # (override: env UNIFI_MQTT_PASSWORD)
-MQTT_TOPIC: unifi # Root of the published topic tree
+# The instance name: first level of every topic (mqtt-smarthome 2.0,
+# <name>/status/…, <name>/set/…, <name>/connected, <name>/info). It is the
+# only thing that keeps two instances on one broker apart — two consoles or
+# two sites need two different names, or they overwrite each other's
+# topics. The default "unifi" is also the default instance name of
+# hobbyquaker's Node.js adapter unifi2mqtt; running both on one broker
+# needs one of them renamed.
+MQTT_TOPIC: unifi
+# mqtt-smarthome maintenance topics: <name>/maintenance/set/loglevel,
+# <name>/maintenance/set/restart (honoured only under a supervisor, see
+# UNIFI_SUPERVISED in the README) and <name>/maintenance/stats. Anyone who
+# may publish on the broker can then restart the daemon or change its log
+# level: use broker ACLs, or turn this off on a broker that cannot be
+# secured.
+MQTT_MAINTENANCE: true # (override: env UNIFI_MQTT_MAINTENANCE)
+MQTT_STATS_INTERVAL: 60 # Seconds between <name>/maintenance/stats; 0 = off
 # The identifier this daemon presents to the broker. Unset means
 # "unifi2mqtt-" + MQTT_TOPIC, which is what every installation presented
 # before this key existed. Set it when two daemons share a broker: MQTT
@@ -103,10 +118,8 @@ REFRESH_STATIC: 3600 # Rarely-changing data: controller info, WLAN/network catal
 # responsive while the expensive part slows down. 0 = follow REFRESH_DEVICES.
 REFRESH_DEVICE_STATS: 0
 
-# How often every value is republished even when unchanged. Publishing only on
-# change keeps broker load low, but a subscriber that missed a message and does
-# not use retained values would otherwise stay stale forever.
-FORCE_REPUBLISH: 600
+# Values are published on change and again after every broker reconnect,
+# never periodically. FORCE_REPUBLISH (1.x) is gone and ignored if set.
 
 # ---------------------------------------------------------------------------
 # Clients / presence

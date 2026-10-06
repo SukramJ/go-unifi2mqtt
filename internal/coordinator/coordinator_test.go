@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"slices"
@@ -52,8 +53,21 @@ func (b *fakeBroker) Publish(_ context.Context, topic string, payload []byte, qo
 	return nil
 }
 
-// latest returns the most recent payload for topic.
+// latest returns the most recent payload for topic, with a status
+// object unwrapped to its `val` in the plain spelling of spec §5.1 — a
+// string without its quotes, anything else as its JSON — so a test
+// reads "ONLINE" or "true" rather than the whole object. Every other
+// payload, a discovery config above all, comes back as published.
 func (b *fakeBroker) latest(topic string) (string, bool) {
+	raw, ok := b.latestRaw(topic)
+	if !ok {
+		return "", false
+	}
+	return plainVal(raw), true
+}
+
+// latestRaw returns the most recent payload for topic, as published.
+func (b *fakeBroker) latestRaw(topic string) (string, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for i := range slices.Backward(b.msgs) {
@@ -62,6 +76,25 @@ func (b *fakeBroker) latest(topic string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// plainVal unwraps a `{"val","ts","lc"}` status object to its `val`'s
+// plain spelling, and returns anything else unchanged.
+func plainVal(payload string) string {
+	var obj struct {
+		Val json.RawMessage `json:"val"`
+		TS  *int64          `json:"ts"`
+		LC  *int64          `json:"lc"`
+	}
+	if !strings.HasPrefix(payload, "{") || json.Unmarshal([]byte(payload), &obj) != nil ||
+		obj.Val == nil || obj.TS == nil || obj.LC == nil {
+		return payload
+	}
+	var s string
+	if json.Unmarshal(obj.Val, &s) == nil {
+		return s
+	}
+	return string(obj.Val)
 }
 
 // count returns how often topic was published.
@@ -293,6 +326,10 @@ MQTT_TOPIC: unifi
 	return cfg
 }
 
+// testClock pins the status objects' `ts`, so a published payload is
+// the same bytes on every run.
+func testClock() time.Time { return time.UnixMilli(1_760_000_000_000) }
+
 func testSite() model.Site {
 	return model.Site{ID: "site-uuid", Name: "Default", Internal: "default"}
 }
@@ -397,6 +434,7 @@ func newHarnessLogging(t *testing.T, cfg *config.Config, caps Capabilities, log 
 		Capabilities: caps,
 		Info:         model.ControllerInfo{ApplicationVersion: "10.5.67"},
 		Logger:       log,
+		Clock:        testClock,
 	})
 	return &harness{c: c, broker: broker, src: src}
 }
@@ -415,18 +453,21 @@ func TestPublishesDeviceTopics(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"unifi/default/device/00005e005302/state":            "ONLINE",
-		"unifi/default/device/00005e005302/firmware":         "7.0.25",
-		"unifi/default/device/00005e005302/update_available": "ON",
-		"unifi/default/device/00005e005301/update_available": "OFF",
-		"unifi/default/device/00005e005303/state":            "OFFLINE",
+		"unifi/status/default/device/00005e005302/state":            "ONLINE",
+		"unifi/status/default/device/00005e005302/firmware":         "7.0.25",
+		"unifi/status/default/device/00005e005302/update_available": "true",
+		"unifi/status/default/device/00005e005301/update_available": "false",
+		// Reachability as its own boolean item, for availability.
+		"unifi/status/default/device/00005e005302/online": "true",
+		"unifi/status/default/device/00005e005303/online": "false",
+		"unifi/status/default/device/00005e005303/state":  "OFFLINE",
 		// Ports and radios come from the static loop's snapshot, merged
 		// into the fast loop's publish.
-		"unifi/default/device/00005e005302/port/1/state":      "UP",
-		"unifi/default/device/00005e005302/port/1/speed":      "1000",
-		"unifi/default/device/00005e005302/port/1/poe":        "ON",
-		"unifi/default/device/00005e005303/radio/2g4/channel": "6",
-		"unifi/default/device/00005e005303/radio/5g/channel":  "36",
+		"unifi/status/default/device/00005e005302/port/1/state":      "UP",
+		"unifi/status/default/device/00005e005302/port/1/speed":      "1000",
+		"unifi/status/default/device/00005e005302/port/1/poe":        "true",
+		"unifi/status/default/device/00005e005303/radio/2g4/channel": "6",
+		"unifi/status/default/device/00005e005303/radio/5g/channel":  "36",
 	}
 	for topic, wantPayload := range want {
 		got, ok := h.broker.latest(topic)
@@ -439,9 +480,9 @@ func TestPublishesDeviceTopics(t *testing.T) {
 		}
 	}
 
-	// An SFP+ port has no PoE hardware; publishing OFF there would
+	// An SFP+ port has no PoE hardware; publishing false there would
 	// create a Home Assistant entity for a capability it lacks.
-	if _, ok := h.broker.latest("unifi/default/device/00005e005302/port/25/poe"); ok {
+	if _, ok := h.broker.latest("unifi/status/default/device/00005e005302/port/25/poe"); ok {
 		t.Error("a non-PoE port got a poe topic")
 	}
 }
@@ -457,7 +498,7 @@ func TestDeviceAttributes(t *testing.T) {
 		t.Fatalf("refreshDevices: %v", err)
 	}
 
-	raw, ok := h.broker.latest("unifi/default/device/00005e005302/attributes")
+	raw, ok := h.broker.latest("unifi/status/default/device/00005e005302/attributes")
 	if !ok {
 		t.Fatal("no attributes topic")
 	}
@@ -480,7 +521,7 @@ func TestDeviceAttributes(t *testing.T) {
 
 	// The gateway has no uplink; the field must be absent rather than
 	// present and empty.
-	raw, _ = h.broker.latest("unifi/default/device/00005e005301/attributes")
+	raw, _ = h.broker.latest("unifi/status/default/device/00005e005301/attributes")
 	if strings.Contains(raw, "uplink_mac") {
 		t.Errorf("gateway attributes advertise an uplink: %s", raw)
 	}
@@ -520,49 +561,83 @@ func TestChangeDetectionSuppressesIdenticalPayloads(t *testing.T) {
 	if err := h.c.refreshDevices(t.Context()); err != nil {
 		t.Fatalf("refreshDevices: %v", err)
 	}
-	if got := h.broker.total(); got != 1 {
-		t.Errorf("published %d messages for a single changed value, want 1", got)
+	// The state and the `online` item derived from it: nothing else.
+	if got := h.broker.total(); got != 2 {
+		t.Errorf("published %d messages for a single changed state, want 2", got)
 	}
-	if got, _ := h.broker.latest("unifi/default/device/00005e005302/state"); got != "UPDATING" {
+	if got, _ := h.broker.latest("unifi/status/default/device/00005e005302/state"); got != "UPDATING" {
 		t.Errorf("state = %q, want UPDATING", got)
+	}
+	if got, _ := h.broker.latest("unifi/status/default/device/00005e005302/online"); got != "false" {
+		t.Errorf("online = %q, want false", got)
 	}
 }
 
-// Without the periodic full republish a subscriber that missed a
-// message — or one not using retained values — would stay stale forever.
-func TestForcedRepublish(t *testing.T) {
+// 2.0 dropped the periodic forced republish: mqtt-smarthome §3.2 says
+// an adapter MUST NOT republish unchanged state, and a subscriber that
+// missed a message has the retained value and the replay on every
+// broker reconnect. An unchanged poll an hour later sends nothing.
+func TestNoPeriodicRepublish(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		cfg := testConfig()
-		cfg.ForceRepublish = 600
-		h := newHarness(t, cfg)
-
+		h := newHarness(t, nil)
 		if err := h.c.refreshDevices(t.Context()); err != nil {
 			t.Fatalf("refreshDevices: %v", err)
 		}
-		first := h.broker.total()
 
-		// One nanosecond before the deadline: still suppressed.
-		time.Sleep(600*time.Second - time.Nanosecond)
+		time.Sleep(time.Hour)
 		h.broker.reset()
 		if err := h.c.refreshDevices(t.Context()); err != nil {
 			t.Fatalf("refreshDevices: %v", err)
 		}
 		if got := h.broker.total(); got != 0 {
-			t.Errorf("published %d messages before the force deadline, want 0", got)
-		}
-
-		// At the deadline: everything again.
-		time.Sleep(time.Nanosecond)
-		h.broker.reset()
-		if err := h.c.refreshDevices(t.Context()); err != nil {
-			t.Fatalf("refreshDevices: %v", err)
-		}
-		if got := h.broker.total(); got != first {
-			t.Errorf("forced republish sent %d messages, want all %d", got, first)
+			t.Errorf("an unchanged poll an hour later published %d messages, want 0", got)
 		}
 	})
+}
+
+// Every status item is the spec §5.2 object: `val` typed as what it is,
+// `ts` the observation and `lc` the last change, in integer ms.
+func TestStatusItemsAreStatusObjects(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, nil)
+	if err := h.c.refreshStatic(t.Context()); err != nil {
+		t.Fatalf("refreshStatic: %v", err)
+	}
+	if err := h.c.refreshDevices(t.Context()); err != nil {
+		t.Fatalf("refreshDevices: %v", err)
+	}
+	if err := h.c.refreshDeviceStats(t.Context()); err != nil {
+		t.Fatalf("refreshDeviceStats: %v", err)
+	}
+
+	ts := testClock().UnixMilli()
+	for topic, want := range map[string]string{
+		"unifi/status/default/device/00005e005302/state":            `{"val":"ONLINE","ts":%d,"lc":%d}`,
+		"unifi/status/default/device/00005e005302/update_available": `{"val":true,"ts":%d,"lc":%d}`,
+		"unifi/status/default/device/00005e005302/port/1/speed":     `{"val":1000,"ts":%d,"lc":%d}`,
+		"unifi/status/default/device/00005e005301/cpu_utilization":  `{"val":12.5,"ts":%d,"lc":%d}`,
+		"unifi/status/default/device/00005e005301/uptime":           `{"val":864000,"ts":%d,"lc":%d}`,
+	} {
+		got, ok := h.broker.latestRaw(topic)
+		if !ok {
+			t.Errorf("%s was never published", topic)
+			continue
+		}
+		if want := fmt.Sprintf(want, ts, ts); got != want {
+			t.Errorf("%s = %s, want %s", topic, got, want)
+		}
+	}
+
+	raw, _ := h.broker.latestRaw("unifi/status/default/device/00005e005302/attributes")
+	var attrs struct {
+		Val map[string]any `json:"val"`
+	}
+	if err := json.Unmarshal([]byte(raw), &attrs); err != nil || attrs.Val["model"] != "USW-Pro-24-PoE" {
+		t.Errorf("attributes = %s, want the object as val", raw)
+	}
 }
 
 func TestDeviceStatsSkipsOfflineDevices(t *testing.T) {
@@ -580,19 +655,19 @@ func TestDeviceStatsSkipsOfflineDevices(t *testing.T) {
 	if got, want := h.src.callCount("DeviceStats"), 2; got != want {
 		t.Errorf("made %d statistics calls, want %d (offline devices skipped)", got, want)
 	}
-	if _, ok := h.broker.latest("unifi/default/device/00005e005303/cpu_utilization"); ok {
+	if _, ok := h.broker.latest("unifi/status/default/device/00005e005303/cpu_utilization"); ok {
 		t.Error("an offline device got CPU statistics published")
 	}
 
-	if got, _ := h.broker.latest("unifi/default/device/00005e005301/uptime"); got != "864000" {
+	if got, _ := h.broker.latest("unifi/status/default/device/00005e005301/uptime"); got != "864000" {
 		t.Errorf("uptime = %q, want 864000", got)
 	}
-	if got, _ := h.broker.latest("unifi/default/device/00005e005301/cpu_utilization"); got != "12.5" {
+	if got, _ := h.broker.latest("unifi/status/default/device/00005e005301/cpu_utilization"); got != "12.5" {
 		t.Errorf("cpu_utilization = %q, want 12.5", got)
 	}
 	// Radio retry rates are keyed by band, the only identifier the
 	// statistics response carries.
-	if got, _ := h.broker.latest("unifi/default/device/00005e005302/radio/5g/tx_retries"); got != "1.2" {
+	if got, _ := h.broker.latest("unifi/status/default/device/00005e005302/radio/5g/tx_retries"); got != "1.2" {
 		t.Errorf("tx_retries = %q, want 1.2", got)
 	}
 }
@@ -614,7 +689,7 @@ func TestPercentFormattingIsStable(t *testing.T) {
 	if err := h.c.refreshDeviceStats(t.Context()); err != nil {
 		t.Fatalf("refreshDeviceStats: %v", err)
 	}
-	if got, ok := h.broker.latest("unifi/default/device/00005e005301/cpu_utilization"); ok {
+	if got, ok := h.broker.latest("unifi/status/default/device/00005e005301/cpu_utilization"); ok {
 		t.Errorf("a jittering float republished as %q, want it suppressed", got)
 	}
 }
@@ -627,13 +702,13 @@ func TestWLANPublication(t *testing.T) {
 		t.Fatalf("refreshStatic: %v", err)
 	}
 
-	if got, _ := h.broker.latest("unifi/default/wlan/wlan-1/enabled"); got != "ON" {
-		t.Errorf("wlan-1 enabled = %q, want ON", got)
+	if got, _ := h.broker.latest("unifi/status/default/wlan/wlan-1/enabled"); got != "true" {
+		t.Errorf("wlan-1 enabled = %q, want true", got)
 	}
-	if got, _ := h.broker.latest("unifi/default/wlan/wlan-2/enabled"); got != "OFF" {
-		t.Errorf("wlan-2 enabled = %q, want OFF", got)
+	if got, _ := h.broker.latest("unifi/status/default/wlan/wlan-2/enabled"); got != "false" {
+		t.Errorf("wlan-2 enabled = %q, want false", got)
 	}
-	if got, _ := h.broker.latest("unifi/default/wlan/wlan-1/name"); got != "HomeNet" {
+	if got, _ := h.broker.latest("unifi/status/default/wlan/wlan-1/name"); got != "HomeNet" {
 		t.Errorf("wlan-1 name = %q, want HomeNet", got)
 	}
 }
@@ -652,7 +727,7 @@ func TestRemovedDeviceForgetsItsTopics(t *testing.T) {
 		t.Fatalf("refreshDevices: %v", err)
 	}
 
-	prefix := "unifi/default/device/00005e005303/"
+	prefix := "unifi/status/default/device/00005e005303/"
 	if len(h.c.pub.knownTopics()) == 0 {
 		t.Fatal("nothing was remembered")
 	}
@@ -685,28 +760,41 @@ func TestRemovedDeviceForgetsItsTopics(t *testing.T) {
 	}
 }
 
+// `<name>/connected` is 0 by the will and on a clean stop, 1 while the
+// broker is up but the console is not known to answer, and 2 once the
+// device poll succeeds (spec §3.1). It is retained, at QoS 1.
 func TestAvailabilityLifecycle(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t, nil)
 	topic := h.c.AvailabilityTopic()
-	if got, want := topic, "unifi/bridge/status"; got != want {
+	if got, want := topic, "unifi/connected"; got != want {
 		t.Errorf("AvailabilityTopic() = %q, want %q", got, want)
+	}
+	will, err := h.c.Will()
+	if err != nil || will.Topic != topic || string(will.Payload) != "0" || !will.Retain {
+		t.Errorf("will = %+v (%v), want 0 retained on %s", will, err, topic)
 	}
 
 	h.c.OnConnect(t.Context())
-	if got, _ := h.broker.latest(topic); got != "online" {
-		t.Errorf("after connect = %q, want online", got)
+	if got, _ := h.broker.latest(topic); got != "1" {
+		t.Errorf("after connect = %q, want 1 — nothing has said the console answers yet", got)
+	}
+	if err := h.c.refreshDevices(t.Context()); err != nil {
+		t.Fatalf("refreshDevices: %v", err)
+	}
+	if got, _ := h.broker.latest(topic); got != "2" {
+		t.Errorf("after a device poll = %q, want 2", got)
 	}
 	// A clean DISCONNECT suppresses the broker-side will, so shutdown
-	// has to publish offline itself.
+	// has to publish 0 itself.
 	h.c.AnnounceOffline(t.Context())
-	if got, _ := h.broker.latest(topic); got != "offline" {
-		t.Errorf("after shutdown = %q, want offline", got)
+	if got, _ := h.broker.latest(topic); got != "0" {
+		t.Errorf("after shutdown = %q, want 0", got)
 	}
 
-	// Availability must be retained and QoS 1: a subscriber connecting
-	// later has to learn the bridge is up.
+	// Retained and QoS 1: a subscriber connecting later has to learn
+	// the bridge's state.
 	h.broker.mu.Lock()
 	defer h.broker.mu.Unlock()
 	for _, m := range h.broker.msgs {
@@ -714,17 +802,62 @@ func TestAvailabilityLifecycle(t *testing.T) {
 			continue
 		}
 		if !m.retain {
-			t.Error("availability was published without the retain flag")
+			t.Error("connected was published without the retain flag")
 		}
 		if m.qos != mqtt.QoS1 {
-			t.Errorf("availability QoS = %v, want 1", m.qos)
+			t.Errorf("connected QoS = %v, want 1", m.qos)
 		}
 	}
 }
 
+// 1 vs 2 follows the console: a failing device poll drops the bridge to
+// 1 and a recovered one lifts it back to 2, each transition published
+// once — and a reconnect, which rebuilds the runtime at 1, republishes
+// the level the console is actually at.
+func TestConnectedFollowsTheConsole(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, nil)
+	topic := h.c.AvailabilityTopic()
+	h.c.OnConnect(t.Context())
+	if err := h.c.refreshDevices(t.Context()); err != nil {
+		t.Fatalf("refreshDevices: %v", err)
+	}
+
+	h.src.mu.Lock()
+	h.src.devicesErr = errors.New("connection refused")
+	h.src.mu.Unlock()
+	_ = h.c.refreshDevices(t.Context())
+	_ = h.c.refreshDevices(t.Context())
+	if got, _ := h.broker.latest(topic); got != "1" {
+		t.Errorf("console down: connected = %q, want 1", got)
+	}
+
+	h.src.mu.Lock()
+	h.src.devicesErr = nil
+	h.src.mu.Unlock()
+	if err := h.c.refreshDevices(t.Context()); err != nil {
+		t.Fatalf("refreshDevices: %v", err)
+	}
+	if got, _ := h.broker.latest(topic); got != "2" {
+		t.Errorf("console back: connected = %q, want 2", got)
+	}
+	// Connect 1, then 2, 1, 2 — the second failing poll is no transition.
+	if got := h.broker.count(topic); got != 4 {
+		t.Errorf("connected published %d times, want 4 (one per transition)", got)
+	}
+
+	h.broker.reset()
+	h.c.OnConnect(t.Context())
+	if got, _ := h.broker.latest(topic); got != "2" {
+		t.Errorf("after a reconnect connected = %q, want the console's 2", got)
+	}
+}
+
 // A reconnect may land on a broker that lost its retained store, or on
-// a different broker entirely. Suppressing every unchanged value
-// against a stale memory would leave that broker permanently empty.
+// a different broker entirely. Every status item is replayed on it,
+// unchanged — original `ts` included — and the next unchanged poll then
+// sends nothing.
 func TestReconnectRepublishesEverything(t *testing.T) {
 	t.Parallel()
 
@@ -732,48 +865,73 @@ func TestReconnectRepublishesEverything(t *testing.T) {
 	if err := h.c.refreshDevices(t.Context()); err != nil {
 		t.Fatalf("refreshDevices: %v", err)
 	}
-	first := h.broker.total()
+	status := h.broker.topicsWithPrefix("unifi/status/")
+	if len(status) == 0 {
+		t.Fatal("nothing was published")
+	}
+	before := map[string]string{}
+	for topic := range status {
+		before[topic], _ = h.broker.latestRaw(topic)
+	}
 
-	h.c.OnConnect(t.Context()) // simulates a reconnect
 	h.broker.reset()
+	h.c.OnConnect(t.Context()) // simulates a reconnect
+	for topic, want := range before {
+		if got, ok := h.broker.latestRaw(topic); !ok || got != want {
+			t.Errorf("%s after reconnect = %q (sent=%v), want the cached %q", topic, got, ok, want)
+		}
+	}
 
+	h.broker.reset()
 	if err := h.c.refreshDevices(t.Context()); err != nil {
 		t.Fatalf("refreshDevices: %v", err)
 	}
-	if got := h.broker.total(); got != first {
-		t.Errorf("after a reconnect %d messages went out, want all %d", got, first)
+	if got := len(h.broker.topicsWithPrefix("unifi/status/")); got != 0 {
+		t.Errorf("an unchanged poll after the replay sent %d status items, want 0", got)
 	}
 }
 
-func TestBridgeInfo(t *testing.T) {
+// `<name>/info` is spec §6's instance document, retained, carrying what
+// 1.x put on `bridge/info` as project fields.
+func TestInstanceInfo(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t, nil)
 	h.c.OnConnect(t.Context())
 
-	raw, ok := h.broker.latest("unifi/bridge/info")
+	raw, ok := h.broker.latest("unifi/info")
 	if !ok {
-		t.Fatal("no bridge info topic")
+		t.Fatal("no info topic")
 	}
 	var info map[string]any
 	if err := json.Unmarshal([]byte(raw), &info); err != nil {
-		t.Fatalf("bridge info is not JSON: %v", err)
+		t.Fatalf("info is not JSON: %v", err)
 	}
-	if got, want := info["application_version"], "10.5.67"; got != want {
-		t.Errorf("application_version = %v, want %v", got, want)
+	for key, want := range map[string]any{
+		// The Go project, never hobbyquaker's npm package unifi2mqtt.
+		"name":                "go-unifi2mqtt",
+		"spec":                "2.0",
+		"maintenance":         true,
+		"application_version": "10.5.67",
+		"site":                "default",
+		"site_id":             "site-uuid",
+		"console_host":        "192.0.2.1",
+	} {
+		if got := info[key]; got != want {
+			t.Errorf("info[%q] = %v, want %v", key, got, want)
+		}
 	}
-	if got, want := info["site"], "default"; got != want {
-		t.Errorf("site = %v, want %v", got, want)
+	for _, key := range []string{"version", "go", "pid", "started"} {
+		if _, ok := info[key]; !ok {
+			t.Errorf("info carries no %q", key)
+		}
 	}
-	// The counters used to live here and permanently read 1, because
-	// this topic is written from the connect hook before anything has
-	// been published.
-	if _, ok := info["published_topics"]; ok {
-		t.Error("bridge info carries a publish counter that is always 1")
+	if _, ok := h.broker.latest("unifi/bridge/info"); ok {
+		t.Error("the 1.x bridge/info topic is still published")
 	}
 	// The API key must never reach a payload.
 	if strings.Contains(raw, "\"k\"") {
-		t.Errorf("bridge info leaked a credential: %s", raw)
+		t.Errorf("info leaked a credential: %s", raw)
 	}
 }
 
@@ -801,10 +959,29 @@ func TestNonFatalErrorKeepsLoopAlive(t *testing.T) {
 	if got := h.src.callCount("Devices"); got < 2 {
 		t.Errorf("loop made %d attempts, want it to keep retrying", got)
 	}
-	// The failure should be visible on the bridge error topic.
-	if _, ok := h.broker.latest("unifi/bridge/error"); !ok {
-		t.Error("a loop failure was not surfaced on the bridge error topic")
+	// The failure should be visible on the bridge error item: a status
+	// object, not retained — an error outliving its condition misleads.
+	raw, ok := h.broker.latestRaw("unifi/status/bridge/error")
+	if !ok {
+		t.Fatal("a loop failure was not surfaced on the bridge error item")
 	}
+	var obj struct {
+		Val struct {
+			Loop  string `json:"loop"`
+			Error string `json:"error"`
+		} `json:"val"`
+	}
+	if err := json.Unmarshal([]byte(raw), &obj); err != nil ||
+		obj.Val.Loop != "devices" || obj.Val.Error != "connection refused" {
+		t.Errorf("bridge error = %s", raw)
+	}
+	h.broker.mu.Lock()
+	for _, m := range h.broker.msgs {
+		if m.topic == "unifi/status/bridge/error" && (m.retain || m.qos != mqtt.QoS0) {
+			t.Errorf("bridge error published retain=%v qos=%v, want a QoS 0 event", m.retain, m.qos)
+		}
+	}
+	h.broker.mu.Unlock()
 }
 
 // An invalid API key cannot fix itself. Retrying forever would hammer
@@ -841,7 +1018,7 @@ func TestPublishFailureDoesNotAbortPoll(t *testing.T) {
 	if err := h.c.refreshDevices(t.Context()); err != nil {
 		t.Fatalf("refreshDevices: %v", err)
 	}
-	if got, ok := h.broker.latest("unifi/default/device/00005e005302/state"); !ok || got != "ONLINE" {
+	if got, ok := h.broker.latest("unifi/status/default/device/00005e005302/state"); !ok || got != "ONLINE" {
 		t.Errorf("state after broker recovery = %q (present=%v), want ONLINE", got, ok)
 	}
 }
@@ -862,8 +1039,8 @@ func TestDeviceWithoutMACIsSkipped(t *testing.T) {
 			t.Errorf("published under an empty MAC segment: %s", topic)
 		}
 	}
-	if h.broker.total() != 0 {
-		t.Errorf("published %d messages for a device with no MAC, want 0", h.broker.total())
+	if got := h.broker.topicsWithPrefix("unifi/status/"); len(got) != 0 {
+		t.Errorf("published %v for a device with no MAC, want nothing", got)
 	}
 }
 
@@ -885,10 +1062,10 @@ func TestRunPrimesStaticBeforePolling(t *testing.T) {
 	// The very first device publish must already carry ports and radios,
 	// otherwise Home Assistant briefly sees a flat topology and creates
 	// entities for it.
-	if got, _ := h.broker.latest("unifi/default/device/00005e005302/port/1/state"); got != "UP" {
+	if got, _ := h.broker.latest("unifi/status/default/device/00005e005302/port/1/state"); got != "UP" {
 		t.Errorf("port state = %q, want UP — static data was not primed before the first poll", got)
 	}
-	if got, _ := h.broker.latest("unifi/default/device/00005e005302/attributes"); !strings.Contains(got, "uplink_mac") {
+	if got, _ := h.broker.latest("unifi/status/default/device/00005e005302/attributes"); !strings.Contains(got, "uplink_mac") {
 		t.Error("first device publish carried no uplink — static data was not primed")
 	}
 }
@@ -920,12 +1097,12 @@ func TestOnConnectWithoutPublisherDoesNotPanic(t *testing.T) {
 func TestPublishWithoutPublisherReportsAnError(t *testing.T) {
 	t.Parallel()
 
-	p := newPublisher(nil, nil, 0, slog.New(slog.DiscardHandler))
+	p := newPublisher(nil, nil, nil, slog.New(slog.DiscardHandler))
 	if err := p.publish(t.Context(), "a", "v"); !errors.Is(err, ErrNoPublisher) {
 		t.Errorf("publish error = %v, want ErrNoPublisher", err)
 	}
-	if err := p.publish(t.Context(), "a", ""); !errors.Is(err, ErrNoPublisher) {
-		t.Errorf("publish of an empty payload error = %v, want ErrNoPublisher", err)
+	if err := p.publish(t.Context(), "a", nil); !errors.Is(err, ErrNoPublisher) {
+		t.Errorf("publish of an empty value error = %v, want ErrNoPublisher", err)
 	}
 }
 
@@ -944,7 +1121,7 @@ func TestSetPublisherTakesEffect(t *testing.T) {
 	c.SetPublisher(broker)
 
 	c.OnConnect(t.Context())
-	if got, _ := broker.latest("unifi/bridge/status"); got != "online" {
-		t.Errorf("availability = %q, want online after SetPublisher", got)
+	if got, _ := broker.latest("unifi/connected"); got != "1" {
+		t.Errorf("connected = %q, want 1 after SetPublisher", got)
 	}
 }

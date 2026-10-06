@@ -51,8 +51,10 @@ type entityConfig struct {
 }
 
 type availabilitySrc struct {
-	Topic         string `json:"topic"`
-	ValueTemplate string `json:"value_template"`
+	Topic               string `json:"topic"`
+	ValueTemplate       string `json:"value_template"`
+	PayloadAvailable    string `json:"payload_available"`
+	PayloadNotAvailable string `json:"payload_not_available"`
 }
 
 type entityDevice struct {
@@ -104,12 +106,35 @@ func (s surface) deviceIsOffline(cfg entityConfig) bool {
 		return false
 	}
 	for _, m := range s.msgs {
-		if m.Topic != cfg.Availability[1].Topic || m.Text == nil {
+		if m.Topic != cfg.Availability[1].Topic || m.JSON == nil {
 			continue
 		}
-		return *m.Text != "ONLINE" && *m.Text != "home"
+		return m.JSON["val"] != true
 	}
 	return false
+}
+
+// valOn returns the `val` of the status object published on a topic,
+// in the plain spelling of spec §5.1.
+func (s surface) valOn(topic string) (string, bool) {
+	for _, m := range s.msgs {
+		if m.Topic != topic || m.JSON == nil {
+			continue
+		}
+		v, ok := m.JSON["val"]
+		if !ok {
+			return "", false
+		}
+		if str, ok := v.(string); ok {
+			return str, true
+		}
+		b, err := json.Marshal(v)
+		if err != nil {
+			return "", false
+		}
+		return string(b), true
+	}
+	return "", false
 }
 
 func isConfigTopic(topic string) bool {
@@ -562,14 +587,13 @@ func TestIdentityIsLanguageIndependent(t *testing.T) {
 
 // TestAvailabilityModelIsTwoLevel pins the model the migration must not
 // change by accident: a list of one or two sources with mode "all",
-// where the second level is the *device's own state topic* rather than
-// a per-device availability topic.
+// where the first is `<name>/connected` read at ≥ 2 and the second the
+// object's own `online` status item (spec §8, openccu-loom ADR 0083).
 //
-// This matters because go-hamqtt's zero model.Availability resolves to
-// {LevelBridge, LevelDevice} with mode "all", and its LevelDevice names
-// a dedicated `<root>/<uid>/availability` topic that this bridge never
-// writes. Taking the default would leave every entity that currently
-// has a second level permanently unavailable.
+// Every entry carries exactly the four keys a list entry may carry —
+// topic, value_template, payload_available, payload_not_available —
+// because Home Assistant rejects a whole device document over one
+// unknown key in a list entry.
 func TestAvailabilityModelIsTwoLevel(t *testing.T) {
 	t.Parallel()
 
@@ -577,25 +601,40 @@ func TestAvailabilityModelIsTwoLevel(t *testing.T) {
 	for _, s := range allSurfaces(t) {
 		bridge := ""
 		for topic := range s.published {
-			if strings.HasSuffix(topic, "/bridge/status") {
+			if strings.HasSuffix(topic, "/connected") {
 				bridge = topic
 			}
 		}
 		if bridge == "" {
-			t.Fatalf("%s: no bridge status topic published", s.name)
+			t.Fatalf("%s: no connected topic published", s.name)
 		}
 		for _, cfg := range s.configs {
 			if cfg.AvailTopic != "" {
 				t.Errorf("%s: uses the singular availability_topic form", cfg.Topic)
 			}
+			if _, ok := cfg.Raw["availability_template"]; ok {
+				t.Errorf("%s: carries availability_template, which belongs to the single-topic form", cfg.Topic)
+			}
 			if cfg.AvailMode != "all" {
 				t.Errorf("%s: availability_mode = %q, want \"all\"", cfg.Topic, cfg.AvailMode)
 			}
-			if len(cfg.Availability) == 0 || cfg.Availability[0].Topic != bridge {
-				t.Fatalf("%s: first availability source is not the bridge topic", cfg.Topic)
+			want := availabilitySrc{
+				Topic:               bridge,
+				ValueTemplate:       "{{ 'online' if value | int(0) >= 2 else 'offline' }}",
+				PayloadAvailable:    "online",
+				PayloadNotAvailable: "offline",
 			}
-			if cfg.Availability[0].ValueTemplate != "" {
-				t.Errorf("%s: bridge availability carries a value_template", cfg.Topic)
+			if len(cfg.Availability) == 0 || cfg.Availability[0] != want {
+				t.Fatalf("%s: first availability source is not connected ≥ 2: %+v", cfg.Topic, cfg.Availability)
+			}
+			for _, entry := range cfg.Raw["availability"].([]any) {
+				for key := range entry.(map[string]any) {
+					switch key {
+					case "topic", "value_template", "payload_available", "payload_not_available":
+					default:
+						t.Errorf("%s: availability entry carries %q", cfg.Topic, key)
+					}
+				}
 			}
 			switch len(cfg.Availability) {
 			case 1:
@@ -603,12 +642,13 @@ func TestAvailabilityModelIsTwoLevel(t *testing.T) {
 			case 2:
 				twoLevel++
 				second := cfg.Availability[1]
-				if !s.published[second.Topic] {
-					t.Errorf("%s: second availability source %q is published by nobody",
+				if !s.published[second.Topic] || !strings.HasSuffix(second.Topic, "/online") {
+					t.Errorf("%s: second availability source %q is not a published online item",
 						cfg.Topic, second.Topic)
 				}
-				if second.ValueTemplate == "" {
-					t.Errorf("%s: second availability source has no value_template", cfg.Topic)
+				if second.ValueTemplate != "{{ value_json.val | lower }}" ||
+					second.PayloadAvailable != "true" || second.PayloadNotAvailable != "false" {
+					t.Errorf("%s: second availability source reads %+v", cfg.Topic, second)
 				}
 			default:
 				t.Errorf("%s: %d availability sources", cfg.Topic, len(cfg.Availability))
@@ -650,7 +690,7 @@ func TestPublishQoSAndRetain(t *testing.T) {
 					t.Errorf("%s: config %s at QoS %d, want 1", s.name, m.Topic, m.QoS)
 				}
 				configQoS1++
-			case strings.HasSuffix(m.Topic, "/bridge/status"):
+			case strings.HasSuffix(m.Topic, "/connected"):
 				if m.QoS != 1 {
 					t.Errorf("%s: availability %s at QoS %d, want 1", s.name, m.Topic, m.QoS)
 				}
@@ -664,10 +704,14 @@ func TestPublishQoSAndRetain(t *testing.T) {
 		}
 	}
 
+	// State counts `<name>/info` (QoS 0, retained) and, since 2.0.0,
+	// the 29 `online` items; availability counts `<name>/connected`
+	// twice per scenario, at 1 on connect and at 2 after the first
+	// device poll.
 	const (
 		wantConfig = 315
-		wantState  = 317
-		wantAvail  = 5
+		wantState  = 346
+		wantAvail  = 10
 	)
 	if configQoS1 != wantConfig || stateQoS0 != wantState || availQoS1 != wantAvail || other != 0 {
 		t.Errorf("delivery census: config=%d state=%d availability=%d unretained=%d, "+
@@ -762,13 +806,13 @@ func TestKnownUnpublishedTopicsAreStillAdvertised(t *testing.T) {
 // and the entity never reflected it, with nothing in any log.
 //
 // Asserting only that the topic is written would pass on a publisher
-// that hard-codes OFF, so this checks the *value* against the fixture's
+// that hard-codes false, so this checks the *value* against the fixture's
 // read-back, which is ON for exactly one device of the four.
 func TestLocateSwitchStateReflectsTheReadBack(t *testing.T) {
 	t.Parallel()
 
 	// The one device whose locate LED the fixture reports as lit.
-	const litDevice = "unifi/default/device/00005e005302/locate"
+	const litDevice = "unifi/status/default/device/00005e005302/locate"
 
 	checked := 0
 	for _, s := range allSurfaces(t) {
@@ -777,11 +821,11 @@ func TestLocateSwitchStateReflectsTheReadBack(t *testing.T) {
 				continue
 			}
 			checked++
-			want := "OFF"
+			want := "false"
 			if cfg.StateTopic == litDevice {
-				want = "ON"
+				want = "true"
 			}
-			got, ok := s.textOn(cfg.StateTopic)
+			got, ok := s.valOn(cfg.StateTopic)
 			if !ok {
 				t.Errorf("%s: %s names %q, which nothing publishes",
 					s.name, cfg.Topic, cfg.StateTopic)
@@ -799,16 +843,6 @@ func TestLocateSwitchStateReflectsTheReadBack(t *testing.T) {
 	}
 }
 
-// textOn returns the scalar payload published on a topic.
-func (s surface) textOn(topic string) (string, bool) {
-	for _, m := range s.msgs {
-		if m.Topic == topic && m.Text != nil {
-			return *m.Text, true
-		}
-	}
-	return "", false
-}
-
 // TestCommandTopicsAreSubscribed pins the third vocabulary: the command
 // suffixes internal/hass writes into a config as string literals
 // against the cmd* constants internal/coordinator subscribes and parses
@@ -817,12 +851,12 @@ func TestCommandTopicsAreSubscribed(t *testing.T) {
 	t.Parallel()
 
 	filters := []string{
-		"unifi/default/device/+/" + cmdRestart,
-		"unifi/default/device/+/" + cmdLocateSet,
-		"unifi/default/device/+/port/+/" + cmdPowerCycle,
-		"unifi/default/client/+/" + cmdBlockedSet,
-		"unifi/default/client/+/" + cmdAuthorize,
-		"unifi/default/wlan/+/" + cmdWLANEnabled,
+		"unifi/set/default/device/+/" + cmdRestart,
+		"unifi/set/default/device/+/" + cmdLocate,
+		"unifi/set/default/device/+/port/+/" + cmdPowerCycle,
+		"unifi/set/default/client/+/" + cmdBlocked,
+		"unifi/set/default/client/+/" + cmdAuthorize,
+		"unifi/set/default/wlan/+/" + cmdWLANEnabled,
 	}
 
 	var commands int
@@ -1068,11 +1102,15 @@ func TestSurfaceCensus(t *testing.T) {
 		platforms         string
 	}
 	want := map[string]census{
-		"minimal.en":  {92, 45, "binary_sensor=11 sensor=34"},
-		"minimal.de":  {92, 45, "binary_sensor=11 sensor=34"},
-		"full.en":     {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
-		"full.de":     {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
-		"nonascii.de": {151, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		// 2.0.0 adds, per scenario, a second `connected` (1 on connect,
+		// 2 after the first device poll) and one `online` item per
+		// device (4) — and in the full scenarios one per published
+		// client (3) more; `info` replaces `bridge/info` one for one.
+		"minimal.en":  {97, 45, "binary_sensor=11 sensor=34"},
+		"minimal.de":  {97, 45, "binary_sensor=11 sensor=34"},
+		"full.en":     {159, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"full.de":     {159, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
+		"nonascii.de": {159, 75, "binary_sensor=12 button=6 device_tracker=3 sensor=45 switch=9"},
 	}
 	for _, s := range allSurfaces(t) {
 		counts := map[string]int{}

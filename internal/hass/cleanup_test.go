@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	hatopic "github.com/SukramJ/go-hamqtt/topic"
+
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 )
 
@@ -339,17 +341,38 @@ func TestAnUnpublishedConfigIsNeverAnOrphan(t *testing.T) {
 type nestedTopics struct{}
 
 func (nestedTopics) DeviceTopic(mac model.MAC, key string) string {
-	return "unifi/kitchen/default/device/" + mac.String() + "/" + key
+	return "unifi/kitchen/status/default/device/" + mac.String() + "/" + key
+}
+
+func (nestedTopics) DeviceCommandTopic(mac model.MAC, key string) string {
+	return "unifi/kitchen/set/default/device/" + mac.String() + "/" + key
 }
 
 func (nestedTopics) ClientTopic(key, valueKey string) string {
-	return "unifi/kitchen/default/client/" + key + "/" + valueKey
+	return "unifi/kitchen/status/default/client/" + key + "/" + valueKey
 }
-func (nestedTopics) HealthTopic(key string) string { return "unifi/kitchen/default/health/" + key }
+
+func (nestedTopics) ClientCommandTopic(key, valueKey string) string {
+	return "unifi/kitchen/set/default/client/" + key + "/" + valueKey
+}
+
+func (nestedTopics) HealthTopic(key string) string {
+	return "unifi/kitchen/status/default/health/" + key
+}
+
 func (nestedTopics) WLANTopic(id, key string) string {
-	return "unifi/kitchen/default/wlan/" + id + "/" + key
+	return "unifi/kitchen/status/default/wlan/" + id + "/" + key
 }
-func (nestedTopics) AvailabilityTopic() string { return "unifi/kitchen/bridge/status" }
+
+func (nestedTopics) WLANCommandTopic(id, key string) string {
+	return "unifi/kitchen/set/default/wlan/" + id + "/" + key
+}
+func (nestedTopics) AvailabilityTopic() string { return "unifi/kitchen/connected" }
+
+func (nestedTopics) SmartHome() hatopic.SmartHome {
+	l, _ := hatopic.NewSmartHomeMultiLevel("unifi/kitchen")
+	return l
+}
 
 // TestIsOwnConfigComparesTheAvailabilityTopicExactlyNotByPrefix pins
 // that this bridge is immune to the nested-sibling-root defeat above.

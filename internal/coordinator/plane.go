@@ -6,6 +6,7 @@ package coordinator
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/SukramJ/go-hamqtt/discovery"
 	hapub "github.com/SukramJ/go-hamqtt/publisher"
@@ -43,10 +44,10 @@ import (
 // has **no construction site on this bridge** and that is recorded
 // rather than left as an omission: this daemon builds no
 // [hapub.AvailabilityPublisher]. Its bridge level is the one retained
-// marker [hapub.Runtime] owns, and its device level is not a dedicated
-// availability topic at all but the object's own state topic read
-// through a `value_template` (measurement F8) — which the state plane
-// already writes. A second writer there would fight it.
+// `<name>/connected` [hapub.Runtime] owns, and its device level is the
+// object's `online` status item — which the state plane writes, and which
+// go-hamqtt refuses to let an AvailabilityPublisher write under a
+// SmartHomeLayout ([hapub.ErrStatusItemAvailability]).
 //
 // [hapub.QoSFromWire] (go-hamqtt v0.34.0) has nothing to convert here.
 // It exists because `QoS(cfg.MQTT.QoS)` reads correctly and is wrong
@@ -65,12 +66,12 @@ import (
 // passed before this step, stated so the field reads as a decision
 // rather than a default — not as a measurement.
 const (
-	// StateQoS is every entity state, attributes and `bridge/info`
-	// publish: QoS 0, retained. Preservation, not endorsement — the
+	// StateQoS is every status item, attributes and `<name>/info`
+	// publish: QoS 0, retained — and spec §4's QoS for everything. Preservation, not endorsement — the
 	// split is argued at internal/coordinator/discovery.go: a lost state
 	// value is corrected by the next poll, a lost config is not.
 	StateQoS = hapub.QoSAtMostOnce
-	// AvailabilityQoS is the bridge's retained online/offline marker,
+	// AvailabilityQoS is the bridge's retained `<name>/connected`,
 	// the Last Will derived from it, and the sweep's snapshot
 	// subscription — all of which [hapub.Config.QoS] governs together.
 	// QoS 1, matching what `publishRaw` passed before this step.
@@ -118,25 +119,26 @@ func (c *Coordinator) RuntimeConfig(log *slog.Logger) hapub.Config {
 
 // newStatePlane builds the state publisher over tr.
 //
-// [hapub.StateConfig.Encoding] is stated even though this daemon calls
-// [hapub.StatePublisher.Publish] with bytes it rendered itself and
-// never PublishValue, so the field is inert — the zero value is
-// EnvelopeEncoding, and leaving it would be a statement that reads as
-// the opposite of what this bridge publishes. Asserted inert by
-// TestStateEncodingIsInertAndStatedAnyway.
+// [hapub.StateConfig.Encoding] is the mqtt-smarthome status object: every
+// status item is `{"val","ts","lc"}`, deduplicated on `val`, with `lc`
+// kept per topic. No [hapub.StateConfig.ExtensionKey]: this bridge has
+// no project field to put beside `val`. Clock is nil in the daemon —
+// [time.Now] — and pinned by tests, which is what keeps the published
+// surface reproducible.
 //
 // CommandFilters is the guard that makes a self-echo impossible: a
 // broker delivers this process's own publishes back to it, so a state
 // topic matching one of its own command filters is a write it performs
-// on itself. It is usable here — unlike on go-homeconnect2mqtt, whose
-// command filter is a whole device sub-tree — because all six of this
-// bridge's filters end in a command suffix no state topic carries.
-func newStatePlane(tr hapub.Transport, filters []string, log *slog.Logger) *hapub.StatePublisher {
+// on itself. Under mqtt-smarthome the two trees cannot meet at all —
+// every status item is under `<name>/status/` and every command filter
+// under `<name>/set/` — and the guard stays as the statement of it.
+func newStatePlane(tr hapub.Transport, filters []string, clock func() time.Time, log *slog.Logger) *hapub.StatePublisher {
 	return hapub.NewStatePublisher(tr, hapub.StateConfig{
 		QoS:            StateQoS,
 		PulseQoS:       PulseQoS,
-		Encoding:       discovery.RawEncoding,
+		Encoding:       discovery.StatusObjectEncoding,
 		CommandFilters: filters,
+		Clock:          clock,
 		Logger:         log,
 	})
 }
@@ -183,16 +185,16 @@ type planePublisher struct{ c *Coordinator }
 // The asymmetry is deliberate and it closes a self-locking circle.
 // [mqtt.Breaker] counts [mqtt.ErrNotConnected] as a failure, so a
 // connection drop is exactly what opens the circuit — and the first
-// thing a reconnected daemon does is announce itself online. Behind the
-// breaker that announcement fails fast with ErrCircuitOpen, nothing
-// retries it, and the retained marker stays at the "offline" the
+// thing a reconnected daemon does is announce its `connected` level.
+// Behind the breaker that announcement fails fast with ErrCircuitOpen,
+// nothing retries it, and the retained marker stays at the 0 the
 // broker's Last Will just wrote: every entity of the fleet sits
 // unavailable under `availability_mode: "all"` until the next
 // reconnect, with a daemon that is demonstrably connected and
 // publishing state nobody displays. The same applies at shutdown, where
-// the offline marker is the only one that goes out at all — a graceful
+// the 0 is the only marker that goes out at all — a graceful
 // DISCONNECT suppresses the will, so a marker the breaker refused
-// leaves a retained "online" standing forever.
+// leaves a retained 2 standing forever.
 //
 // The breaker exists for volume: several hundred retained topics per
 // poll cycle, each otherwise stalling a full AckTimeout while a broker

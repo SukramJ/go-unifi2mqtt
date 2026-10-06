@@ -38,12 +38,13 @@ import (
 // Four library settings would each be a silent mass diff, so each is
 // stated once, here, rather than left to a zero value:
 //
-//   - [discovery.RawEncoding]. The zero [discovery.Encoding] is
-//     EnvelopeEncoding, which attaches
+//   - [discovery.StatusObjectEncoding]. The zero [discovery.Encoding]
+//     is EnvelopeEncoding, which attaches
 //     `value_template: {{ value_json.value }}` to every entity that
-//     reads a topic. This bridge publishes bare scalars, so the
-//     envelope template would break all 297 state-reading entities at
-//     once — and it would look like a formatting detail in review.
+//     reads a topic. This bridge publishes mqtt-smarthome status
+//     objects, so the envelope template would break every
+//     state-reading entity at once — and it would look like a
+//     formatting detail in review.
 //   - [HamqttOrigin]. [discovery.RenderComponent] stamps an `origin`
 //     block whenever the origin has a name. Until measurement F7 was
 //     fixed this bridge published none and the render passed a zero
@@ -53,7 +54,8 @@ import (
 //   - [hamqttContext.NodeID], [hamqttContext.UniqueID] and
 //     [hamqttContext.ObjectID] — see each method.
 //   - [hamqttContext.Availability], which is the whole of F8: the
-//     shape the library defaults to is right, the spelling is not.
+//     shape the library defaults to is right, the device slot it
+//     derives is not.
 //
 // What this file does NOT do: it does not classify, enrich or decide
 // anything. Every unit, device class, icon, payload and topic comes
@@ -103,12 +105,6 @@ type hamqttEntity struct {
 	seedName string
 	seedKey  string
 
-	// availTemplate maps the second availability level's payload onto
-	// online/offline. It differs per device kind — "ONLINE" for
-	// infrastructure, "home" for a client — and is empty on the 128
-	// bridge-only entities.
-	availTemplate string
-
 	// fields carries the platform keys [discovery.Component] has no
 	// typed home for: payload_on/off, state_on/off, payload_press,
 	// source_type and the two tracker payloads.
@@ -125,25 +121,29 @@ func (e *hamqttEntity) BuildDiscovery(_ discovery.Context, comp *discovery.Compo
 
 // --- the topic layout ------------------------------------------------
 
-// hamqttLayout is this bridge's topic tree as a [hatopic.Layout].
+// hamqttLayout is this bridge's topic tree as a [hatopic.SmartHomeLayout].
 //
 // It delegates to the same [Topics] implementation the shipped builders
 // point their configs at, and composes no string of its own beyond
 // joining a slot's path. That is deliberate: F10 counted 22 places in
-// this tree that compose an MQTT topic, 18 of which remain, and a
-// Layout that re-formatted "<root>/<site>/device/<mac>/<key>" would be
-// the 23rd — agreeing today and free to drift tomorrow, with the
-// symptom being entities that stay "unknown" forever and nothing in any
-// log.
+// this tree that compose an MQTT topic, and a Layout that re-formatted
+// "<name>/status/<site>/device/<mac>/<key>" would be one more —
+// agreeing today and free to drift tomorrow, with the symptom being
+// entities that stay "unknown" forever and nothing in any log.
 //
-// go-hamqtt's own topic.Default is unusable here and it is worth saying
-// why rather than leaving it to look like an oversight. It renders
-// "<root>/<scope...>/<uid>/<channel>/<bucket>/<path...>", which has a
-// bucket level this tree does not have; it keys devices on the device
-// UID ("unifi_<mac>") where this tree uses the bare MAC; and its
-// Command is always State+"/set", where this bridge spells four of its
-// six command suffixes differently ("cmd/restart", "cmd/locate/set",
-// "port/<n>/cmd/power_cycle", "cmd/authorize").
+// It is a [hatopic.SmartHomeLayout] because that capability is what
+// switches go-hamqtt's runtime onto `<name>/connected`: the Last Will
+// writes 0, [publisher.Runtime.AnnounceOnline] the current level, and
+// the runtime refuses a layout whose Connected and Bridge disagree. The
+// three extra methods forward to [Topics.SmartHome], so they are
+// go-hamqtt's spelling of the grammar and not this package's.
+//
+// go-hamqtt's own topic.SmartHome is not used for the item paths and it
+// is worth saying why rather than leaving it to look like an oversight.
+// Its State renders "<name>/status/<scope...>/<uid>/<channel>/<bucket>/<path...>",
+// which keys devices on the device UID ("unifi_<mac>") where this tree
+// uses the bare MAC and has no site level; and its Availability is
+// "<scope...>/<uid>/online" for the same reason.
 type hamqttLayout struct{ topics Topics }
 
 // Slot scopes. The first scope segment names which of the four topic
@@ -155,42 +155,44 @@ const (
 	scopeWLAN   = "wlan"
 )
 
-// State implements [hatopic.Layout].
+// State implements [hatopic.Layout]: the slot's status item.
 func (l hamqttLayout) State(s hamodel.Slot) string {
-	return l.render(s, s.Path)
+	return l.render(s, s.Path, false)
 }
 
-// Command implements [hatopic.Layout].
-//
-// The path is rendered verbatim rather than with a "/set" leaf appended,
-// because this bridge's command suffixes are not uniform: three are
-// under "cmd/", two are a "<value>/set" sibling of the state topic, and
-// one is nested inside a port. A layout that appended "/set" would
-// silently produce four topics nothing subscribes to.
+// Command implements [hatopic.Layout]: the slot's set item, the same
+// item path under `set`.
 func (l hamqttLayout) Command(s hamodel.Slot) string {
-	return l.render(s, s.Path)
+	return l.render(s, s.Path, true)
 }
 
-// Availability implements [hatopic.Layout]: the object's own state
-// topic, which is where this bridge's device-level availability signal
-// actually is.
-//
-// go-hamqtt's LevelDevice names "<root>/<uid>/availability" — a topic
-// this bridge does not publish and has no separate signal to put on.
-// The signal *is* the state value, so the slot resolves to the state
-// topic and [hamqttContext.Availability] supplies the template that
-// reads it. Returning a dedicated availability topic here would leave
-// 187 entities permanently grey, with a payload that looks correct.
+// Availability implements [hatopic.Layout]: the object's `online` status
+// item for an infrastructure device or a client, and nothing for the
+// site plane, which has no reachability of its own beyond the bridge's.
 func (l hamqttLayout) Availability(s hamodel.Slot) string {
-	return l.render(s, []string{"state"})
+	if len(s.Scope) == 0 || (s.Scope[0] != scopeDevice && s.Scope[0] != scopeClient) {
+		return ""
+	}
+	return l.render(s, []string{"online"}, false)
 }
 
-// Bridge implements [hatopic.Layout].
+// Bridge implements [hatopic.Layout]: `<name>/connected`.
 func (l hamqttLayout) Bridge() string { return l.topics.AvailabilityTopic() }
+
+// Connected implements [hatopic.SmartHomeLayout].
+func (l hamqttLayout) Connected() string { return l.topics.SmartHome().Connected() }
+
+// Info implements [hatopic.SmartHomeLayout].
+func (l hamqttLayout) Info() string { return l.topics.SmartHome().Info() }
+
+// Maintenance implements [hatopic.SmartHomeLayout].
+func (l hamqttLayout) Maintenance(item ...string) string {
+	return l.topics.SmartHome().Maintenance(item...)
+}
 
 // render resolves a slot against [Topics]. The scope names the family;
 // the address is the segment that family is keyed on.
-func (l hamqttLayout) render(s hamodel.Slot, path []string) string {
+func (l hamqttLayout) render(s hamodel.Slot, path []string, command bool) string {
 	key := strings.Join(path, "/")
 	family := ""
 	if len(s.Scope) > 0 {
@@ -202,19 +204,31 @@ func (l hamqttLayout) render(s hamodel.Slot, path []string) string {
 		if err != nil {
 			return ""
 		}
+		if command {
+			return l.topics.DeviceCommandTopic(mac, key)
+		}
 		return l.topics.DeviceTopic(mac, key)
 	case scopeClient:
+		if command {
+			return l.topics.ClientCommandTopic(s.Address, key)
+		}
 		return l.topics.ClientTopic(s.Address, key)
 	case scopeHealth:
+		if command {
+			return ""
+		}
 		return l.topics.HealthTopic(key)
 	case scopeWLAN:
+		if command {
+			return l.topics.WLANCommandTopic(s.Address, key)
+		}
 		return l.topics.WLANTopic(s.Address, key)
 	default:
 		return ""
 	}
 }
 
-var _ hatopic.Layout = hamqttLayout{}
+var _ hatopic.SmartHomeLayout = hamqttLayout{}
 
 // --- the render context ----------------------------------------------
 
@@ -299,40 +313,33 @@ func (c hamqttContext) ObjectID(_ *hamodel.Device, e hamodel.Entity) string {
 // measurement F8.
 //
 // The library's shape is already right — a list, mode "all", resolved
-// per entity from [hamodel.Description.Availability], so the 128/187
-// split between bridge-only and bridge+device costs nothing but a
-// [hamodel.BridgeOnly] on the 128. What differs is the spelling of the
-// second level: discovery.StdContext emits a dedicated availability
-// topic carrying true/false, and this bridge names the object's own
-// state topic with a template that maps its vocabulary onto
-// online/offline.
-//
-// Overriding this method is the route the interface exists for, and it
-// is narrow: the levels and the mode still come from the description,
-// only the entry for LevelDevice is spelled differently. The
-// device-level topic is resolved from the entity's own first binding
-// rather than from the device, so it cannot name a topic no config of
-// this entity points at.
-func (c hamqttContext) Availability(dev *hamodel.Device, e hamodel.Entity) []discovery.AvailabilityEntry {
+// per entity from [hamodel.Description.Availability], and under a
+// [hatopic.SmartHomeLayout] the two entries it spells are exactly this
+// bridge's: [discovery.ConnectedAvailability] on `<name>/connected` and
+// [discovery.OnlineAvailability] on the object's `online` item. What
+// differs is the slot the device level is resolved from:
+// discovery.StdContext derives it from the device's UID
+// ("unifi_<mac>"), and this tree keys the item on the bare MAC or the
+// client key, which only the entity's own first binding carries. So the
+// device-level topic is resolved from that binding rather than from the
+// device, and it cannot name a topic no config of this entity points at.
+func (c hamqttContext) Availability(_ *hamodel.Device, e hamodel.Entity) []discovery.AvailabilityEntry {
 	levels, _ := e.Desc().Availability.Resolved()
 	out := make([]discovery.AvailabilityEntry, 0, len(levels))
 	for _, level := range levels {
 		switch level {
 		case hamodel.LevelBridge:
-			out = append(out, discovery.AvailabilityEntry{Topic: c.layout.Bridge()})
+			out = append(out, discovery.ConnectedAvailability(c.layout.Bridge(), discovery.ConnectedOperational))
 		case hamodel.LevelDevice:
-			ent, ok := e.(*hamqttEntity)
-			if !ok || ent.availTemplate == "" {
-				continue
-			}
 			binds := e.Bindings()
 			if len(binds) == 0 {
 				continue
 			}
-			out = append(out, discovery.AvailabilityEntry{
-				Topic:         c.layout.Availability(binds[0].Slot),
-				ValueTemplate: ent.availTemplate,
-			})
+			topic := c.layout.Availability(binds[0].Slot)
+			if topic == "" {
+				continue
+			}
+			out = append(out, discovery.OnlineAvailability(topic, c.Encoding()))
 		case hamodel.LevelParent, hamodel.LevelSelf, hamodel.LevelNone:
 			// Not used by this bridge: there is no per-parent
 			// availability signal, no RoleAvailability binding, and
@@ -351,8 +358,8 @@ func (d *Discovery) newHamqttContext() hamqttContext {
 		Layout:    layout,
 		Namespace: hamqttNamespace,
 		Lang:      d.lang,
-		// Raw, not the zero value. See the file header.
-		Enc:    discovery.RawEncoding,
+		// The status object, not the zero value. See the file header.
+		Enc:    discovery.StatusObjectEncoding,
 		layout: layout,
 	}
 }
@@ -581,14 +588,6 @@ func hamqttDevice(info deviceInfo) *hamodel.Device {
 	return dev
 }
 
-// deviceAvailTemplate maps every model.DeviceState string — the
-// vocabulary model.AllDeviceStates declares — onto online/offline. It
-// is the literal the shipped builder writes.
-const deviceAvailTemplate = "{{ 'online' if value == 'ONLINE' else 'offline' }}"
-
-// clientAvailTemplate is the client plane's equivalent.
-const clientAvailTemplate = "{{ 'online' if value == 'home' else 'offline' }}"
-
 func (d *Discovery) hamqttDeviceGroup(dev *model.Device, opts ControlOptions) *hamqttGroup {
 	info := d.deviceInfo(dev)
 	g := &hamqttGroup{dev: hamqttDevice(info)}
@@ -633,7 +632,8 @@ func (d *Discovery) hamqttDeviceEntity(s *spec, mac, deviceName string) *hamqttE
 			// A sibling of the state topic, composed through the
 			// same Topics implementation rather than by string
 			// surgery on the slot.
-			JSONAttributesTopic: d.topics.DeviceTopic(mustMAC(mac), "attributes"),
+			JSONAttributesTopic:    d.topics.DeviceTopic(mustMAC(mac), "attributes"),
+			JSONAttributesTemplate: attributesTemplate,
 		},
 		Binds: []hamodel.Binding{{
 			Role: hamodel.RoleState,
@@ -645,12 +645,8 @@ func (d *Discovery) hamqttDeviceEntity(s *spec, mac, deviceName string) *hamqttE
 		seedName: deviceName,
 		seedKey:  s.key,
 	}
-	// The template is a property of the device kind, not of the entity:
-	// it is set on every infrastructure entity, and hamodel.BridgeOnly
-	// is the ONE switch that decides whether the level is rendered. Two
-	// switches saying the same thing is how a setting goes inert
-	// without a test noticing.
-	e.availTemplate = deviceAvailTemplate
+	// hamodel.BridgeOnly is the ONE switch that decides whether the
+	// device level is rendered.
 	if s.bridgeAvailOnly {
 		e.Description.Availability = hamodel.BridgeOnly()
 	}
@@ -681,14 +677,13 @@ func (d *Discovery) hamqttDeviceControls(
 			},
 			Binds: []hamodel.Binding{
 				{Role: hamodel.RoleState, Slot: deviceSlot(mac, "locate"), Mode: hamodel.Read},
-				{Role: hamodel.RoleCommand, Slot: deviceSlot(mac, "cmd/locate/set"), Mode: hamodel.Write},
+				{Role: hamodel.RoleCommand, Slot: deviceSlot(mac, "cmd/locate"), Mode: hamodel.Write},
 			},
-			uidBase:       idPrefix + "_" + mac,
-			uidKey:        "locate",
-			seedName:      info.Name,
-			seedKey:       "locate",
-			availTemplate: deviceAvailTemplate,
-			fields:        &discovery.SwitchFields{StateOn: payloadON, StateOff: payloadOFF},
+			uidBase:  idPrefix + "_" + mac,
+			uidKey:   "locate",
+			seedName: info.Name,
+			seedKey:  "locate",
+			fields:   &discovery.SwitchFields{StateOn: discovery.PayloadTrue, StateOff: discovery.PayloadFalse},
 		}
 		out = append(out, e)
 	}
@@ -724,12 +719,11 @@ func (d *Discovery) hamqttDeviceButton(
 			Slot: hamodel.Slot{Scope: []string{scopeDevice}, Address: mac, Path: cmdPath},
 			Mode: hamodel.Write,
 		}},
-		uidBase:       idPrefix + "_" + mac,
-		uidKey:        key,
-		seedName:      deviceName,
-		seedKey:       key,
-		availTemplate: deviceAvailTemplate,
-		fields:        &discovery.ButtonFields{PayloadPress: "PRESS"},
+		uidBase:  idPrefix + "_" + mac,
+		uidKey:   key,
+		seedName: deviceName,
+		seedKey:  key,
+		fields:   &discovery.ButtonFields{PayloadPress: "PRESS"},
 	}
 }
 
@@ -749,17 +743,17 @@ func (d *Discovery) hamqttClientGroup(
 			Name: hamodel.L(name("client_presence", d.lang)),
 			// The tracker reports being away, so it stays available
 			// while the client is not.
-			Availability:        hamodel.BridgeOnly(),
-			JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
+			Availability:           hamodel.BridgeOnly(),
+			JSONAttributesTopic:    d.topics.ClientTopic(key, "attributes"),
+			JSONAttributesTemplate: attributesTemplate,
 		},
 		Binds: []hamodel.Binding{{
 			Role: hamodel.RoleState, Slot: clientSlot(key, "state"), Mode: hamodel.Read,
 		}},
-		uidBase:       idPrefix + "_client_" + key,
-		uidKey:        "presence",
-		seedName:      info.Name,
-		seedKey:       "presence",
-		availTemplate: clientAvailTemplate,
+		uidBase:  idPrefix + "_client_" + key,
+		uidKey:   "presence",
+		seedName: info.Name,
+		seedKey:  "presence",
 		fields: &discovery.DeviceTrackerFields{
 			SourceType: "router", PayloadHome: "home", PayloadNotHome: "not_home",
 		},
@@ -788,14 +782,13 @@ func (d *Discovery) hamqttClientGroup(
 			},
 			Binds: []hamodel.Binding{
 				{Role: hamodel.RoleState, Slot: clientSlot(key, "blocked"), Mode: hamodel.Read},
-				{Role: hamodel.RoleCommand, Slot: clientSlot(key, "blocked/set"), Mode: hamodel.Write},
+				{Role: hamodel.RoleCommand, Slot: clientSlot(key, "blocked"), Mode: hamodel.Write},
 			},
-			uidBase:       idPrefix + "_client_" + key,
-			uidKey:        "blocked",
-			seedName:      info.Name,
-			seedKey:       "blocked",
-			availTemplate: clientAvailTemplate,
-			fields:        &discovery.SwitchFields{StateOn: payloadON, StateOff: payloadOFF},
+			uidBase:  idPrefix + "_client_" + key,
+			uidKey:   "blocked",
+			seedName: info.Name,
+			seedKey:  "blocked",
+			fields:   &discovery.SwitchFields{StateOn: discovery.PayloadTrue, StateOff: discovery.PayloadFalse},
 		})
 	}
 	if ctl.GuestAuthorize && cl.IsGuest {
@@ -812,12 +805,11 @@ func (d *Discovery) hamqttClientGroup(
 				Slot: clientSlot(key, "cmd/authorize"),
 				Mode: hamodel.Write,
 			}},
-			uidBase:       idPrefix + "_client_" + key,
-			uidKey:        "authorize",
-			seedName:      info.Name,
-			seedKey:       "authorize",
-			availTemplate: clientAvailTemplate,
-			fields:        &discovery.ButtonFields{PayloadPress: "PRESS"},
+			uidBase:  idPrefix + "_client_" + key,
+			uidKey:   "authorize",
+			seedName: info.Name,
+			seedKey:  "authorize",
+			fields:   &discovery.ButtonFields{PayloadPress: "PRESS"},
 		})
 	}
 	return g
@@ -832,22 +824,22 @@ func (d *Discovery) hamqttClientSensor(key, suffix, deviceName string, s spec) *
 		EntityKey:      suffix,
 		EntityPlatform: hacatalog.Platform(s.platform),
 		Description: hamodel.Description{
-			Name:                hamodel.L(name(s.nameKey, d.lang)),
-			DeviceClass:         hamodel.DeviceClass(s.deviceClass),
-			StateClass:          hacatalog.StateClass(s.stateClass),
-			Unit:                hamodel.Unit(s.unit),
-			Icon:                s.icon,
-			Category:            hacatalog.EntityCategory(s.category),
-			JSONAttributesTopic: d.topics.ClientTopic(key, "attributes"),
+			Name:                   hamodel.L(name(s.nameKey, d.lang)),
+			DeviceClass:            hamodel.DeviceClass(s.deviceClass),
+			StateClass:             hacatalog.StateClass(s.stateClass),
+			Unit:                   hamodel.Unit(s.unit),
+			Icon:                   s.icon,
+			Category:               hacatalog.EntityCategory(s.category),
+			JSONAttributesTopic:    d.topics.ClientTopic(key, "attributes"),
+			JSONAttributesTemplate: attributesTemplate,
 		},
 		Binds: []hamodel.Binding{{
 			Role: hamodel.RoleState, Slot: clientSlot(key, s.stateSuffix), Mode: hamodel.Read,
 		}},
-		uidBase:       idPrefix + "_client_" + key,
-		uidKey:        s.key,
-		seedName:      deviceName,
-		seedKey:       s.key,
-		availTemplate: clientAvailTemplate,
+		uidBase:  idPrefix + "_client_" + key,
+		uidKey:   s.key,
+		seedName: deviceName,
+		seedKey:  s.key,
 	}
 }
 
@@ -863,15 +855,16 @@ func (d *Discovery) hamqttHealthGroup() *hamqttGroup {
 			EntityKey:      s.key,
 			EntityPlatform: hacatalog.Platform(s.platform),
 			Description: hamodel.Description{
-				Name:                hamodel.L(name(s.nameKey, d.lang)),
-				DeviceClass:         hamodel.DeviceClass(s.deviceClass),
-				StateClass:          hacatalog.StateClass(s.stateClass),
-				Unit:                hamodel.Unit(s.unit),
-				Icon:                s.icon,
-				Category:            hacatalog.EntityCategory(s.category),
-				ValueTemplate:       s.valueTemplate,
-				Availability:        hamodel.BridgeOnly(),
-				JSONAttributesTopic: d.topics.HealthTopic("attributes"),
+				Name:                   hamodel.L(name(s.nameKey, d.lang)),
+				DeviceClass:            hamodel.DeviceClass(s.deviceClass),
+				StateClass:             hacatalog.StateClass(s.stateClass),
+				Unit:                   hamodel.Unit(s.unit),
+				Icon:                   s.icon,
+				Category:               hacatalog.EntityCategory(s.category),
+				ValueTemplate:          s.valueTemplate,
+				Availability:           hamodel.BridgeOnly(),
+				JSONAttributesTopic:    d.topics.HealthTopic("attributes"),
+				JSONAttributesTemplate: attributesTemplate,
 			},
 			Binds: []hamodel.Binding{{
 				Role: hamodel.RoleState, Slot: healthSlot(s.stateSuffix), Mode: hamodel.Read,
@@ -908,8 +901,8 @@ func (d *Discovery) hamqttWLANGroup(w *model.WLAN) *hamqttGroup {
 			Availability: hamodel.BridgeOnly(),
 		},
 		Binds: []hamodel.Binding{
-			{Role: hamodel.RoleState, Slot: wlanSlot(w.ID, "enabled"), Mode: hamodel.Read},
-			{Role: hamodel.RoleCommand, Slot: wlanSlot(w.ID, "enabled/set"), Mode: hamodel.Write},
+			{Role: hamodel.RoleState, Slot: wlanSlot(w.ID), Mode: hamodel.Read},
+			{Role: hamodel.RoleCommand, Slot: wlanSlot(w.ID), Mode: hamodel.Write},
 		},
 		uidBase: idPrefix + "_wlan_" + w.ID,
 		uidKey:  "enabled",
@@ -918,7 +911,7 @@ func (d *Discovery) hamqttWLANGroup(w *model.WLAN) *hamqttGroup {
 		// "unifi_wlan" and the SSID.
 		seedName: "unifi_wlan",
 		seedKey:  w.Name,
-		fields:   &discovery.SwitchFields{StateOn: payloadON, StateOff: payloadOFF},
+		fields:   &discovery.SwitchFields{StateOn: discovery.PayloadTrue, StateOff: discovery.PayloadFalse},
 	}
 	return &hamqttGroup{dev: hamqttDevice(info), entities: []hamodel.Entity{e}}
 }
@@ -937,8 +930,10 @@ func healthSlot(suffix string) hamodel.Slot {
 	return hamodel.Slot{Scope: []string{scopeHealth}, Path: splitSuffix(suffix)}
 }
 
-func wlanSlot(id, suffix string) hamodel.Slot {
-	return hamodel.Slot{Scope: []string{scopeWLAN}, Address: id, Path: splitSuffix(suffix)}
+// wlanSlot is an SSID's `enabled` item, the one item its switch reads
+// and writes: under mqtt-smarthome state and command share the path.
+func wlanSlot(id string) hamodel.Slot {
+	return hamodel.Slot{Scope: []string{scopeWLAN}, Address: id, Path: []string{"enabled"}}
 }
 
 func splitSuffix(suffix string) []string {

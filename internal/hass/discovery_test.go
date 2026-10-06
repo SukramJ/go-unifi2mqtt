@@ -5,9 +5,12 @@ package hass
 
 import (
 	"encoding/json"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
+
+	hatopic "github.com/SukramJ/go-hamqtt/topic"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 )
@@ -18,17 +21,34 @@ import (
 type stubTopics struct{}
 
 func (stubTopics) DeviceTopic(mac model.MAC, key string) string {
-	return "unifi/default/device/" + mac.String() + "/" + key
+	return "unifi/status/default/device/" + mac.String() + "/" + key
+}
+
+func (stubTopics) DeviceCommandTopic(mac model.MAC, key string) string {
+	return "unifi/set/default/device/" + mac.String() + "/" + key
 }
 
 func (stubTopics) ClientTopic(key, valueKey string) string {
-	return "unifi/default/client/" + key + "/" + valueKey
+	return "unifi/status/default/client/" + key + "/" + valueKey
 }
-func (stubTopics) HealthTopic(key string) string { return "unifi/default/health/" + key }
+
+func (stubTopics) ClientCommandTopic(key, valueKey string) string {
+	return "unifi/set/default/client/" + key + "/" + valueKey
+}
+func (stubTopics) HealthTopic(key string) string { return "unifi/status/default/health/" + key }
 func (stubTopics) WLANTopic(id, key string) string {
-	return "unifi/default/wlan/" + id + "/" + key
+	return "unifi/status/default/wlan/" + id + "/" + key
 }
-func (stubTopics) AvailabilityTopic() string { return "unifi/bridge/status" }
+
+func (stubTopics) WLANCommandTopic(id, key string) string {
+	return "unifi/set/default/wlan/" + id + "/" + key
+}
+func (stubTopics) AvailabilityTopic() string { return "unifi/connected" }
+
+func (stubTopics) SmartHome() hatopic.SmartHome {
+	l, _ := hatopic.NewSmartHome("unifi")
+	return l
+}
 
 func newTestDiscovery(lang string) *Discovery {
 	return New(Config{
@@ -163,9 +183,9 @@ func TestStateTopicsComeFromTheInjectedLayout(t *testing.T) {
 	byTopic := decode(t, entries)
 
 	checks := map[string]string{
-		"homeassistant/sensor/unifi_00005e005302/cpu_utilization/config":   "unifi/default/device/00005e005302/cpu_utilization",
-		"homeassistant/binary_sensor/unifi_00005e005302/port_1_poe/config": "unifi/default/device/00005e005302/port/1/poe",
-		"homeassistant/sensor/unifi_00005e005302/radio_5g_channel/config":  "unifi/default/device/00005e005302/radio/5g/channel",
+		"homeassistant/sensor/unifi_00005e005302/cpu_utilization/config":   "unifi/status/default/device/00005e005302/cpu_utilization",
+		"homeassistant/binary_sensor/unifi_00005e005302/port_1_poe/config": "unifi/status/default/device/00005e005302/port/1/poe",
+		"homeassistant/sensor/unifi_00005e005302/radio_5g_channel/config":  "unifi/status/default/device/00005e005302/radio/5g/channel",
 	}
 	for configTopic, wantState := range checks {
 		e, ok := byTopic[configTopic]
@@ -466,8 +486,10 @@ func TestEntityIDSeedWithoutDeviceName(t *testing.T) {
 	}
 }
 
-// Two-stage availability: the bridge topic covers the daemon being
-// gone, the device state topic covers the device being gone.
+// Two-stage availability: `<name>/connected` covers the daemon or the
+// console being gone, the device's `online` item covers the device
+// being gone. Each entry carries the four keys spec §8 allows and no
+// other.
 func TestAvailability(t *testing.T) {
 	t.Parallel()
 
@@ -487,8 +509,23 @@ func TestAvailability(t *testing.T) {
 	if got := cpu["availability_mode"]; got != "all" {
 		t.Errorf("availability_mode = %v, want all", got)
 	}
-	if got := avail[0].(map[string]any)["topic"]; got != "unifi/bridge/status" {
-		t.Errorf("first availability source = %v, want the bridge topic", got)
+	wantFirst := map[string]any{
+		"topic":                 "unifi/connected",
+		"value_template":        "{{ 'online' if value | int(0) >= 2 else 'offline' }}",
+		"payload_available":     "online",
+		"payload_not_available": "offline",
+	}
+	if got := avail[0].(map[string]any); !reflect.DeepEqual(got, wantFirst) {
+		t.Errorf("first availability source = %v, want %v", got, wantFirst)
+	}
+	wantSecond := map[string]any{
+		"topic":                 "unifi/status/default/device/00005e005302/online",
+		"value_template":        "{{ value_json.val | lower }}",
+		"payload_available":     "true",
+		"payload_not_available": "false",
+	}
+	if got := avail[1].(map[string]any); !reflect.DeepEqual(got, wantSecond) {
+		t.Errorf("second availability source = %v, want %v", got, wantSecond)
 	}
 
 	// The state sensor is the entity that reports being offline, so
@@ -528,13 +565,23 @@ func TestSensorMetadata(t *testing.T) {
 		{"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "payload_off", "OFF"},
 		{
 			"homeassistant/binary_sensor/unifi_00005e005302/reachable/config", "value_template",
-			"{{ 'ON' if value == 'ONLINE' else 'OFF' }}",
+			"{{ 'ON' if value_json.val == 'ONLINE' else 'OFF' }}",
 		},
 		{"homeassistant/binary_sensor/unifi_00005e005302/update_available/config", "device_class", "update"},
+		{"homeassistant/binary_sensor/unifi_00005e005302/update_available/config", "payload_on", "true"},
+		{
+			"homeassistant/binary_sensor/unifi_00005e005302/update_available/config", "value_template",
+			"{{ value_json.val | lower }}",
+		},
+		{"homeassistant/sensor/unifi_00005e005302/cpu_utilization/config", "value_template", "{{ value_json.val }}"},
+		{
+			"homeassistant/sensor/unifi_00005e005302/cpu_utilization/config", "json_attributes_template",
+			"{{ value_json.val | tojson }}",
+		},
 		{"homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config", "payload_on", "ON"},
 		{
 			"homeassistant/binary_sensor/unifi_00005e005302/port_1_link/config", "value_template",
-			"{{ 'ON' if value == 'UP' else 'OFF' }}",
+			"{{ 'ON' if value_json.val == 'UP' else 'OFF' }}",
 		},
 	}
 	for _, tt := range tests {
@@ -637,9 +684,9 @@ func TestEveryBinarySensorCanReportBothStates(t *testing.T) {
 	// grows an enum of its own it should be derived the same way.
 	vocabulary := map[string][]string{
 		"reachable":        deviceStateVocabulary(),
-		"update_available": {"ON", "OFF"},
+		"update_available": {"true", "false"},
 		"port_link":        {"UP", "DOWN", "UNKNOWN"},
-		"port_poe":         {"ON", "OFF"},
+		"port_poe":         {"true", "false"},
 		"wan_connectivity": {"ok", "warning", "error", "unknown"},
 	}
 
@@ -695,9 +742,12 @@ func TestEveryBinarySensorCanReportBothStates(t *testing.T) {
 	}
 }
 
-// renderBinaryTemplate evaluates the one Jinja shape this bridge uses
-// for a binary sensor: {{ 'A' if value == 'X' else 'B' }}. An empty
-// template is the identity, which is what Home Assistant does.
+// renderBinaryTemplate evaluates the two Jinja shapes this bridge uses
+// for a binary sensor over the `val` of a status object:
+// {{ 'A' if value_json.val == 'X' else 'B' }} for a token, and
+// {{ value_json.val | lower }} for a JSON boolean, which Jinja renders
+// as True/False and the filter lowers. value is the `val` as Jinja
+// would print it lowered, so the boolean form is the identity.
 //
 // Deliberately not a general Jinja engine: it understands exactly the
 // form the specs are allowed to use, so a spec that reaches for
@@ -705,12 +755,12 @@ func TestEveryBinarySensorCanReportBothStates(t *testing.T) {
 var portIndexPattern = regexp.MustCompile(`^port_\d+_`)
 
 func renderBinaryTemplate(tmpl, value string) string {
-	if tmpl == "" {
-		return value
+	if tmpl == "{{ value_json.val | lower }}" {
+		return strings.ToLower(value)
 	}
-	// Parse "{{ 'ON' if value == 'ONLINE' else 'OFF' }}" by its quotes.
+	// Parse "{{ 'ON' if value_json.val == 'ONLINE' else 'OFF' }}" by its quotes.
 	parts := strings.Split(tmpl, "'")
-	if len(parts) != 7 || !strings.Contains(parts[2], "if value ==") ||
+	if len(parts) != 7 || !strings.Contains(parts[2], "if value_json.val ==") ||
 		!strings.Contains(parts[4], "else") {
 		panic("unsupported value_template shape: " + tmpl)
 	}

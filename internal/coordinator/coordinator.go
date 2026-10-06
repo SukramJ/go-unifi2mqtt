@@ -23,19 +23,17 @@ package coordinator
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/SukramJ/go-hamqtt/discovery"
 	hapub "github.com/SukramJ/go-hamqtt/publisher"
-	mqtt "github.com/SukramJ/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
@@ -110,7 +108,28 @@ type Deps struct {
 	Store *state.Store
 	// Logger receives diagnostics; nil uses slog.Default().
 	Logger *slog.Logger
+
+	// SetLogLevel applies `<name>/maintenance/set/loglevel` to the
+	// daemon's own handler. Nil refuses the command with a warning.
+	SetLogLevel func(slog.Level)
+	// Supervised answers whether something restarts the process after a
+	// clean exit; `<name>/maintenance/set/restart` is refused unless it
+	// answers true. Nil refuses.
+	Supervised func() bool
+	// Shutdown starts the daemon's graceful shutdown — the path a signal
+	// takes, which writes `<name>/connected` 0 and exits 0. It is what a
+	// maintenance restart calls.
+	Shutdown func()
+	// Clock stamps the status objects' `ts`; nil is [time.Now]. Tests
+	// pin it so the published surface is reproducible.
+	Clock func() time.Time
 }
+
+// ProjectName is `<name>/info`'s `name`: the Go project, deliberately
+// not `unifi2mqtt`, which is hobbyquaker's npm package — a tool reading
+// `info` would offer that package's versions as an update for this
+// daemon (openccu-loom ADR 0083).
+const ProjectName = "go-unifi2mqtt"
 
 // Coordinator is the UniFi → MQTT data-flow root.
 type Coordinator struct {
@@ -150,6 +169,9 @@ type Coordinator struct {
 	// deviceIDToMAC resolves the uplink UUIDs clients report, refreshed
 	// by the static loop alongside the device details.
 	deviceIDToMAC map[string]model.MAC
+	// wlanIDs is every SSID id the WLAN catalogue reported in this run,
+	// for the migration sweep's ownership test.
+	wlanIDs map[string]bool
 
 	// hass builds discovery payloads; nil when HASS_ENABLE is false.
 	hass *hass.Discovery
@@ -221,8 +243,18 @@ type Coordinator struct {
 	// underneath, and acting on the old one is the defect the swap
 	// exists to remove.
 	haRuntime atomic.Pointer[hapub.Runtime]
-	// router subscribes the command tree. Nil until Run wires it.
+	// router subscribes the command tree and the maintenance commands.
+	// Nil until Run wires it.
 	router *hapub.CommandRouter
+	// instance publishes `<name>/info` and serves the maintenance topics
+	// (mqtt-smarthome 2.0 §6 and §7).
+	instance *hapub.Instance
+	// upstream is the `<name>/connected` level this daemon last decided:
+	// 2 while the console answers the device poll, 1 while it does not.
+	// It lives here rather than only in the runtime because the runtime
+	// is rebuilt on every reconnect and starts at 1 again; see
+	// [Coordinator.announceConnected].
+	upstream atomic.Int32
 	// healthDiscovered is the one-shot latch for the site-health configs,
 	// and it is deliberately NOT healthAnnounced: that one is the sweep's
 	// readiness signal and must only ever move forward, while this one is
@@ -257,13 +289,14 @@ func New(d Deps) *Coordinator {
 		sub:               d.Subscriber,
 		log:               log,
 		topics:            topics,
-		pub:               newPublisher(d.MQTT, commandFilters(topics), d.Cfg.ForceRepublishDuration(), log),
+		pub:               newPublisher(d.MQTT, commandFilters(topics), d.Clock, log),
 		details:           make(map[model.MAC]model.Device),
 		seen:              make(map[model.MAC]bool),
 		announced:         make(map[model.MAC][]string),
 		announcedClients:  make(map[string][]string),
 		clients:           make(map[string]clientState),
 		deviceIDToMAC:     make(map[string]model.MAC),
+		wlanIDs:           make(map[string]bool),
 		rediscover:        make(chan struct{}, 1),
 		commands:          make(chan command, commandQueueSize),
 		nudgeDevices:      make(chan struct{}, 1),
@@ -286,6 +319,31 @@ func New(d Deps) *Coordinator {
 	tr := c.planeTransport()
 	c.newRuntime = func() *hapub.Runtime { return hapub.New(tr, c.RuntimeConfig(log)) }
 	c.haRuntime.Store(c.newRuntime())
+	// The runtime starts every connection at 1, and so does this: the
+	// console was reachable a moment ago, at startup, but nothing claims
+	// it is operational until the first device poll says so.
+	c.upstream.Store(discovery.ConnectedBroker)
+
+	c.instance = hapub.NewInstance(tr, hapub.InstanceConfig{
+		Layout:  hass.NewLayout(c),
+		Name:    ProjectName,
+		Version: version.Version,
+		// What `bridge/info` carried before 2.0, as project fields. The
+		// console's host is `console_host` because `host` is the spec's
+		// own field, this daemon's host name.
+		Extra: map[string]any{
+			"site":                d.Site.Internal,
+			"site_id":             d.Site.ID,
+			"application_version": d.Info.ApplicationVersion,
+			"console_host":        d.Cfg.Host,
+		},
+		MaintenanceDisabled: !d.Cfg.MQTTMaintenance,
+		SetLogLevel:         d.SetLogLevel,
+		Supervised:          d.Supervised,
+		Shutdown:            d.Shutdown,
+		StatsInterval:       hapub.StatsInterval(d.Cfg.MQTTStatsInterval),
+		Logger:              log,
+	})
 	return c
 }
 
@@ -333,38 +391,86 @@ func (c *Coordinator) SetPublisher(p Publisher) {
 // topic the coordinator owns. Call before Run.
 func (c *Coordinator) SetSubscriber(s Subscriber) { c.sub = s }
 
-// AvailabilityTopic is the retained topic carrying the bridge's
-// online/offline state. main wires it as the MQTT will and republishes
-// "online" on every reconnect.
-func (c *Coordinator) AvailabilityTopic() string { return c.topics.bridge(statusKey) }
+// AvailabilityTopic is the retained `<name>/connected` topic carrying
+// 0, 1 or 2. main wires it as the MQTT will, whose payload is 0.
+func (c *Coordinator) AvailabilityTopic() string { return c.topics.connected() }
 
 // OnConnect is registered as the MQTT lifecycle's connect hook.
 //
-// It announces availability and drops the change-detection memory: a
-// reconnect may have landed on a broker that lost its retained store,
-// or on a different broker entirely, and suppressing every unchanged
-// value against a stale memory would leave that broker permanently
-// empty.
+// It announces `<name>/connected` and `<name>/info` and replays every
+// status item (mqtt-smarthome 2.0 §3.1, §3.2 and §6): a reconnect may
+// have landed on a broker that lost its retained store, or on a
+// different broker entirely, and a value that has not changed since
+// would otherwise never reach it.
 func (c *Coordinator) OnConnect(ctx context.Context) {
 	c.resetPlanes()
 	if c.store != nil {
 		c.store.SetMQTTConnected(true)
 	}
-	if err := c.ha().AnnounceOnline(ctx); err != nil {
+	if err := c.announceConnected(ctx); err != nil {
 		c.log.Warn("coordinator.availability_publish_failed", slog.String("err", err.Error()))
 	}
-	if err := c.publishBridgeInfo(ctx); err != nil {
-		c.log.Warn("coordinator.bridge_info_failed", slog.String("err", err.Error()))
+	if err := c.instance.AnnounceInfo(ctx); err != nil {
+		c.log.Warn("coordinator.info_publish_failed", slog.String("err", err.Error()))
+	}
+	if n, err := c.pub.republish(ctx); err != nil {
+		c.log.Warn("coordinator.status_republish_failed",
+			slog.Int("sent", n), slog.String("err", err.Error()))
 	}
 	c.rediscoverOnReconnect()
+}
+
+// announceConnected publishes the current `<name>/connected` level on a
+// fresh connection.
+//
+// The runtime was just rebuilt and starts at 1, so a level of 2 is
+// handed to it through [hapub.Runtime.SetConnected], which publishes it
+// as the transition it is for that runtime; 1 is
+// [hapub.Runtime.AnnounceOnline]'s to publish.
+func (c *Coordinator) announceConnected(ctx context.Context) error {
+	rt := c.ha()
+	if int(c.upstream.Load()) == discovery.ConnectedOperational {
+		_, err := rt.SetConnected(ctx, discovery.ConnectedOperational)
+		return err
+	}
+	return rt.AnnounceOnline(ctx)
+}
+
+// setUpstream moves `<name>/connected` between 1 (broker reachable,
+// console not) and 2 (operational) — spec §3.1, for a bridge of many
+// devices: 2 while the bridge's own upstream answers, the reachability
+// of a single device being that device's `online` item.
+//
+// The upstream is the console's device list, the one read this daemon
+// cannot do without and makes every minute; [Coordinator.refreshDevices]
+// reports each outcome. A repeat of the current level publishes
+// nothing.
+func (c *Coordinator) setUpstream(ctx context.Context, up bool) {
+	level := discovery.ConnectedBroker
+	if up {
+		level = discovery.ConnectedOperational
+	}
+	if int(c.upstream.Swap(int32(level))) == level {
+		return
+	}
+	if !up {
+		c.log.Warn("coordinator.console_unreachable",
+			slog.String("effect", "connected 1: entities unavailable until the console answers again"))
+	} else {
+		c.log.Info("coordinator.console_reachable")
+	}
+	if _, err := c.ha().SetConnected(ctx, level); err != nil {
+		c.log.Warn("coordinator.availability_publish_failed", slog.String("err", err.Error()))
+	}
 }
 
 // resetPlanes puts every per-connection memo back to what a fresh
 // process would have.
 //
-// The dedup gates open ([publisher.clear] and, under it,
-// [hapub.StatePublisher.Reset]) and the discovery runtime is rebuilt
-// rather than reset, for the reason written on [Coordinator.newRuntime].
+// The discovery configs' dedup gate opens ([publisher.clear]) and the
+// discovery runtime is rebuilt rather than reset, for the reason written
+// on [Coordinator.newRuntime]. The state plane keeps its memory, which
+// [publisher.republish] replays.
 // What is deliberately *not* touched is the claim list the sweep reads:
 // it is a statement about this process, not about this connection, and
 // clearing it would turn a reconnect into "this daemon published
@@ -413,10 +519,10 @@ func (c *Coordinator) rediscoverOnReconnect() {
 	}
 }
 
-// AnnounceOffline publishes the retained "offline" payload during a
+// AnnounceOffline publishes the retained `<name>/connected` 0 during a
 // graceful shutdown. A clean MQTT DISCONNECT suppresses the broker-side
-// will, so without this the availability topic would stay "online"
-// after an orderly stop.
+// will, so without this the topic would keep saying 2 after an orderly
+// stop.
 func (c *Coordinator) AnnounceOffline(ctx context.Context) {
 	if err := c.ha().AnnounceOffline(ctx); err != nil {
 		c.log.Warn("coordinator.availability_publish_failed", slog.String("err", err.Error()))
@@ -454,12 +560,21 @@ func (c *Coordinator) Run(ctx context.Context) error {
 
 	g.Go(func() error { return c.rediscoverLoop(gctx) })
 	g.Go(func() error { return c.reconcileOrphans(gctx) })
+	g.Go(func() error { return c.migrateOldLayout(gctx) })
+	// The maintenance commands ride the same router as the controls, so
+	// it is subscribed whether or not CONTROLS.ENABLE is on.
+	if err := c.subscribeCommands(ctx); err != nil {
+		c.log.Warn("coordinator.command_subscribe_failed", slog.String("err", err.Error()))
+	}
 	if c.cfg.Controls.Enable {
-		if err := c.subscribeCommands(ctx); err != nil {
-			c.log.Warn("coordinator.command_subscribe_failed", slog.String("err", err.Error()))
-		}
 		g.Go(func() error { return c.commandLoop(gctx) })
 	}
+	g.Go(func() error {
+		// Never fatal: ErrStatsOff when the stats are switched off, the
+		// context's error on shutdown.
+		_ = c.instance.RunStats(gctx)
+		return nil
+	})
 	g.Go(func() error {
 		return c.loopWithNudge(gctx, "devices", c.cfg.RefreshDevicesDuration(),
 			c.nudgeDevices, c.refreshDevices)
@@ -620,6 +735,9 @@ func (c *Coordinator) refreshStatic(ctx context.Context) error {
 	c.details = details
 	c.networks = networks
 	c.deviceIDToMAC = byID
+	for i := range wlans {
+		c.wlanIDs[wlans[i].ID] = true
+	}
 	c.mu.Unlock()
 
 	// Discovery is announced from here rather than the fast loop because
@@ -658,8 +776,14 @@ func (c *Coordinator) refreshStatic(ctx context.Context) error {
 func (c *Coordinator) refreshDevices(ctx context.Context) error {
 	devices, err := c.src.Devices(ctx, c.site.ID)
 	if err != nil {
+		// A shutdown cancelling the call says nothing about the console,
+		// and the 0 written on the way out must not be preceded by a 1.
+		if ctx.Err() == nil {
+			c.setUpstream(ctx, false)
+		}
 		return err
 	}
+	c.setUpstream(ctx, true)
 
 	c.mu.RLock()
 	details := c.details
@@ -793,49 +917,18 @@ func (c *Coordinator) refreshDeviceStats(ctx context.Context) error {
 // the console client's own limit.
 const statsConcurrency = 4
 
-// publishBridgeInfo publishes the daemon and console metadata.
-//
-// Deliberately carries no publish counters: this topic is written from
-// the connect hook, before any value has gone out, so a counter here
-// would permanently read 1 and mislead rather than inform.
-func (c *Coordinator) publishBridgeInfo(ctx context.Context) error {
-	payload, err := json.Marshal(struct {
-		Site               string `json:"site"`
-		SiteID             string `json:"site_id"`
-		ApplicationVersion string `json:"application_version"`
-		Host               string `json:"host"`
-		Version            string `json:"bridge_version"`
-	}{
-		Site:               c.site.Internal,
-		SiteID:             c.site.ID,
-		ApplicationVersion: c.info.ApplicationVersion,
-		Host:               c.cfg.Host,
-		Version:            version.Version,
-	})
-	if err != nil {
-		return err
-	}
-	return c.pub.publish(ctx, c.topics.bridge(infoKey), string(payload))
-}
-
-// publishError surfaces a non-fatal loop failure on the bridge error
-// topic. Not retained: a stale error message outliving the condition it
-// described is worse than no message.
+// publishError surfaces a non-fatal loop failure as the status item
+// `<name>/status/bridge/error`: a status object whose `val` is the loop
+// and the error, not retained — a stale error message outliving the
+// condition it described is worse than no message, and spec §3.2 says
+// an event must not be retained. No change detection either: repeated
+// identical errors should still be visible.
 func (c *Coordinator) publishError(ctx context.Context, loop string, cause error) {
-	payload, err := json.Marshal(struct {
+	value := struct {
 		Loop string `json:"loop"`
 		Err  string `json:"error"`
-		At   string `json:"at"`
-	}{Loop: loop, Err: cause.Error(), At: time.Now().UTC().Format(time.RFC3339)})
-	if err != nil {
-		return
-	}
-	// Deliberately bypasses change detection: this topic is not retained
-	// and repeated identical errors should still be visible.
-	if c.pub.out == nil {
-		return
-	}
-	if err := c.pub.out.Publish(ctx, c.topics.bridge(errorKey), payload, mqtt.QoS0, false); err != nil {
+	}{Loop: loop, Err: cause.Error()}
+	if err := c.pub.pulse(ctx, c.topics.bridgeError(), value); err != nil {
 		c.log.Debug("coordinator.error_publish_failed", slog.String("err", err.Error()))
 	}
 }
@@ -847,5 +940,3 @@ func (c *Coordinator) Networks() []model.Network {
 	defer c.mu.RUnlock()
 	return c.networks
 }
-
-func itoa(n int) string { return strconv.Itoa(n) }
