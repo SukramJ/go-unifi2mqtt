@@ -210,7 +210,9 @@ running both on one broker needs one of them renamed.
 2.0.0 is a clean break, with no compatibility switch. Home Assistant
 users need to do nothing: `unique_id`s, device identifiers and discovery
 config topics are unchanged, and the entities re-point to the new
-topics by themselves. Anything that reads the raw topics — Node-RED
+topics by themselves — since 2.0.1 also those of clients that are away
+during the upgrade (2.0.0 left them `unavailable`; see the 2.0.1
+changelog). Anything that reads the raw topics — Node-RED
 flows, dashboards, scripts — has to move:
 
 | 1.x | 2.0 |
@@ -233,8 +235,18 @@ On every start the daemon clears what 1.x left retained under its own
 name: `unifi/bridge/status`, `unifi/bridge/info`, the site's health
 items, and the 1.x items of every device, client and SSID it has polled
 from its own console in this run — exact 1.x shapes only, never a
-prefix, never a topic whose second level is a function name. An object
-this run does not see keeps its old topics until a later start does.
+prefix, never a topic whose second level is a function name.
+
+Before that, it settles every Home Assistant discovery config it wrote
+in the 1.x layout that its first poll cycles did not already replace —
+recognised exactly: this bridge's `unique_id` and node id, availability
+only `unifi/bridge/status` of its own name (plus the object's own 1.x
+`state`), and state and command topics under its own name and site. An
+absent client is re-pointed to the new topics and shown as `not_home`;
+a device or SSID the console no longer has, and an entity the current
+configuration no longer produces, is retracted with a
+`coordinator.migration_retracted` log line. Anything else this run does
+not see keeps its old topics until a later start does.
 A site whose reference is now reserved (see above) stops the daemon
 with a message naming `SITE`.
 

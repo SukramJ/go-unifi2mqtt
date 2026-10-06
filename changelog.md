@@ -1,3 +1,60 @@
+# Version 2.0.1 (2026-10-06)
+
+A fix for the 2.0.0 upgrade. **Updating repairs every affected
+installation by itself; there is nothing to do.**
+
+## What was wrong in 2.0.0
+
+2.0.0 said Home Assistant users need to do nothing, and that was only
+true for the objects the daemon saw in its first poll after the upgrade.
+A client — phone, laptop, tablet — that was **away while 2.0.0 started
+for the first time** kept its 1.x discovery configs, whose only
+availability topic was `unifi/bridge/status`. 2.0.0 no longer writes that
+topic and clears it on start, and Home Assistant treats a topic that
+carries nothing as "not available". So that client's tracker showed
+`unavailable` instead of `not_home`, its blocked switch and authorize
+button were `unavailable` too, and a client that never came back stayed
+there for good: the orphan check did not recognise the 1.x configs as
+this daemon's, so it neither cleared nor reported them. The same applied
+to a device or SSID that was removed from the console while the daemon
+was stopped, and to an entity whose option had been switched off.
+
+A client that came back home while 2.0.0 was running repaired itself,
+because it was then announced in the new layout.
+
+## What 2.0.1 does
+
+Once on every start (for the life of the 2.x line, beside the existing
+1.x clean-up), after each part of the console has answered, the daemon
+reads back the Home Assistant configs it wrote in the 1.x layout and
+that the first poll did not already replace:
+
+- **A client that is away is moved to the new topics** with its
+  identity, name and history unchanged, and shown as **`not_home`** —
+  available, exactly as 1.3.0 showed an away client. Its IP address and
+  signal sensors stay unavailable while it is away, as in 1.x. Its
+  blocked switch keeps the last value 1.x recorded.
+- **A device or SSID the console no longer has**, a port or radio that is
+  gone, and an entity whose option or source is now switched off (for
+  example `CLASSIC_ENABLE: false` for the site-health sensors) is
+  **removed** from Home Assistant, with a `coordinator.migration_retracted`
+  log line naming the object, the reason and the topics.
+- Their leftover 1.x status topics are cleared with the rest.
+
+Only configs this instance wrote are touched: this bridge's `unique_id`
+and device identifier, availability only on `<MQTT_TOPIC>/bridge/status`,
+and state and command topics under its own `MQTT_TOPIC` **and** site. A
+second instance under another `MQTT_TOPIC` or another site, hobbyquaker's
+Node.js `unifi2mqtt`, and every other integration are left alone. This
+works whether you update from 1.3.0 or from 2.0.0, and does not need
+`unifi/bridge/status` to still exist. A start with nothing of the 1.x
+layout left does nothing.
+
+Client availability is unchanged from 2.0.0 and from 1.3.0: a client's
+tracker, blocked switch and authorize button depend only on the daemon
+(`unifi/connected`), its IP address and signal sensors also on the client
+being home (`…/client/<mac>/online`).
+
 # Version 2.0.0 (2026-10-06)
 
 A breaking release: the MQTT tree moves to the

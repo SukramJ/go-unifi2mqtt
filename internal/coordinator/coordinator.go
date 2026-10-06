@@ -172,6 +172,16 @@ type Coordinator struct {
 	// wlanIDs is every SSID id the WLAN catalogue reported in this run,
 	// for the migration sweep's ownership test.
 	wlanIDs map[string]bool
+	// wlanByID is the latest catalogue record per SSID id, which the
+	// one-time re-point of 1.x discovery configs renders an SSID switch
+	// from (repoint.go).
+	wlanByID map[string]model.WLAN
+	// windowMu serialises the snapshot windows over the discovery
+	// prefix. The orphan reconcile and the 1.x re-point both open one,
+	// and two concurrent windows on the same filter would share one
+	// broker-side subscription: the first UNSUBSCRIBE would end the
+	// second window early.
+	windowMu sync.Mutex
 
 	// hass builds discovery payloads; nil when HASS_ENABLE is false.
 	hass *hass.Discovery
@@ -297,6 +307,7 @@ func New(d Deps) *Coordinator {
 		clients:           make(map[string]clientState),
 		deviceIDToMAC:     make(map[string]model.MAC),
 		wlanIDs:           make(map[string]bool),
+		wlanByID:          make(map[string]model.WLAN),
 		rediscover:        make(chan struct{}, 1),
 		commands:          make(chan command, commandQueueSize),
 		nudgeDevices:      make(chan struct{}, 1),
@@ -737,6 +748,7 @@ func (c *Coordinator) refreshStatic(ctx context.Context) error {
 	c.deviceIDToMAC = byID
 	for i := range wlans {
 		c.wlanIDs[wlans[i].ID] = true
+		c.wlanByID[wlans[i].ID] = wlans[i]
 	}
 	c.mu.Unlock()
 

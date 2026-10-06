@@ -317,6 +317,14 @@ func surfaceNonASCII(s *fakeSource) {
 // and publish.go decides the QoS and the retain flag.
 func buildSurface(t *testing.T, sc surfaceScenario) surfaceDoc {
 	t.Helper()
+	c, broker := driveSurface(t, sc)
+	return surfaceDoc{Scenario: sc.name, Messages: recordMessages(t, c, broker)}
+}
+
+// driveSurface runs one scenario through the real coordinator and
+// returns it with the broker that recorded every publish.
+func driveSurface(t *testing.T, sc surfaceScenario) (*Coordinator, *fakeBroker) {
+	t.Helper()
 
 	cfg, err := config.Load(strings.NewReader(sc.yaml), config.MapEnv{})
 	if err != nil {
@@ -375,7 +383,7 @@ func buildSurface(t *testing.T, sc surfaceScenario) surfaceDoc {
 		}
 	}
 
-	return surfaceDoc{Scenario: sc.name, Messages: recordMessages(t, c, broker)}
+	return c, broker
 }
 
 // normaliseInfo replaces the `<name>/info` fields that describe the

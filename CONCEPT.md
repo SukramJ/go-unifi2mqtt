@@ -636,6 +636,24 @@ site and an unknown MAC are never touched, so a second console bridged
 under the same name keeps its leftovers. The sweep is idempotent and goes
 with 3.0.
 
+Before the sweep, once each class's source has reported, the daemon reads
+the retained discovery configs back and settles every one it wrote in the
+1.x layout that the first poll cycles did not replace (2.0.1,
+`internal/coordinator/repoint.go`). Ownership is exact: a node id and
+`unique_id` this bridge mints, an availability list that is exactly
+`<name>/bridge/status` (plus, for a device or client entity, its own 1.x
+`state` with the 1.x template), and state, command and attributes topics
+that are 1.x items of the same object under this name and site. Such a
+config is re-pointed when the configuration produces the entity — from the
+polled object, or for an absent client from the identity the config and
+its retained 1.x items carry, with `state` `not_home` and `online` false
+published for it — and retracted, with `coordinator.migration_retracted`,
+when it does not: a device or SSID the console no longer has, a port or
+radio that is gone, an entity whose option or source is switched off.
+1.3.0 kept no client list and never retracted a client config; an absent
+client lived on in its retained config and `bridge/status`, which 2.0.0
+removed. The re-point goes with the sweep.
+
 ---
 
 ## 6. Home Assistant integration

@@ -289,6 +289,14 @@ func (p *publisher) claims() hass.Claims {
 	}
 }
 
+// wasPublished reports whether this process has successfully published
+// a discovery config to topic since it started.
+func (p *publisher) wasPublished(topic string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.published[topic]
+}
+
 // forget clears the remembered payloads for every topic under prefix
 // and returns the topics that were dropped.
 //
