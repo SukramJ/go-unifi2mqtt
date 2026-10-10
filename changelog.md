@@ -1,3 +1,13 @@
+# Unreleased
+
+## Security
+
+- Built with Go 1.27.2, which fixes Go standard-library vulnerabilities
+  (net/http and HTTP/2, crypto/tls, net/textproto, html/template). The
+  builder images (`golang:1.27.2-alpine`), `go.mod`, CI, the CodeQL
+  workflow and the release workflow all use it.
+- golangci-lint v2.14.0 (reads Go 1.27.2's export data).
+
 # Version 2.0.1 (2026-10-06)
 
 A fix for the 2.0.0 upgrade. **Updating repairs every affected

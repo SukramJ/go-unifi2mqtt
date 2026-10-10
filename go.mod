@@ -1,6 +1,6 @@
 module github.com/SukramJ/go-unifi2mqtt
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/SukramJ/go-ha-catalog v0.3.0
