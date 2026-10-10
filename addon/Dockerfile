@@ -34,7 +34,7 @@ ARG BUILD_FROM
 
 # ---------- Stage 1: build the Go binary ----------
 # Pinned to match the project's Go toolchain (see go.mod / root Dockerfile).
-FROM golang:1.27.1-alpine AS builder
+FROM golang:1.27.2-alpine AS builder
 WORKDIR /src
 
 # Cache module downloads independently of source changes.

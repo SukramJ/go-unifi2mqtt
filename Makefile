@@ -70,7 +70,7 @@ help: ## show this help
 # goimports stays on @latest deliberately: it has no gate of its own,
 # gofumpt is the formatting authority.
 GOFUMPT_VERSION       ?= v0.12.0
-GOLANGCI_LINT_VERSION ?= v2.13.2
+GOLANGCI_LINT_VERSION ?= v2.14.0
 GOVULNCHECK_VERSION   ?= v1.8.0
 GOLICENSES_VERSION    ?= v1.6.0
 

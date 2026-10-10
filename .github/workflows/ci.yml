@@ -26,7 +26,7 @@ concurrency:
 
 env:
   CGO_ENABLED: "0"
-  GO_VERSION: "1.27.1"
+  GO_VERSION: "1.27.2"
   # The tools below are pinned, not @latest. Dependabot tracks go.mod
   # requires, not go-install lines in a workflow, so these are bumped by
   # hand — deliberately: raise the version, run `make check`, and fix or

@@ -12,7 +12,7 @@
 # assets are go:embed-ed into the binary.
 
 # ---------- Stage 1: build ----------
-FROM golang:1.27.1-alpine AS builder
+FROM golang:1.27.2-alpine AS builder
 WORKDIR /src
 
 # Cache go.mod / go.sum separately so unrelated source edits don't
