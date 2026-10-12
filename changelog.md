@@ -1,4 +1,15 @@
-# Unreleased
+# Version 2.1.0 (2026-10-12)
+
+Maintenance release. **Nothing changes on the wire or in Home Assistant;
+there is nothing to do.**
+
+## Changed
+
+- Updated go-hamqtt to v0.37.0. The release adds scoped discovery findings
+  and a containment step that withholds only failing components of a
+  device document instead of the whole document. This daemon publishes
+  per-entity discovery configs, not device bundles, so it does not use
+  them; the published payloads are unchanged.
 
 ## Security
 
