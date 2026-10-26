@@ -1,4 +1,4 @@
-# Unreleased
+# Version 3.0.0 (2026-10-26)
 
 TLS to the MQTT broker, with a private CA. **Breaking for anyone who set
 `MQTT_SSL` or `MQTT_SSL_INSECURE`; the Home Assistant add-on had neither
