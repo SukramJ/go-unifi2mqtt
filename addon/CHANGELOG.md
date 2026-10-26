@@ -18,6 +18,15 @@ option and needs nothing.**
 
 ## Added
 
+- The web UI is now [go-bridgeui](https://github.com/SukramJ/go-bridgeui),
+  the dashboard every go-*2mqtt bridge shares: live over Server-Sent
+  Events instead of polling, light/dark theme, the configuration
+  (without secrets) under System, the loops' failures and unavailable
+  capabilities as recent problems, and devices and clients as tables
+  (filterable from ten rows on). It stays read-only. `GET /api/state` is
+  gone; the page's API is go-bridgeui's (`/api/status`, `/api/snapshot`,
+  `/api/events`, …), and `/api/health` stays a liveness probe.
+
 - `MQTT_TLS_CA`: a PEM CA bundle the broker's certificate is verified
   against, for brokers with a private CA. It replaces the system roots
   for the broker connection (unlike the console's `CA_FILE`, which adds

@@ -360,16 +360,7 @@ func bridge(
 	// Run the bridge and the web server together: either returning — a
 	// fatal coordinator error or a failed bind — cancels the other
 	// through the shared context.
-	srv, err := web.New(web.Config{
-		Bind:     cfg.WebBind,
-		User:     cfg.WebUser,
-		Password: cfg.WebPassword.Reveal(),
-		Language: cfg.Language,
-		Logger:   logger,
-	}, store)
-	if err != nil {
-		return err
-	}
+	srv := web.New(cfg, store, logger)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return c.Run(gctx) })

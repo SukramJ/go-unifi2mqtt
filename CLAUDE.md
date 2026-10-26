@@ -42,9 +42,10 @@ web UI. Only the optional WebSocket accelerator (phase 9) remains.
   daemon. Also ships as a Docker image (distroless runtime) and a Home
   Assistant add-on (`addon/`).
 - **Dependencies are deliberately minimal**: `golang.org/x/sync`
-  (errgroup), `gopkg.in/yaml.v3`, and `github.com/SukramJ/go-mqtt`
+  (errgroup), `gopkg.in/yaml.v3`, `github.com/SukramJ/go-mqtt`
   (the shared MQTT client, MIT — MQTT 5.0 by default, 3.1.1 selectable
-  via `TCPConfig.ProtocolVersion`). The UniFi API clients are
+  via `TCPConfig.ProtocolVersion`) and `github.com/SukramJ/go-bridgeui`
+  (the dashboard every go-*2mqtt bridge embeds). The UniFi API clients are
   hand-rolled on `net/http` — no third-party UniFi SDK.
 - **Config**: YAML (`config-template.yaml` is the annotated reference),
   overridable per-key via `UNIFI_<KEY>` env vars. Loaded from
@@ -63,7 +64,7 @@ internal/model/          API-neutral domain types (Site, Device, Client, Health)
 internal/coordinator/    orchestration: poll loops, command queue, reconcile
 internal/hass/           Home Assistant discovery payload builder
 internal/state/          thread-safe live-value cache shared with the web UI
-internal/web/            optional diagnostic web UI / HA add-on Ingress panel
+internal/web/            go-bridgeui adapter: the store as the shared dashboard's contract (read-only), layout + labels (i18n/)
 internal/version/        build-info package (Version/Commit/BuildDate, ldflags)
 addon/                   Home Assistant add-on packaging (Dockerfile, config.yaml, DOCS.md)
 script/                  run.sh (add-on entrypoint), capture-fixtures.sh, extract-release-notes.sh
@@ -207,13 +208,14 @@ etc. — no special test runner beyond `go test`.
   expired session arrives as `meta.rc = "error"` with a 200 status. A
   client checking only status codes decodes an empty data array and
   treats a logged-out session as "the site has no clients" — forever.
-- **Web assets must use relative references.** The Home Assistant
-  Ingress proxy serves the page under a generated path prefix; an
-  absolute `/app.css` or `/api/state` escapes it and 404s.
-  `TestAssetReferencesAreRelative` pins this.
+- **The web UI is go-bridgeui.** `internal/web` only maps the store
+  onto its contract: the site is the one device, health and WLANs are
+  entries, devices and clients are tables. The page, its relative
+  references (Ingress) and its text-only rendering of console values live
+  in go-bridgeui; change them there, for every bridge.
 - **Never interpolate console values as HTML.** A device named
-  `<img onerror=…>` is a legal UniFi name. The UI builds text nodes
-  only, and a test rejects `innerHTML` outright.
+  `<img onerror=…>` is a legal UniFi name. go-bridgeui renders entry
+  values and table cells as text nodes only.
 - **Ownership of a retained config is recorded, not inferred.** The
   startup reconcile may retract a discovery config only if **this
   process published that exact topic since it started** — a grow-only
