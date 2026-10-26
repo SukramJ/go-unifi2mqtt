@@ -6,6 +6,7 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -226,21 +227,140 @@ func TestEnvInvalidValueIsAnError(t *testing.T) {
 
 // Enabling TLS without also naming a port should land on 8883 rather
 // than trying TLS against the plaintext port.
-func TestMQTTSSLPicksTheTLSPort(t *testing.T) {
+func TestMQTTTLSPicksTheTLSPort(t *testing.T) {
 	t.Parallel()
 
-	cfg := mustLoad(t, minimal+"MQTT_SSL: true\n", nil)
-	if cfg.MQTTPort != DefaultMQTTSSLPort {
-		t.Errorf("MQTTPort = %d, want %d", cfg.MQTTPort, DefaultMQTTSSLPort)
+	cfg := mustLoad(t, minimal+"MQTT_TLS: true\n", nil)
+	if cfg.MQTTPort != DefaultMQTTTLSPort {
+		t.Errorf("MQTTPort = %d, want %d", cfg.MQTTPort, DefaultMQTTTLSPort)
 	}
 	if got, want := cfg.MQTTBrokerURL(), "tls://broker.local:8883"; got != want {
 		t.Errorf("MQTTBrokerURL() = %q, want %q", got, want)
 	}
 
 	// An explicit port must survive.
-	cfg = mustLoad(t, minimal+"MQTT_SSL: true\nMQTT_PORT: 9999\n", nil)
+	cfg = mustLoad(t, minimal+"MQTT_TLS: true\nMQTT_PORT: 9999\n", nil)
 	if cfg.MQTTPort != 9999 {
 		t.Errorf("MQTTPort = %d, want the explicit 9999", cfg.MQTTPort)
+	}
+}
+
+func TestMQTTTLSKeys(t *testing.T) {
+	t.Parallel()
+
+	cfg := mustLoad(t, minimal, nil)
+	if cfg.MQTTTLS || cfg.MQTTTLSInsecure || cfg.MQTTTLSCA != "" {
+		t.Errorf("TLS defaults = %v/%v/%q, want off/off/empty",
+			cfg.MQTTTLS, cfg.MQTTTLSInsecure, cfg.MQTTTLSCA)
+	}
+
+	cfg = mustLoad(t, minimal+"MQTT_TLS: true\nMQTT_TLS_CA: /ssl/ca.crt\n", nil)
+	if !cfg.MQTTTLS || cfg.MQTTTLSCA != "/ssl/ca.crt" {
+		t.Errorf("from YAML: MQTTTLS=%v MQTTTLSCA=%q", cfg.MQTTTLS, cfg.MQTTTLSCA)
+	}
+
+	cfg = mustLoad(t, minimal, MapEnv{
+		"UNIFI_MQTT_TLS":          "true",
+		"UNIFI_MQTT_TLS_INSECURE": "true",
+	})
+	if !cfg.MQTTTLS || !cfg.MQTTTLSInsecure {
+		t.Errorf("from env: MQTTTLS=%v MQTTTLSInsecure=%v", cfg.MQTTTLS, cfg.MQTTTLSInsecure)
+	}
+	if got, want := cfg.MQTTBrokerURL(), "tls://broker.local:8883"; got != want {
+		t.Errorf("MQTTBrokerURL() = %q, want %q", got, want)
+	}
+
+	cfg = mustLoad(t, minimal+"MQTT_TLS: true\n", MapEnv{"UNIFI_MQTT_TLS_CA": "/share/ca.pem"})
+	if cfg.MQTTTLSCA != "/share/ca.pem" {
+		t.Errorf("MQTTTLSCA = %q, want the env value", cfg.MQTTTLSCA)
+	}
+}
+
+// MQTT_SSL was renamed, and a stale MQTT_SSL: true read as "TLS off"
+// would connect in plaintext without a word. So any old key, wherever it
+// is set and whatever its value, stops the load and names the new key.
+func TestRenamedMQTTSSLKeysAreRefused(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, yaml string
+		env        MapEnv
+		want       string
+	}{
+		{"yaml MQTT_SSL", minimal + "MQTT_SSL: true\n", nil, "MQTT_SSL was renamed to MQTT_TLS"},
+		{"yaml MQTT_SSL false", minimal + "MQTT_SSL: false\n", nil, "MQTT_SSL was renamed to MQTT_TLS"},
+		{
+			"yaml MQTT_SSL_INSECURE", minimal + "MQTT_TLS: true\nMQTT_SSL_INSECURE: true\n", nil,
+			"MQTT_SSL_INSECURE was renamed to MQTT_TLS_INSECURE",
+		},
+		{
+			"env MQTT_SSL", minimal,
+			MapEnv{"UNIFI_MQTT_SSL": "true"},
+			"UNIFI_MQTT_SSL was renamed to UNIFI_MQTT_TLS",
+		},
+		{
+			"env MQTT_SSL_INSECURE", minimal,
+			MapEnv{"UNIFI_MQTT_SSL_INSECURE": "false"},
+			"UNIFI_MQTT_SSL_INSECURE was renamed to UNIFI_MQTT_TLS_INSECURE",
+		},
+		{
+			// The env-only path (add-on, docker run) has no YAML at all.
+			"env only", "",
+			MapEnv{
+				"UNIFI_HOST": "h", "UNIFI_API_KEY": "k", "UNIFI_MQTT_SERVER": "b",
+				"UNIFI_MQTT_SSL": "1",
+			},
+			"UNIFI_MQTT_SSL was renamed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := loadYAML(t, tc.yaml, tc.env)
+			if err == nil {
+				t.Fatal("Load accepted a renamed key, want an error")
+			}
+			if !errors.Is(err, ErrInvalidConfig) {
+				t.Errorf("error %v does not wrap ErrInvalidConfig", err)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q does not contain %q", err, tc.want)
+			}
+		})
+	}
+
+	// The refusal applies to the --once path too: a stale key is stale
+	// whichever command reads the file.
+	if _, err := Load(strings.NewReader(minimal+"MQTT_SSL: true\n"), MapEnv{}, WithoutMQTT()); err == nil {
+		t.Error("WithoutMQTT() accepted MQTT_SSL, want an error")
+	}
+}
+
+// MQTT_SERVER is joined into the broker URL and is the TLS server name,
+// so anything but a bare host is refused instead of producing a URL that
+// does not parse or a name no certificate carries.
+func TestMQTTServerMustBeABareHost(t *testing.T) {
+	t.Parallel()
+
+	for _, bad := range []string{
+		"tls://broker.local", "tcp://broker.local:1883", "broker.local:8883",
+		"broker.local/", "user@broker.local", "' broker.local'", "\"broker local\"",
+	} {
+		_, err := loadYAML(t, "HOST: h\nAPI_KEY: k\nMQTT_SERVER: "+bad+"\n", nil)
+		if err == nil || !strings.Contains(err.Error(), "bare host name") {
+			t.Errorf("MQTT_SERVER %s: err = %v, want a bare-host error", bad, err)
+		}
+	}
+
+	for _, tc := range []struct{ server, url string }{
+		{"broker.local", "tcp://broker.local:1883"},
+		{"192.0.2.7", "tcp://192.0.2.7:1883"},
+		{`"2001:db8::7"`, "tcp://[2001:db8::7]:1883"},
+	} {
+		cfg := mustLoad(t, "HOST: h\nAPI_KEY: k\nMQTT_SERVER: "+tc.server+"\n", nil)
+		if got := cfg.MQTTBrokerURL(); got != tc.url {
+			t.Errorf("MQTT_SERVER %s: MQTTBrokerURL() = %q, want %q", tc.server, got, tc.url)
+		}
 	}
 }
 

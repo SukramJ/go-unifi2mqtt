@@ -89,6 +89,25 @@ configuration:
       Broker nutzen: MQTT verlangt, dass der Broker die bestehende Sitzung
       trennt, sobald ein zweiter Client dieselbe Kennung vorlegt — beide
       werfen sich dann endlos gegenseitig hinaus.
+  mqtt_tls:
+    name: MQTT über TLS
+    description: >-
+      Per TLS mit dem Broker verbinden. Der Standardport 1883 wird dann zu
+      8883. Kommt der Broker aus dem MQTT-Dienst von Home Assistant, wird
+      dessen TLS-Einstellung automatisch übernommen.
+  mqtt_tls_insecure:
+    name: Broker-Zertifikat nicht prüfen
+    description: >-
+      GEFÄHRLICH: jedes Broker-Zertifikat akzeptieren. Nur für einen
+      selbstsignierten Broker unter eigener Kontrolle; besser die
+      CA-Datei unten verwenden. Nicht mit ihr kombinierbar.
+  mqtt_tls_ca:
+    name: CA-Datei des Brokers
+    description: >-
+      PEM-Datei mit der CA, die das Broker-Zertifikat signiert hat, z. B.
+      /ssl/ca.crt oder eine Datei unter /share. Ersetzt für die
+      Broker-Verbindung den System-Zertifikatsspeicher. Leer lassen bei
+      einem öffentlich vertrauenswürdigen Zertifikat.
 
   hass_enable:
     name: Home-Assistant-Discovery

@@ -18,7 +18,7 @@ const (
 	DefaultHTTPRetries = 3
 
 	DefaultMQTTPort    = 1883
-	DefaultMQTTSSLPort = 8883
+	DefaultMQTTTLSPort = 8883
 	DefaultMQTTTopic   = "unifi"
 	// DefaultMQTTMaintenance switches the mqtt-smarthome maintenance
 	// topics on, as spec §7 recommends.

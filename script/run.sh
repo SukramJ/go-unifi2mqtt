@@ -28,6 +28,14 @@ if bashio::config.has_value 'classic_username'; then
 fi
 
 # --- MQTT ---
+# TLS first, so the service branch below can switch it on when the
+# Supervisor's broker announces TLS. mqtt_tls_ca / mqtt_tls_insecure apply
+# to whichever broker is used, including the auto-discovered one.
+export UNIFI_MQTT_TLS="$(bashio::config 'mqtt_tls')"
+export UNIFI_MQTT_TLS_INSECURE="$(bashio::config 'mqtt_tls_insecure')"
+if bashio::config.has_value 'mqtt_tls_ca'; then
+  export UNIFI_MQTT_TLS_CA="$(bashio::config 'mqtt_tls_ca')"
+fi
 # Zero-config: when mqtt_server is left empty, borrow the broker the
 # Supervisor already knows about (the HA MQTT integration / core-mosquitto
 # add-on) via the mqtt service. An explicit mqtt_server always wins; if
@@ -43,6 +51,11 @@ elif bashio::services.available 'mqtt'; then
   export UNIFI_MQTT_PORT="$(bashio::services 'mqtt' 'port')"
   export UNIFI_MQTT_LOGIN="$(bashio::services 'mqtt' 'username')"
   export UNIFI_MQTT_PASSWORD="$(bashio::services 'mqtt' 'password')"
+  # The service's port is a TLS listener when it says ssl; dialling it in
+  # plaintext would only fail. It never switches an explicit mqtt_tls off.
+  if bashio::var.true "$(bashio::services 'mqtt' 'ssl')"; then
+    export UNIFI_MQTT_TLS="true"
+  fi
 else
   bashio::log.warning "mqtt_server empty and no MQTT service offered; falling back to core-mosquitto:1883."
   export UNIFI_MQTT_SERVER="core-mosquitto"
@@ -114,7 +127,7 @@ export UNIFI_DEBUG="$(bashio::config 'debug')"
 export UNIFI_WEB_ENABLE="$(bashio::config 'web_enable')"
 export UNIFI_WEB_BIND="0.0.0.0:8080"
 
-bashio::log.info "Configuration prepared; UniFi: ${UNIFI_HOST}:${UNIFI_PORT}, MQTT: ${UNIFI_MQTT_SERVER}:${UNIFI_MQTT_PORT}"
+bashio::log.info "Configuration prepared; UniFi: ${UNIFI_HOST}:${UNIFI_PORT}, MQTT: ${UNIFI_MQTT_SERVER}:${UNIFI_MQTT_PORT} (TLS: ${UNIFI_MQTT_TLS})"
 bashio::log.info "Web UI bound to ${UNIFI_WEB_BIND} (served via Ingress)."
 
 # Hand off to the daemon (becomes PID 1).

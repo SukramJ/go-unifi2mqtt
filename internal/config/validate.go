@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
@@ -55,6 +56,13 @@ func (c *Config) validate(o options) error {
 		// produces the eviction loop MQTT_CLIENT_ID exists to end, and
 		// that loop names nothing in any log — so it is refused at
 		// startup, where the message can say which key is wrong.
+		if c.MQTTTLSCA != "" && c.MQTTTLSInsecure {
+			errs = append(errs, "MQTT_TLS_CA and MQTT_TLS_INSECURE contradict each other: "+
+				"with verification off the CA is never consulted — remove MQTT_TLS_INSECURE")
+		}
+		if err := checkMQTTServer(c.MQTTServer); err != "" {
+			errs = append(errs, err)
+		}
 		switch id := c.MQTTClientID; {
 		case id == "": // unset: the derived default applies
 		case strings.TrimSpace(id) == "":
@@ -167,6 +175,29 @@ func (c *Config) validate(o options) error {
 	return nil
 }
 
+// checkMQTTServer refuses an MQTT_SERVER that is not a bare host name
+// or IP address. The value is both joined into the broker URL and used
+// as the TLS server name the certificate is checked against, so a
+// scheme ("tls://broker"), a port ("broker:8883") or a path would yield
+// a URL that does not parse or a name no certificate carries. An empty
+// value is reported by the required-field check instead.
+func checkMQTTServer(server string) string {
+	s := strings.TrimSpace(server)
+	if s == "" {
+		return ""
+	}
+	bare := s == server && !strings.ContainsAny(s, " \t/@?#")
+	// A colon is legal only inside an IPv6 literal.
+	if bare && strings.Contains(s, ":") && net.ParseIP(s) == nil {
+		bare = false
+	}
+	if bare {
+		return ""
+	}
+	return fmt.Sprintf("MQTT_SERVER %q must be a bare host name or IP address "+
+		"(no scheme, port or path — the port goes in MQTT_PORT, TLS in MQTT_TLS)", server)
+}
+
 func validateEnums(c *Config) []string {
 	var errs []string
 
@@ -224,11 +255,15 @@ func (c *Config) Warnings() []string {
 		w = append(w, "VERIFY_TLS is off — the console's certificate is not verified. "+
 			"Set CA_FILE to the console's certificate to get verification back.")
 	}
-	if c.MQTTSSLInsecure && !c.MQTTSSL {
-		w = append(w, "MQTT_SSL_INSECURE has no effect while MQTT_SSL is false")
+	if c.MQTTTLSInsecure && !c.MQTTTLS {
+		w = append(w, "MQTT_TLS_INSECURE has no effect while MQTT_TLS is false")
 	}
-	if c.MQTTSSL && c.MQTTSSLInsecure {
-		w = append(w, "MQTT_SSL_INSECURE is on — the broker's certificate is not verified")
+	if c.MQTTTLSCA != "" && !c.MQTTTLS {
+		w = append(w, "MQTT_TLS_CA has no effect while MQTT_TLS is false")
+	}
+	if c.MQTTTLS && c.MQTTTLSInsecure {
+		w = append(w, "MQTT_TLS_INSECURE is on — the broker's certificate is not verified. "+
+			"Set MQTT_TLS_CA to the broker's CA to get verification back.")
 	}
 
 	// Wireless clients drop out of the client list for a cycle while

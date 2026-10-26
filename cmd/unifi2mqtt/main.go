@@ -129,6 +129,15 @@ func run(configPath string, once bool, logger *slog.Logger, level *slog.LevelVar
 	for _, w := range cfg.Warnings() {
 		logger.Warn("unifi2mqtt.config_warning", slog.String("note", w))
 	}
+	// Built before the console is even contacted, so a wrong MQTT_TLS_CA
+	// stops the daemon with the file named instead of surfacing as a
+	// handshake failure on every reconnect.
+	var mqttTLS *tls.Config
+	if !once {
+		if mqttTLS, err = mqttTLSConfig(cfg); err != nil {
+			return err
+		}
+	}
 
 	sigCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stopSignals()
@@ -159,7 +168,7 @@ func run(configPath string, once bool, logger *slog.Logger, level *slog.LevelVar
 	if err := coordinator.CheckTopics(cfg.MQTTTopic, site); err != nil {
 		return err
 	}
-	return bridge(ctx, cfg, facade, facade, site, info, logger, maintenance{
+	return bridge(ctx, cfg, mqttTLS, facade, facade, site, info, logger, maintenance{
 		setLogLevel: hapub.LevelVarSetter(level),
 		supervised:  hapub.DetectSupervised(supervisedEnv),
 		shutdown:    cancel,
@@ -227,6 +236,7 @@ func connect(
 func bridge(
 	ctx context.Context,
 	cfg *config.Config,
+	tlsConfig *tls.Config,
 	source coordinator.Source,
 	caps coordinator.Capabilities,
 	site model.Site,
@@ -272,10 +282,6 @@ func bridge(
 	}
 	defer c.Close()
 
-	var tlsConfig *tls.Config
-	if cfg.MQTTSSL {
-		tlsConfig = mqtt.NewClientTLSConfig(cfg.MQTTServer, cfg.MQTTSSLInsecure)
-	}
 	mqttClient := mqtt.NewTCPClient(mqtt.TCPConfig{
 		BrokerURL:  cfg.MQTTBrokerURL(),
 		ClientID:   cfg.ClientID(),
@@ -653,6 +659,23 @@ func truncate(s string, n int) string {
 		return s[:n]
 	}
 	return s[:n-1] + "…"
+}
+
+// mqttTLSConfig builds the broker connection's TLS settings, or nil
+// when MQTT_TLS is off.
+//
+// The server name is MQTT_SERVER, which validation has already held to
+// a bare host name or IP address — the name the broker's certificate
+// has to carry, not a URL.
+func mqttTLSConfig(cfg *config.Config) (*tls.Config, error) {
+	if !cfg.MQTTTLS {
+		return nil, nil
+	}
+	tc, err := mqtt.NewClientTLSConfigWithCA(cfg.MQTTServer, cfg.MQTTTLSCA, cfg.MQTTTLSInsecure)
+	if err != nil {
+		return nil, fmt.Errorf("unifi2mqtt: MQTT_TLS_CA: %w", err)
+	}
+	return tc, nil
 }
 
 // bridgeWill copies publisher.Will onto the client's own will type,

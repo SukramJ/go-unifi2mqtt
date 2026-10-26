@@ -316,8 +316,26 @@ WEB_ENABLE: true
 		},
 		{
 			name:     "insecure MQTT TLS without TLS warns it is inert",
-			yaml:     minimal + "MQTT_SSL_INSECURE: true\n",
-			wantHint: "has no effect",
+			yaml:     minimal + "MQTT_TLS_INSECURE: true\n",
+			wantHint: "MQTT_TLS_INSECURE has no effect",
+			want:     true,
+		},
+		{
+			name:     "MQTT CA without TLS warns it is inert",
+			yaml:     minimal + "MQTT_TLS_CA: /ssl/ca.crt\n",
+			wantHint: "MQTT_TLS_CA has no effect",
+			want:     true,
+		},
+		{
+			name:     "MQTT CA with TLS does not warn",
+			yaml:     minimal + "MQTT_TLS: true\nMQTT_TLS_CA: /ssl/ca.crt\n",
+			wantHint: "MQTT_TLS_CA has no effect",
+			want:     false,
+		},
+		{
+			name:     "insecure MQTT TLS warns about verification",
+			yaml:     minimal + "MQTT_TLS: true\nMQTT_TLS_INSECURE: true\n",
+			wantHint: "certificate is not verified",
 			want:     true,
 		},
 	}
@@ -339,6 +357,26 @@ WEB_ENABLE: true
 					tt.wantHint, got, tt.want, cfg.Warnings())
 			}
 		})
+	}
+}
+
+// A CA bundle with verification switched off is a contradiction: the CA
+// would never be consulted. It is refused rather than resolved either
+// way, because both readings are plausible and only one is safe.
+func TestValidateMQTTCAWithInsecureIsRefused(t *testing.T) {
+	t.Parallel()
+
+	for _, yaml := range []string{
+		minimal + "MQTT_TLS: true\nMQTT_TLS_CA: /ssl/ca.crt\nMQTT_TLS_INSECURE: true\n",
+		minimal + "MQTT_TLS_CA: /ssl/ca.crt\nMQTT_TLS_INSECURE: true\n",
+	} {
+		_, err := loadYAML(t, yaml, nil)
+		if err == nil {
+			t.Fatalf("accepted MQTT_TLS_CA + MQTT_TLS_INSECURE:\n%s", yaml)
+		}
+		if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), "MQTT_TLS_CA and MQTT_TLS_INSECURE") {
+			t.Errorf("error = %v, want an ErrInvalidConfig naming both keys", err)
+		}
 	}
 }
 

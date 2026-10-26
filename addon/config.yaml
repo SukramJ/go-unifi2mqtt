@@ -46,6 +46,12 @@ ports_description:
 services:
   - mqtt:want
 
+# Read-only access to Home Assistant's certificate folders, so mqtt_tls_ca
+# can name a CA bundle such as /ssl/ca.crt or /share/mqtt-ca.pem.
+map:
+  - ssl:ro
+  - share:ro
+
 options:
   # --- UniFi console ---
   # unifi_api_key is created in UniFi Network under
@@ -89,6 +95,14 @@ options:
   # instances share one broker: two clients on one identifier evict each
   # other from the broker in a loop.
   mqtt_client_id: ""
+  # TLS to the broker. With mqtt_tls on, the default port 1883 becomes
+  # 8883. mqtt_tls_ca names a PEM CA bundle for a broker with a private
+  # CA (e.g. /ssl/ca.crt). mqtt_tls_insecure skips certificate
+  # verification entirely — dangerous, only for a self-signed broker you
+  # control, and refused together with mqtt_tls_ca.
+  mqtt_tls: false
+  mqtt_tls_insecure: false
+  mqtt_tls_ca: ""
 
   # --- Home Assistant discovery ---
   hass_enable: true
@@ -162,6 +176,9 @@ schema:
   mqtt_maintenance: bool
   mqtt_stats_interval: int(0,86400)
   mqtt_client_id: "str?"
+  mqtt_tls: bool
+  mqtt_tls_insecure: bool
+  mqtt_tls_ca: "str?"
   hass_enable: bool
   refresh_devices: int(5,3600)
   refresh_clients: int(5,3600)
