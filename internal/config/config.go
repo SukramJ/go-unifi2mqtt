@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -138,8 +140,10 @@ type Config struct {
 	// MQTTStatsInterval is the period of `<name>/maintenance/stats` in
 	// seconds; 0 switches the topic off.
 	MQTTStatsInterval int `yaml:"MQTT_STATS_INTERVAL"`
-	// MQTTSSL dials tls:// instead of tcp://.
-	MQTTSSL bool `yaml:"MQTT_SSL"`
+	// MQTTTLS dials tls:// instead of tcp://. It replaced MQTT_SSL; a
+	// config still carrying the old key is refused at load (see
+	// renamedKeys).
+	MQTTTLS bool `yaml:"MQTT_TLS"`
 	// MQTTClientID is the identifier this daemon presents to the broker.
 	// Empty means the derived default, ClientIDPrefix + MQTTTopic, which
 	// is the id every installation presented before this key existed —
@@ -153,10 +157,17 @@ type Config struct {
 	// a loop, each reconnecting into the other's session, both last
 	// wills firing, and nothing in either log saying why.
 	MQTTClientID string `yaml:"MQTT_CLIENT_ID"`
-	// MQTTSSLInsecure disables broker certificate verification. Only
-	// meaningful together with MQTTSSL, and only ever for a self-signed
-	// broker the operator controls.
-	MQTTSSLInsecure bool `yaml:"MQTT_SSL_INSECURE"`
+	// MQTTTLSInsecure disables broker certificate verification. Only
+	// meaningful together with MQTTTLS, and only ever for a self-signed
+	// broker the operator controls. MQTTTLSCA is the better fix.
+	MQTTTLSInsecure bool `yaml:"MQTT_TLS_INSECURE"`
+	// MQTTTLSCA is an optional PEM bundle the broker's certificate is
+	// verified against — the broker's counterpart of CAFile, with one
+	// difference: it *replaces* the system roots rather than adding to
+	// them, so the broker is trusted only if it chains to this bundle.
+	// Only meaningful together with MQTTTLS; mutually exclusive with
+	// MQTTTLSInsecure.
+	MQTTTLSCA string `yaml:"MQTT_TLS_CA"`
 
 	// --- Home Assistant discovery ---
 
@@ -276,10 +287,10 @@ func (c *Config) BaseURL() string {
 // MQTTBrokerURL returns the broker URL in the scheme go-mqtt expects.
 func (c *Config) MQTTBrokerURL() string {
 	scheme := "tcp"
-	if c.MQTTSSL {
+	if c.MQTTTLS {
 		scheme = "tls"
 	}
-	return fmt.Sprintf("%s://%s:%d", scheme, c.MQTTServer, c.MQTTPort)
+	return scheme + "://" + net.JoinHostPort(c.MQTTServer, strconv.Itoa(c.MQTTPort))
 }
 
 // ClientID is the MQTT client identifier this daemon presents.

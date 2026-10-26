@@ -912,7 +912,10 @@ production:
 | `CLIENTS.SSIDS` non-empty ⇒ `CLASSIC_ENABLE`                             | error     |
 | `CLIENTS.VLANS`/`NETWORKS` non-empty                                     | fine — works officially via IP-subnet mapping (§2.2) |
 | `CONTROLS.CLIENT_BLOCK`/`WLAN_ENABLE`/`DEVICE_LOCATE` ⇒ `CLASSIC_ENABLE` | error     |
-| `MQTT_SSL_INSECURE` without `MQTT_SSL`                                   | warning   |
+| `MQTT_TLS_INSECURE` or `MQTT_TLS_CA` without `MQTT_TLS`                  | warning   |
+| `MQTT_TLS_CA` together with `MQTT_TLS_INSECURE`                          | error     |
+| `MQTT_SERVER` not a bare host name / IP address                          | error     |
+| `MQTT_SSL` / `MQTT_SSL_INSECURE` set (renamed to `MQTT_TLS*`)            | error     |
 | `VERIFY_TLS: false`                                                      | warning (once at startup) |
 | `CLIENTS.AWAY_TIMEOUT < 2 × REFRESH_CLIENTS`                             | warning   |
 | any `REFRESH_*` below 5 s                                                | error (rate-limit protection) |

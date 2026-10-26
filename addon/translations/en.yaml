@@ -88,6 +88,25 @@ configuration:
       share one broker: MQTT makes the broker disconnect the session it
       already holds when a second client presents the same identifier, so
       two on one id evict each other in a loop.
+  mqtt_tls:
+    name: MQTT over TLS
+    description: >-
+      Connect to the broker via TLS. The default port 1883 then becomes
+      8883. When the broker is taken from the Home Assistant MQTT service,
+      its TLS setting is followed automatically.
+  mqtt_tls_insecure:
+    name: Skip broker certificate check
+    description: >-
+      DANGEROUS: accept any broker certificate. Only for a self-signed
+      broker you control; prefer the CA file below. Cannot be combined
+      with it.
+  mqtt_tls_ca:
+    name: Broker CA file
+    description: >-
+      PEM file with the CA that signed the broker's certificate, e.g.
+      /ssl/ca.crt or a file under /share. Replaces the system trust store
+      for the broker connection. Leave empty for a publicly trusted
+      certificate.
 
   hass_enable:
     name: Home Assistant discovery

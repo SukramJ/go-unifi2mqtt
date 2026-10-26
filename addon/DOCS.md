@@ -81,9 +81,26 @@ controller API to fill those gaps.
 | `mqtt_maintenance` | `true` | The mqtt-smarthome maintenance topics: `unifi/maintenance/set/loglevel` (`error`/`warn`/`info`/`debug`, not persisted), `unifi/maintenance/set/restart` and `unifi/maintenance/stats`. See the security note below. |
 | `mqtt_stats_interval` | `60` | Seconds between `unifi/maintenance/stats`; `0` switches them off. |
 | `mqtt_client_id` | *(empty)* | Identifier presented to the broker. Empty means `unifi2mqtt-` + `mqtt_topic`. Set it when two instances share one broker — two clients on one identifier evict each other in a loop. |
+| `mqtt_tls` | `false` | Connect to the broker via TLS. With the default `mqtt_port` 1883 the add-on then uses 8883. Switched on automatically when the broker comes from the Home Assistant MQTT service and that service announces TLS. See [TLS to the broker](#tls-to-the-broker). |
+| `mqtt_tls_ca` | *(empty)* | PEM CA bundle the broker's certificate is checked against, e.g. `/ssl/ca.crt`. **Replaces** the system trust store for the broker connection. |
+| `mqtt_tls_insecure` | `false` | **Dangerous:** accept any broker certificate. Only for a self-signed broker you control; prefer `mqtt_tls_ca`. Refused together with `mqtt_tls_ca`. |
 | `hass_enable` | `true` | Publish Home Assistant discovery. |
 | `hass_base_topic` | `homeassistant` | Discovery prefix. Only change this if you changed it in the MQTT integration too. |
 | `hass_cleanup` | `true` | On start, remove the discovery configs **this run of the add-on published and has since given up**. A config it did not publish itself is never removed, even one that looks exactly like its own — two UniFi consoles bridged to one broker publish indistinguishable configs, and removing the wrong one deletes another console's entities from Home Assistant with nothing in any log to say so. Leftovers from an earlier version or a removed device are therefore listed in the log (`reconcile_unclaimed`) instead of removed; see Troubleshooting. |
+
+#### TLS to the broker
+
+The add-on can read Home Assistant's `/ssl` and `/share` folders
+(read-only), so a CA file placed there can be named in `mqtt_tls_ca`:
+`/ssl/ca.crt`, or for example `/share/mqtt/ca.pem`. A wrong path, a file
+without a certificate or a private key named by mistake stops the add-on
+at start with the file named in the log. The certificate must be issued
+for the name in `mqtt_server` — with the auto-discovered broker that is
+the service host, usually `core-mosquitto`.
+
+`mqtt_tls_ca` replaces the system trust store rather than adding to it:
+with it set, the broker is trusted only if its certificate chains to
+that file.
 
 Since 2.0.0 the topics follow the mqtt-smarthome 2.0 convention:
 status items under `unifi/status/<site>/…` as `{"val","ts","lc"}`

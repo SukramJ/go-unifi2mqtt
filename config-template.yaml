@@ -58,8 +58,8 @@ CLASSIC_PASSWORD: "" # (override: env UNIFI_CLASSIC_PASSWORD)
 # ---------------------------------------------------------------------------
 # MQTT
 # ---------------------------------------------------------------------------
-MQTT_SERVER: localhost # Broker host
-MQTT_PORT: 1883 # 1883 plain · 8883 when MQTT_SSL is true
+MQTT_SERVER: localhost # Broker host name or IP only — no scheme, no port
+MQTT_PORT: 1883 # 1883 plain · 8883 when MQTT_TLS is true
 MQTT_LOGIN: "" # (override: env UNIFI_MQTT_LOGIN)
 MQTT_PASSWORD: "" # (override: env UNIFI_MQTT_PASSWORD)
 # The instance name: first level of every topic (mqtt-smarthome 2.0,
@@ -85,11 +85,20 @@ MQTT_STATS_INTERVAL: 60 # Seconds between <name>/maintenance/stats; 0 = off
 # second client presents the same identifier, so two on one id evict
 # each other in a loop with nothing in either log to say why.
 # MQTT_CLIENT_ID: "" # (override: env UNIFI_MQTT_CLIENT_ID)
-# MQTT_SSL: false          # Connect via TLS (tls://) instead of plain TCP
-# MQTT_SSL_INSECURE: false # DANGEROUS: skip broker certificate verification
+# TLS to the broker. Renamed from MQTT_SSL / MQTT_SSL_INSECURE;
+# a config that still carries an old key is refused at startup.
+# MQTT_TLS: false          # Connect via TLS (tls://) instead of plain TCP
+# MQTT_TLS_CA: /etc/ssl/certs/broker-ca.pem
+#                          # PEM CA bundle for a broker with a private CA.
+#                          # Unlike CA_FILE above it REPLACES the system
+#                          # roots: the broker is trusted only if it chains
+#                          # to this bundle. A missing or unusable file stops
+#                          # the daemon at startup.
+# MQTT_TLS_INSECURE: false # DANGEROUS: skip broker certificate verification
 #                          # (self-signed certs only); only takes effect when
-#                          # MQTT_SSL is true. Never enable this against a
-#                          # broker you do not fully trust.
+#                          # MQTT_TLS is true, and is refused together with
+#                          # MQTT_TLS_CA. Never enable this against a broker
+#                          # you do not fully trust.
 
 # ---------------------------------------------------------------------------
 # Home Assistant MQTT discovery

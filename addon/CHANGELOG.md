@@ -1,3 +1,42 @@
+# Unreleased
+
+TLS to the MQTT broker, with a private CA. **Breaking for anyone who set
+`MQTT_SSL` or `MQTT_SSL_INSECURE`; the Home Assistant add-on had neither
+option and needs nothing.**
+
+## Breaking
+
+- `MQTT_SSL` / `MQTT_SSL_INSECURE` (and `UNIFI_MQTT_SSL` /
+  `UNIFI_MQTT_SSL_INSECURE`) were renamed to `MQTT_TLS` /
+  `MQTT_TLS_INSECURE`. **Migration: rename the keys; the values stay the
+  same.** A config or environment that still sets an old key — whatever
+  its value — is refused at startup with a message naming the new key,
+  because silently ignoring `MQTT_SSL: true` would connect in plaintext.
+- `MQTT_SERVER` must be a bare host name or IP address. A scheme
+  (`tls://…`), a port (`broker:8883`) or a path is refused at startup;
+  none of them ever produced a working broker URL.
+
+## Added
+
+- `MQTT_TLS_CA`: a PEM CA bundle the broker's certificate is verified
+  against, for brokers with a private CA. It replaces the system roots
+  for the broker connection (unlike the console's `CA_FILE`, which adds
+  to them). A missing or unusable file stops the daemon at startup with
+  the file named; together with `MQTT_TLS_INSECURE` it is a configuration
+  error.
+- Home Assistant add-on: `mqtt_tls`, `mqtt_tls_insecure` and
+  `mqtt_tls_ca` options, with `/ssl` and `/share` mapped read-only so a
+  CA such as `/ssl/ca.crt` can be named. When the broker comes from the
+  Home Assistant MQTT service and that service announces TLS, the add-on
+  now connects via TLS.
+- An IPv6 literal in `MQTT_SERVER` now yields a valid broker URL.
+
+## Changed
+
+- Updated go-mqtt to v1.7.0 (`NewClientTLSConfigWithCA`).
+- A warning when `MQTT_TLS_CA` is set while `MQTT_TLS` is off, and the
+  `MQTT_TLS_INSECURE` warning now points at `MQTT_TLS_CA`.
+
 # Version 2.1.0 (2026-10-12)
 
 Maintenance release. **Nothing changes on the wire or in Home Assistant;

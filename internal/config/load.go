@@ -132,6 +132,9 @@ func Load(r io.Reader, env Env, opts ...Option) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read: %w", err)
 	}
+	if err := refuseRenamedKeys(raw, env); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(string(raw)) != "" {
 		// Decoding into the already-defaulted struct means an absent key
 		// keeps its default while a present one wins, including when it
@@ -147,14 +150,54 @@ func Load(r io.Reader, env Env, opts ...Option) (*Config, error) {
 
 	// The MQTT default port depends on a setting that may only be known
 	// after the overlay, so it cannot live in defaults().
-	if cfg.MQTTSSL && cfg.MQTTPort == DefaultMQTTPort {
-		cfg.MQTTPort = DefaultMQTTSSLPort
+	if cfg.MQTTTLS && cfg.MQTTPort == DefaultMQTTPort {
+		cfg.MQTTPort = DefaultMQTTTLSPort
 	}
 
 	if err := cfg.validate(newOptions(opts)); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// renamedKeys maps a removed config key to the one that replaced it.
+//
+// Unlike a key that was simply dropped (FORCE_REPUBLISH loads and is
+// ignored), a renamed key is refused: a config that still says
+// MQTT_SSL: true would otherwise be read as "TLS off" and connect in
+// plaintext — with the broker password on the wire and nothing in the
+// log to say so.
+var renamedKeys = []struct{ old, replacement string }{
+	{"MQTT_SSL", "MQTT_TLS"},
+	{"MQTT_SSL_INSECURE", "MQTT_TLS_INSECURE"},
+}
+
+// refuseRenamedKeys reports every renamed key still present, at the top
+// level of the YAML or as a UNIFI_* variable. Presence is what counts,
+// not the value: a key set to false is just as stale, and naming it
+// costs the operator one rename.
+func refuseRenamedKeys(raw []byte, env Env) error {
+	var top map[string]any
+	if strings.TrimSpace(string(raw)) != "" {
+		// A parse failure is left to the real decode below, which
+		// reports it with full context.
+		_ = yaml.Unmarshal(raw, &top)
+	}
+
+	var errs []string
+	for _, k := range renamedKeys {
+		if _, ok := top[k.old]; ok {
+			errs = append(errs, fmt.Sprintf("%s was renamed to %s (config file)", k.old, k.replacement))
+		}
+		if _, ok := env.Lookup(EnvPrefix + k.old); ok {
+			errs = append(errs, fmt.Sprintf("%s%s was renamed to %s%s (environment)",
+				EnvPrefix, k.old, EnvPrefix, k.replacement))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%w:\n  - %s", ErrInvalidConfig, strings.Join(errs, "\n  - "))
+	}
+	return nil
 }
 
 // applyEnv overlays UNIFI_* variables onto cfg.
@@ -187,8 +230,9 @@ func applyEnv(cfg *Config, env Env) error {
 		"MQTT_LOGIN":          str(&cfg.MQTTLogin),
 		"MQTT_PASSWORD":       secret(&cfg.MQTTPassword),
 		"MQTT_TOPIC":          str(&cfg.MQTTTopic),
-		"MQTT_SSL":            boolean(&cfg.MQTTSSL),
-		"MQTT_SSL_INSECURE":   boolean(&cfg.MQTTSSLInsecure),
+		"MQTT_TLS":            boolean(&cfg.MQTTTLS),
+		"MQTT_TLS_INSECURE":   boolean(&cfg.MQTTTLSInsecure),
+		"MQTT_TLS_CA":         str(&cfg.MQTTTLSCA),
 		"MQTT_MAINTENANCE":    boolean(&cfg.MQTTMaintenance),
 		"MQTT_STATS_INTERVAL": num(&cfg.MQTTStatsInterval),
 

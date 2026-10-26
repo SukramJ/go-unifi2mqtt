@@ -329,6 +329,12 @@ It binds to `127.0.0.1:8080` by default. Set `WEB_USER` and
 - `VERIFY_TLS` is off by default because consoles serve a self-signed
   certificate on their LAN address. `CA_FILE` is the better fix: it
   keeps verification on and trusts the console's own certificate.
+- The broker connection is plaintext unless `MQTT_TLS` is on. For a
+  broker with a private CA set `MQTT_TLS_CA` to its PEM bundle — the
+  broker-side counterpart of `CA_FILE`, except that it replaces the
+  system roots rather than adding to them. `MQTT_TLS_INSECURE` turns
+  verification off altogether; it is an explicit opt-in, logged as a
+  warning at every start, and refused together with `MQTT_TLS_CA`.
 - **Whoever can publish to your broker can restart your network
   hardware** once controls are enabled, and restart this daemon or
   change its log level through the maintenance topics. Use a broker
