@@ -316,8 +316,10 @@ The full specification, including why each choice was made, is in
 
 `WEB_ENABLE: true` serves a small read-only page: the broker link, every
 poll loop with its age, which classic capabilities are live, site
-health, all devices with statistics and PoE draw, and the published
-clients. In the Home Assistant add-on it is the sidebar panel.
+health and WLANs, all devices with statistics and PoE draw, and the
+published clients — the dashboard every go-*2mqtt bridge shares, live
+over Server-Sent Events, in German or English, light or dark. In the
+Home Assistant add-on it is the sidebar panel.
 
 It binds to `127.0.0.1:8080` by default. Set `WEB_USER` and
 `WEB_PASSWORD` before binding it anywhere else.

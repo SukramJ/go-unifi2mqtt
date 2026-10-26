@@ -206,9 +206,9 @@ error rather than a silently dead entity.
 
 With `web_enable` on, the add-on adds a sidebar panel showing the broker
 link, every poll loop with its age, which classic capabilities are live,
-site health, all devices with live statistics and PoE draw, and the
-published clients. It is read-only: it answers "is the bridge doing what
-it should?", nothing more.
+site health and WLANs, all devices with live statistics and PoE draw, and
+the published clients (filterable from ten on). It is read-only: it
+answers "is the bridge doing what it should?", nothing more.
 
 ## Troubleshooting
 

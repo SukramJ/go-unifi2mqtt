@@ -3,6 +3,7 @@ module github.com/SukramJ/go-unifi2mqtt
 go 1.27.3
 
 require (
+	github.com/SukramJ/go-bridgeui v0.3.0
 	github.com/SukramJ/go-ha-catalog v0.3.0
 	github.com/SukramJ/go-hamqtt v0.37.0
 	github.com/SukramJ/go-mqtt v1.7.0
