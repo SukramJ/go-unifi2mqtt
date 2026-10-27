@@ -1,3 +1,14 @@
+# Unreleased
+
+## Changed
+
+- **The web UI follows Home Assistant's look** (go-bridgeui 0.4.0). In the
+  add-on panel it takes Home Assistant's live theme — colours, light/dark
+  mode and card style, custom themes included — and hides its own toggle.
+  Opened directly it uses Home Assistant's default light and dark palettes,
+  following the system preference, instead of the former navy theme.
+- **Add-on sidebar title** is now `UniFi` instead of `go-unifi2mqtt`.
+
 # Version 3.0.0 (2026-10-26)
 
 TLS to the MQTT broker, with a private CA. **Breaking for anyone who set

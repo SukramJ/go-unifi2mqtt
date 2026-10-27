@@ -32,7 +32,7 @@ init: false
 ingress: true
 ingress_port: 8080
 panel_icon: mdi:router-network
-panel_title: go-unifi2mqtt
+panel_title: UniFi
 
 # Optional host-port exposure (disabled by default — `null` publishes no port,
 # Ingress stays the primary path). Assign a host port in the add-on's Network
