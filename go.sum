@@ -1,5 +1,5 @@
-github.com/SukramJ/go-bridgeui v0.3.0 h1:CT4rmXSqF66vMCW3/GJf+RfqV2XDdxsCAiM3zVbPkk4=
-github.com/SukramJ/go-bridgeui v0.3.0/go.mod h1:eldYPrrRXhnGalgvbewp6Fvus7D18YPorKqIl9aeVmQ=
+github.com/SukramJ/go-bridgeui v0.4.0 h1:RdKdjH47GGpdRIF6/WOVxyI888dU9ddLT+YnUhentMo=
+github.com/SukramJ/go-bridgeui v0.4.0/go.mod h1:eldYPrrRXhnGalgvbewp6Fvus7D18YPorKqIl9aeVmQ=
 github.com/SukramJ/go-ha-catalog v0.3.0 h1:yyb0JmvWN9TsNT6Ev9KACCV+KFK5a/va/Dhg50igUrA=
 github.com/SukramJ/go-ha-catalog v0.3.0/go.mod h1:z+G41LzF/Aj6xeoT0CqXylm7TxFhScqt118+h1vPwA8=
 github.com/SukramJ/go-hamqtt v0.37.0 h1:qe14Mpq8JUi+QB9vZa+P3VIg/xiBJRSJ2xfKlrs1ObI=
