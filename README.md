@@ -2,6 +2,7 @@
 
 [![ci](https://github.com/SukramJ/go-unifi2mqtt/actions/workflows/ci.yml/badge.svg)](https://github.com/SukramJ/go-unifi2mqtt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Open your Home Assistant instance and add this add-on repository.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FSukramJ%2Fgo-unifi2mqtt)
 
 A pure-Go daemon that bridges a **local UniFi Network installation** to
 **MQTT**, with **Home Assistant** auto-discovery.
@@ -50,7 +51,8 @@ control entities.
 ### Home Assistant add-on
 
 Add `https://github.com/SukramJ/go-unifi2mqtt` under **Settings →
-Add-ons → Add-on Store → ⋮ → Repositories**, install *go-unifi2mqtt*,
+Apps → Install app → ⋮ → Repositories** (formerly *Settings → Add-ons →
+Add-on Store*), install *go-unifi2mqtt*,
 fill in `unifi_host` and `unifi_api_key`, start. Details in
 [`addon/DOCS.md`](addon/DOCS.md).
 

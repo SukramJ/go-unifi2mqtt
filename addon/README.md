@@ -5,7 +5,8 @@ daemon as a Home Assistant add-on.
 
 ## Installation
 
-1. In Home Assistant go to **Settings → Add-ons → Add-on Store**.
+1. In Home Assistant go to **Settings → Apps → Install app** (formerly
+   *Settings → Add-ons → Add-on Store*).
 2. Open the ⋮ menu → **Repositories** and add
    `https://github.com/SukramJ/go-unifi2mqtt`.
 3. Install **go-unifi2mqtt** from the newly listed repository.
