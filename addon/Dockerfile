@@ -58,7 +58,8 @@ RUN go build -trimpath \
       -o /out/unifi2mqtt ./cmd/unifi2mqtt
 
 # ---------- Stage 2: Home Assistant add-on runtime ----------
-# BUILD_FROM is supplied by the Supervisor from addon/build.yaml.
+# BUILD_FROM is passed as a build argument (addon-image.yml, or --build-arg
+# for a manual build); the Supervisor does not supply it.
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
