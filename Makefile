@@ -148,8 +148,16 @@ run: build ## run the daemon against ./config.yaml
 clean: ## remove build artefacts
 	rm -rf $(BIN_DIR) $(DIST_DIR) coverage.out
 
+.PHONY: version-check
+version-check: ## fail when RELEASE_VERSION (internal/version), addon/config.yaml and changelog.md disagree
+	@v=$(RELEASE_VERSION); a=$$(awk -F'"' '/^version:/{print $$2; exit}' addon/config.yaml); \
+	test "$$v" = "$$a" || { echo "version $$v, addon/config.yaml $$a"; exit 1; }; \
+	awk -v v="$$v" 'index($$0, "# Version " v " ") == 1 { f = 1 } END { exit !f }' changelog.md \
+	  || { echo "changelog.md has no '# Version $$v' section"; exit 1; }; \
+	echo "version $$v: addon/config.yaml and changelog.md agree"
+
 .PHONY: release
-release: ## stage cross-compiled release archives + notes into dist/ (no upload)
+release: version-check ## stage cross-compiled release archives + notes into dist/ (no upload)
 	@rm -rf $(DIST_DIR)
 	@mkdir -p $(DIST_DIR)
 	@echo "release version: $(RELEASE_VERSION)"

@@ -92,3 +92,5 @@ jobs:
         run: make build
       - name: version banner
         run: ./bin/unifi2mqtt --version
+      - name: version check (internal/version, addon/config.yaml, changelog.md)
+        run: make version-check

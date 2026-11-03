@@ -62,15 +62,30 @@ jobs:
           INPUT_TAG="${{ github.event.inputs.tag }}"
           if [ -n "${INPUT_TAG}" ]; then
             VERSION="${INPUT_TAG#v}"
+            TAGGED=1
           elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
+            TAGGED=1
           else
             VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
           fi
+          echo "TAGGED=${TAGGED:-0}" >> "$GITHUB_ENV"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
           echo "COMMIT=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
           echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           echo "Publishing ${IMAGE}-${{ matrix.arch }}:${VERSION} and :latest"
+
+      # The Supervisor pulls <image>:<version> with the version of
+      # addon/config.yaml, so an image tagged with another version would be
+      # installed under a name its manifest contradicts. Refuse the tag; a
+      # workflow_dispatch without a tag (git describe) is not checked.
+      - name: The tag matches addon/config.yaml and internal/version
+        if: env.TAGGED == '1'
+        run: |
+          addon=$(awk -F'"' '/^version:/{print $2; exit}' addon/config.yaml)
+          test "$addon" = "$VERSION" || { echo "tag $VERSION, addon/config.yaml $addon"; exit 1; }
+          want=$(awk -F'"' '/^[[:space:]]*Version = /{print $2; exit}' internal/version/version.go)
+          test "$want" = "$VERSION" || { echo "tag $VERSION, internal/version $want"; exit 1; }
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4
