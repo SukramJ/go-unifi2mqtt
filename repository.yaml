@@ -1,5 +1,5 @@
 # Home Assistant add-on repository descriptor. Lets users add this GitHub
-# repository under Settings -> Add-ons -> Add-on Store -> Repositories; the
+# repository under Settings -> Apps -> Install app -> Repositories; the
 # Supervisor then discovers the add-on in the addon/ subdirectory.
 name: go-unifi2mqtt Add-ons
 url: https://github.com/SukramJ/go-unifi2mqtt

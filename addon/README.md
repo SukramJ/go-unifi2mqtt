@@ -5,7 +5,8 @@ daemon as a Home Assistant add-on.
 
 ## Installation
 
-1. In Home Assistant go to **Settings → Add-ons → Add-on Store**.
+1. In Home Assistant go to **Settings → Apps → Install app** (formerly
+   *Settings → Add-ons → Add-on Store*).
 2. Open the ⋮ menu → **Repositories** and add
    `https://github.com/SukramJ/go-unifi2mqtt`.
 3. Install **go-unifi2mqtt** from the newly listed repository.
@@ -29,11 +30,11 @@ no `run.sh` to translate add-on options into `UNIFI_*` environment variables.
 
 ## Building locally (fallback)
 
-Only needed when you want the Supervisor to build from source — remove the
-`image:` key from `addon/config.yaml` first. Note that `addon/Dockerfile`
-expects the **repository root** as build context (the Go sources live there,
-not in `addon/`), which the stock local-add-on flow does not provide. A manual
-build works:
+Only needed when you want to build the image yourself. The Supervisor no
+longer reads `addon/build.yaml` and, since Supervisor 2026.04.0, no longer
+supplies `BUILD_FROM`, so it cannot build `addon/Dockerfile` itself. Note that
+`addon/Dockerfile` expects the **repository root** as build context (the Go
+sources live there, not in `addon/`). A manual build works:
 
 ```sh
 docker build \
@@ -46,7 +47,6 @@ docker build \
 | File           | Purpose                                                             |
 | -------------- | ------------------------------------------------------------------- |
 | `config.yaml`  | Add-on manifest: options, schema, Ingress, version.                 |
-| `build.yaml`   | Per-arch base images for the local-build fallback.                  |
 | `Dockerfile`   | Local-build fallback (repo root as context).                        |
 | `DOCS.md`      | The add-on's Documentation tab — every option explained.            |
 | `CHANGELOG.md` | The add-on's Changelog tab. Kept identical to the root `changelog.md`. |
