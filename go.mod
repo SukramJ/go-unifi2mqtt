@@ -1,6 +1,6 @@
 module github.com/SukramJ/go-unifi2mqtt
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/SukramJ/go-bridgeui v0.4.0
