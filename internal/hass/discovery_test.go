@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	hatopic "github.com/SukramJ/go-hamqtt/topic"
+	hatopic "sukramj.dev/go-hamqtt/topic"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 )

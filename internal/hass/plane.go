@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/SukramJ/go-hamqtt/publisher"
-	hatopic "github.com/SukramJ/go-hamqtt/topic"
+	"sukramj.dev/go-hamqtt/publisher"
+	hatopic "sukramj.dev/go-hamqtt/topic"
 )
 
 // What this package tells the go-hamqtt runtime — ADR 0070 phase 9,

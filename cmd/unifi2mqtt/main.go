@@ -37,8 +37,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	hapub "github.com/SukramJ/go-hamqtt/publisher"
-	mqtt "github.com/SukramJ/go-mqtt"
+	hapub "sukramj.dev/go-hamqtt/publisher"
+	mqtt "sukramj.dev/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/coordinator"

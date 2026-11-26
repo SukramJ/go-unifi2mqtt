@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	hatopic "github.com/SukramJ/go-hamqtt/topic"
-	mqtt "github.com/SukramJ/go-mqtt"
+	hatopic "sukramj.dev/go-hamqtt/topic"
+	mqtt "sukramj.dev/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 )

@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	mqtt "github.com/SukramJ/go-mqtt"
-	"github.com/SukramJ/go-mqtt/protocol"
+	mqtt "sukramj.dev/go-mqtt"
+	"sukramj.dev/go-mqtt/protocol"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"

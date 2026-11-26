@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	mqtt "github.com/SukramJ/go-mqtt"
+	mqtt "sukramj.dev/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"

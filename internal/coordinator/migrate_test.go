@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	mqtt "github.com/SukramJ/go-mqtt"
+	mqtt "sukramj.dev/go-mqtt"
 )
 
 // replay delivers messages to the handler subscribed for filter, the

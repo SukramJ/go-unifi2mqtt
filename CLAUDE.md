@@ -42,7 +42,7 @@ web UI. Only the optional WebSocket accelerator (phase 9) remains.
   daemon. Also ships as a Docker image (distroless runtime) and a Home
   Assistant add-on (`addon/`).
 - **Dependencies are deliberately minimal**: `golang.org/x/sync`
-  (errgroup), `gopkg.in/yaml.v3`, `github.com/SukramJ/go-mqtt`
+  (errgroup), `gopkg.in/yaml.v3`, `sukramj.dev/go-mqtt`
   (the shared MQTT client, MIT — MQTT 5.0 by default, 3.1.1 selectable
   via `TCPConfig.ProtocolVersion`) and `github.com/SukramJ/go-bridgeui`
   (the dashboard every go-*2mqtt bridge embeds). The UniFi API clients are
@@ -76,7 +76,7 @@ CONCEPT.md               implementation concept — the design source of truth
 Every package above exists as of phase 7.
 
 The MQTT transport is not part of this tree: it comes from the external
-`github.com/SukramJ/go-mqtt` module as a regular `go.mod` dependency,
+`sukramj.dev/go-mqtt` module as a regular `go.mod` dependency,
 not an `internal/` package.
 
 ## Development Commands

@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	hapub "github.com/SukramJ/go-hamqtt/publisher"
-	mqtt "github.com/SukramJ/go-mqtt"
+	hapub "sukramj.dev/go-hamqtt/publisher"
+	mqtt "sukramj.dev/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
