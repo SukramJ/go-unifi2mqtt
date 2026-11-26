@@ -20,8 +20,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/SukramJ/go-hamqtt/discovery"
-	hatopic "github.com/SukramJ/go-hamqtt/topic"
+	"sukramj.dev/go-hamqtt/discovery"
+	hatopic "sukramj.dev/go-hamqtt/topic"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 )

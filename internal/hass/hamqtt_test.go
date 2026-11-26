@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	hacatalog "github.com/SukramJ/go-ha-catalog"
-	"github.com/SukramJ/go-hamqtt/discovery"
-	hamodel "github.com/SukramJ/go-hamqtt/model"
-	hatopic "github.com/SukramJ/go-hamqtt/topic"
+	hacatalog "sukramj.dev/go-ha-catalog"
+	"sukramj.dev/go-hamqtt/discovery"
+	hamodel "sukramj.dev/go-hamqtt/model"
+	hatopic "sukramj.dev/go-hamqtt/topic"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 )

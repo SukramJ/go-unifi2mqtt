@@ -9,7 +9,7 @@ import (
 	"errors"
 	"testing"
 
-	hapub "github.com/SukramJ/go-hamqtt/publisher"
+	hapub "sukramj.dev/go-hamqtt/publisher"
 )
 
 // A signal landing during startup surfaces as context.Canceled. Exiting

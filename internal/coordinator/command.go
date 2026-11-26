@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	hapub "github.com/SukramJ/go-hamqtt/publisher"
+	hapub "sukramj.dev/go-hamqtt/publisher"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/model"
 )

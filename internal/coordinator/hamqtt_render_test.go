@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	hacatalog "github.com/SukramJ/go-ha-catalog"
-	"github.com/SukramJ/go-hamqtt/discovery"
-	mqtt "github.com/SukramJ/go-mqtt"
+	hacatalog "sukramj.dev/go-ha-catalog"
+	"sukramj.dev/go-hamqtt/discovery"
+	mqtt "sukramj.dev/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/config"
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"

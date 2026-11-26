@@ -8,10 +8,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/SukramJ/go-hamqtt/discovery"
-	hapub "github.com/SukramJ/go-hamqtt/publisher"
-	hagomqtt "github.com/SukramJ/go-hamqtt/publisher/gomqtt"
-	mqtt "github.com/SukramJ/go-mqtt"
+	"sukramj.dev/go-hamqtt/discovery"
+	hapub "sukramj.dev/go-hamqtt/publisher"
+	hagomqtt "sukramj.dev/go-hamqtt/publisher/gomqtt"
+	mqtt "sukramj.dev/go-mqtt"
 
 	"github.com/SukramJ/go-unifi2mqtt/internal/hass"
 )
@@ -19,7 +19,7 @@ import (
 // The go-hamqtt publishing planes — ADR 0070 phase 9, step 5.
 //
 // Three of this daemon's four planes now go out through
-// github.com/SukramJ/go-hamqtt's publisher package: entity state
+// sukramj.dev/go-hamqtt's publisher package: entity state
 // ([hapub.StatePublisher]), the bridge's own birth/death marker and the
 // orphan sweep ([hapub.Runtime]), and the inbound command tree
 // ([hapub.CommandRouter]). Discovery configs still go out through this
